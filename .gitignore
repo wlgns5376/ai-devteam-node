@@ -1,0 +1,59 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS specific
+.DS_Store
+
+# Task files
+# tasks.json
+# tasks/ 
+
+# TypeScript build output
+dist/
+build/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output
+
+# Development tools
+.eslintcache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Environment files
+.env.test
+.env.production
+.env.local
+
+# AI DevTeam specific
+workspaces/
+*.workspace
+
+# Temporary files
+tmp/
+temp/
