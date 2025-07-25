@@ -24,10 +24,6 @@ node_modules/
 # OS specific
 .DS_Store
 
-# Task files
-# tasks.json
-# tasks/ 
-
 # TypeScript build output
 dist/
 build/
@@ -57,3 +53,7 @@ workspaces/
 # Temporary files
 tmp/
 temp/
+
+# Task files
+# tasks.json
+# tasks/ 

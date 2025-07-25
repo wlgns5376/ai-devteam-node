@@ -22,6 +22,9 @@ export * from './config.types';
 // Planner types
 export * from './planner.types';
 
+// Manager types
+export * from './manager.types';
+
 // Common utility types
 export type Result<T, E = Error> = {
   readonly success: true;

@@ -1,20 +1,23 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { Task, TaskStatus, Worker, WorkerStatus } from '@/types';
+import { Task, TaskStatus, Worker, WorkerStatus, WorkspaceInfo } from '@/types';
 
 export class StateManager {
   private readonly dataDir: string;
   private readonly tasksFile: string;
   private readonly workersFile: string;
+  private readonly workspacesFile: string;
   private readonly lockFile: string;
 
   private tasks: Map<string, Task> = new Map();
   private workers: Map<string, Worker> = new Map();
+  private workspaces: Map<string, WorkspaceInfo> = new Map();
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
     this.tasksFile = path.join(dataDir, 'tasks.json');
     this.workersFile = path.join(dataDir, 'workers.json');
+    this.workspacesFile = path.join(dataDir, 'workspaces.json');
     this.lockFile = path.join(dataDir, '.lock');
   }
 
@@ -26,6 +29,7 @@ export class StateManager {
       // 기존 상태 파일 로드 또는 새로 생성
       await this.loadTasks();
       await this.loadWorkers();
+      await this.loadWorkspaces();
     } catch (error) {
       throw new Error(`Failed to initialize StateManager: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -116,6 +120,29 @@ export class StateManager {
     });
   }
 
+  // Workspace 관리 메서드들
+  async saveWorkspaceInfo(workspaceInfo: WorkspaceInfo): Promise<void> {
+    await this.withLock(async () => {
+      this.workspaces.set(workspaceInfo.taskId, { ...workspaceInfo });
+      await this.persistWorkspaces();
+    });
+  }
+
+  async loadWorkspaceInfo(taskId: string): Promise<WorkspaceInfo | null> {
+    return this.workspaces.get(taskId) || null;
+  }
+
+  async removeWorkspaceInfo(taskId: string): Promise<void> {
+    await this.withLock(async () => {
+      this.workspaces.delete(taskId);
+      await this.persistWorkspaces();
+    });
+  }
+
+  async getAllWorkspaces(): Promise<WorkspaceInfo[]> {
+    return Array.from(this.workspaces.values());
+  }
+
   // 프라이빗 메서드들
   private async loadTasks(): Promise<void> {
     try {
@@ -157,6 +184,26 @@ export class StateManager {
     }
   }
 
+  private async loadWorkspaces(): Promise<void> {
+    try {
+      const workspacesContent = await fs.readFile(this.workspacesFile, 'utf-8');
+      const workspacesArray: WorkspaceInfo[] = JSON.parse(workspacesContent, this.dateReviver);
+      
+      this.workspaces.clear();
+      for (const workspace of workspacesArray) {
+        this.workspaces.set(workspace.taskId, workspace);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        // 파일이 없으면 빈 배열로 초기화
+        this.workspaces.clear();
+        await this.persistWorkspaces();
+      } else {
+        throw new Error(`Failed to load workspaces: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }
+
   private async persistTasks(): Promise<void> {
     const tasksArray = Array.from(this.tasks.values());
     const tasksContent = JSON.stringify(tasksArray, null, 2);
@@ -167,6 +214,12 @@ export class StateManager {
     const workersArray = Array.from(this.workers.values());
     const workersContent = JSON.stringify(workersArray, null, 2);
     await fs.writeFile(this.workersFile, workersContent, 'utf-8');
+  }
+
+  private async persistWorkspaces(): Promise<void> {
+    const workspacesArray = Array.from(this.workspaces.values());
+    const workspacesContent = JSON.stringify(workspacesArray, null, 2);
+    await fs.writeFile(this.workspacesFile, workspacesContent, 'utf-8');
   }
 
   private async withLock<T>(operation: () => Promise<T>): Promise<T> {

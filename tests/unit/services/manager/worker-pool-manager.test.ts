@@ -1,0 +1,289 @@
+import { WorkerPoolManager } from '@/services/manager/worker-pool-manager';
+import { Logger } from '@/services/logger';
+import { StateManager } from '@/services/state-manager';
+import { 
+  WorkerStatus, 
+  ManagerServiceConfig,
+  ManagerError
+} from '@/types';
+
+describe('WorkerPoolManager', () => {
+  let workerPoolManager: WorkerPoolManager;
+  let mockLogger: jest.Mocked<Logger>;
+  let mockStateManager: jest.Mocked<StateManager>;
+  let config: ManagerServiceConfig;
+
+  beforeEach(() => {
+    // Given: Mock 의존성 설정
+    mockLogger = {
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      debug: jest.fn()
+    } as any;
+
+    mockStateManager = {
+      saveWorker: jest.fn(),
+      loadWorker: jest.fn(),
+      saveWorkerPoolState: jest.fn(),
+      loadWorkerPoolState: jest.fn()
+    } as any;
+
+    config = {
+      workspaceBasePath: '/tmp/test-workspace',
+      minWorkers: 2,
+      maxWorkers: 5,
+      workerRecoveryTimeoutMs: 30000,
+      gitOperationTimeoutMs: 60000,
+      repositoryCacheTimeoutMs: 300000
+    };
+
+    workerPoolManager = new WorkerPoolManager(config, {
+      logger: mockLogger,
+      stateManager: mockStateManager
+    });
+  });
+
+  describe('초기화', () => {
+    it('최소 Worker 수만큼 Worker를 생성해야 한다', async () => {
+      // When: Pool 초기화
+      await workerPoolManager.initializePool();
+
+      // Then: 최소 Worker 수만큼 생성됨
+      const poolStatus = workerPoolManager.getPoolStatus();
+      expect(poolStatus.workers).toHaveLength(config.minWorkers);
+      expect(poolStatus.minWorkers).toBe(config.minWorkers);
+      expect(poolStatus.maxWorkers).toBe(config.maxWorkers);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Worker pool initialized', 
+        { minWorkers: config.minWorkers, maxWorkers: config.maxWorkers }
+      );
+    });
+
+    it('모든 초기 Worker는 IDLE 상태여야 한다', async () => {
+      // When: Pool 초기화
+      await workerPoolManager.initializePool();
+
+      // Then: 모든 Worker가 IDLE 상태
+      const poolStatus = workerPoolManager.getPoolStatus();
+      poolStatus.workers.forEach(worker => {
+        expect(worker.status).toBe(WorkerStatus.IDLE);
+        expect(worker.currentTaskId).toBeUndefined();
+      });
+    });
+
+    it('이미 초기화된 경우 다시 초기화하지 않아야 한다', async () => {
+      // Given: 이미 초기화됨
+      await workerPoolManager.initializePool();
+      const firstPoolStatus = workerPoolManager.getPoolStatus();
+
+      // When: 다시 초기화 시도
+      await workerPoolManager.initializePool();
+
+      // Then: 상태가 변경되지 않음
+      const secondPoolStatus = workerPoolManager.getPoolStatus();
+      expect(secondPoolStatus.workers).toHaveLength(firstPoolStatus.workers.length);
+    });
+  });
+
+  describe('Worker 할당', () => {
+    beforeEach(async () => {
+      await workerPoolManager.initializePool();
+    });
+
+    it('사용 가능한 Worker를 반환해야 한다', async () => {
+      // When: 사용 가능한 Worker 요청
+      const worker = await workerPoolManager.getAvailableWorker();
+
+      // Then: IDLE 상태의 Worker 반환
+      expect(worker).not.toBeNull();
+      expect(worker!.status).toBe(WorkerStatus.IDLE);
+    });
+
+    it('Worker를 작업에 할당할 수 있어야 한다', async () => {
+      // Given: 사용 가능한 Worker 가져오기
+      const worker = await workerPoolManager.getAvailableWorker();
+      const taskId = 'task-123';
+
+      // When: Worker를 작업에 할당
+      await workerPoolManager.assignWorker(worker!.id, taskId);
+
+      // Then: Worker 상태가 WAITING으로 변경되고 taskId 설정됨
+      const poolStatus = workerPoolManager.getPoolStatus();
+      const assignedWorker = poolStatus.workers.find(w => w.id === worker!.id);
+      expect(assignedWorker!.status).toBe(WorkerStatus.WAITING);
+      expect(assignedWorker!.currentTaskId).toBe(taskId);
+      expect(mockStateManager.saveWorker).toHaveBeenCalledWith(assignedWorker);
+    });
+
+    it('모든 Worker가 사용중일 때 null을 반환해야 한다', async () => {
+      // Given: 최대 Worker 수만큼 Worker를 작업에 할당
+      const workers = [];
+      for (let i = 0; i < config.maxWorkers; i++) {
+        const worker = await workerPoolManager.getAvailableWorker();
+        await workerPoolManager.assignWorker(worker!.id, `task-${i}`);
+        workers.push(worker);
+      }
+
+      // When: 추가 Worker 요청
+      const additionalWorker = await workerPoolManager.getAvailableWorker();
+
+      // Then: null 반환
+      expect(additionalWorker).toBeNull();
+    });
+
+    it('존재하지 않는 Worker 할당 시 에러를 발생시켜야 한다', async () => {
+      // Given: 존재하지 않는 Worker ID
+      const invalidWorkerId = 'non-existent-worker';
+      const taskId = 'task-123';
+
+      // When & Then: 에러 발생
+      await expect(
+        workerPoolManager.assignWorker(invalidWorkerId, taskId)
+      ).rejects.toThrow(`Worker not found: ${invalidWorkerId}`);
+    });
+  });
+
+  describe('Worker 해제', () => {
+    beforeEach(async () => {
+      await workerPoolManager.initializePool();
+    });
+
+    it('할당된 Worker를 해제할 수 있어야 한다', async () => {
+      // Given: Worker를 작업에 할당
+      const worker = await workerPoolManager.getAvailableWorker();
+      await workerPoolManager.assignWorker(worker!.id, 'task-123');
+
+      // When: Worker 해제
+      await workerPoolManager.releaseWorker(worker!.id);
+
+      // Then: Worker가 IDLE 상태로 변경되고 taskId 제거됨
+      const poolStatus = workerPoolManager.getPoolStatus();
+      const releasedWorker = poolStatus.workers.find(w => w.id === worker!.id);
+      expect(releasedWorker!.status).toBe(WorkerStatus.IDLE);
+      expect(releasedWorker!.currentTaskId).toBeUndefined();
+    });
+
+    it('존재하지 않는 Worker 해제 시 에러를 발생시켜야 한다', async () => {
+      // Given: 존재하지 않는 Worker ID
+      const invalidWorkerId = 'non-existent-worker';
+
+      // When & Then: 에러 발생
+      await expect(
+        workerPoolManager.releaseWorker(invalidWorkerId)
+      ).rejects.toThrow(`Worker not found: ${invalidWorkerId}`);
+    });
+  });
+
+  describe('Worker 상태 업데이트', () => {
+    beforeEach(async () => {
+      await workerPoolManager.initializePool();
+    });
+
+    it('Worker 상태를 업데이트할 수 있어야 한다', async () => {
+      // Given: Worker 가져오기
+      const worker = await workerPoolManager.getAvailableWorker();
+
+      // When: Worker 상태를 WORKING으로 변경
+      await workerPoolManager.updateWorkerStatus(worker!.id, WorkerStatus.WORKING);
+
+      // Then: 상태가 업데이트됨
+      const poolStatus = workerPoolManager.getPoolStatus();
+      const updatedWorker = poolStatus.workers.find(w => w.id === worker!.id);
+      expect(updatedWorker!.status).toBe(WorkerStatus.WORKING);
+      expect(mockStateManager.saveWorker).toHaveBeenCalledWith(updatedWorker);
+    });
+
+    it('존재하지 않는 Worker 상태 업데이트 시 에러를 발생시켜야 한다', async () => {
+      // Given: 존재하지 않는 Worker ID
+      const invalidWorkerId = 'non-existent-worker';
+
+      // When & Then: 에러 발생
+      await expect(
+        workerPoolManager.updateWorkerStatus(invalidWorkerId, WorkerStatus.WORKING)
+      ).rejects.toThrow(`Worker not found: ${invalidWorkerId}`);
+    });
+  });
+
+  describe('중지된 Worker 복구', () => {
+    beforeEach(async () => {
+      await workerPoolManager.initializePool();
+    });
+
+    it('중지된 Worker를 WAITING 상태로 복구해야 한다', async () => {
+      // Given: Worker를 STOPPED 상태로 설정
+      const worker = await workerPoolManager.getAvailableWorker();
+      await workerPoolManager.updateWorkerStatus(worker!.id, WorkerStatus.STOPPED);
+      
+      // 복구 타임아웃보다 긴 시간이 지났다고 가정
+      jest.spyOn(Date, 'now').mockReturnValue(
+        worker!.lastActiveAt.getTime() + config.workerRecoveryTimeoutMs + 1000
+      );
+
+      // When: 중지된 Worker 복구
+      await workerPoolManager.recoverStoppedWorkers();
+
+      // Then: Worker가 WAITING 상태로 복구됨
+      const poolStatus = workerPoolManager.getPoolStatus();
+      const recoveredWorker = poolStatus.workers.find(w => w.id === worker!.id);
+      expect(recoveredWorker!.status).toBe(WorkerStatus.WAITING);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Worker recovered from stopped state',
+        { workerId: worker!.id }
+      );
+    });
+
+    it('복구 타임아웃이 지나지 않은 Worker는 복구하지 않아야 한다', async () => {
+      // Given: Worker를 STOPPED 상태로 설정
+      const worker = await workerPoolManager.getAvailableWorker();
+      await workerPoolManager.updateWorkerStatus(worker!.id, WorkerStatus.STOPPED);
+
+      // When: 중지된 Worker 복구 (타임아웃 전)
+      await workerPoolManager.recoverStoppedWorkers();
+
+      // Then: Worker 상태가 변경되지 않음
+      const poolStatus = workerPoolManager.getPoolStatus();
+      const stoppedWorker = poolStatus.workers.find(w => w.id === worker!.id);
+      expect(stoppedWorker!.status).toBe(WorkerStatus.STOPPED);
+    });
+  });
+
+  describe('Pool 상태 조회', () => {
+    beforeEach(async () => {
+      await workerPoolManager.initializePool();
+    });
+
+    it('올바른 Pool 상태를 반환해야 한다', async () => {
+      // Given: 일부 Worker를 할당
+      const worker1 = await workerPoolManager.getAvailableWorker();
+      await workerPoolManager.assignWorker(worker1!.id, 'task-1');
+      await workerPoolManager.updateWorkerStatus(worker1!.id, WorkerStatus.WORKING);
+
+      // When: Pool 상태 조회
+      const poolStatus = workerPoolManager.getPoolStatus();
+
+      // Then: 올바른 상태 반환
+      expect(poolStatus.workers).toHaveLength(config.minWorkers);
+      expect(poolStatus.minWorkers).toBe(config.minWorkers);
+      expect(poolStatus.maxWorkers).toBe(config.maxWorkers);
+      expect(poolStatus.activeWorkers).toBe(1); // 1개 Worker가 WORKING 상태
+    });
+  });
+
+  describe('Pool 종료', () => {
+    beforeEach(async () => {
+      await workerPoolManager.initializePool();
+    });
+
+    it('모든 Worker를 정리하고 Pool을 종료해야 한다', async () => {
+      // When: Pool 종료
+      await workerPoolManager.shutdown();
+
+      // Then: 모든 Worker가 정리됨
+      const poolStatus = workerPoolManager.getPoolStatus();
+      expect(poolStatus.workers).toHaveLength(0);
+      expect(poolStatus.activeWorkers).toBe(0);
+      expect(mockLogger.info).toHaveBeenCalledWith('Worker pool shutdown completed');
+    });
+  });
+});

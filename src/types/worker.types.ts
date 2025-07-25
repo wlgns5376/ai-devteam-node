@@ -5,6 +5,21 @@ export enum WorkerStatus {
   STOPPED = 'stopped'
 }
 
+export enum WorkerAction {
+  START_NEW_TASK = 'start_new_task',
+  RESUME_TASK = 'resume_task', 
+  PROCESS_FEEDBACK = 'process_feedback',
+  MERGE_REQUEST = 'merge_request'
+}
+
+export enum WorkerStage {
+  PREPARING_WORKSPACE = 'preparing_workspace',
+  GENERATING_PROMPT = 'generating_prompt',
+  EXECUTING_TASK = 'executing_task',
+  PROCESSING_RESULT = 'processing_result',
+  COMPLETING_TASK = 'completing_task'
+}
+
 export interface Worker {
   readonly id: string;
   readonly status: WorkerStatus;
@@ -26,4 +41,89 @@ export interface WorkerUpdate {
   readonly status?: WorkerStatus;
   readonly currentTaskId?: string | undefined;
   readonly lastActiveAt?: Date;
+}
+
+export interface WorkerTask {
+  readonly taskId: string;
+  readonly action: WorkerAction;
+  readonly boardItem?: any; // ProjectBoardItem from planner types
+  readonly comments?: ReadonlyArray<any>; // PullRequestComment from planner types
+  readonly assignedAt: Date;
+  readonly repositoryId: string;
+}
+
+export interface WorkerProgress {
+  readonly taskId: string;
+  readonly stage: WorkerStage;
+  readonly message: string;
+  readonly timestamp: Date;
+  readonly details?: Record<string, unknown>;
+}
+
+export interface WorkerResult {
+  readonly taskId: string;
+  readonly success: boolean;
+  readonly pullRequestUrl?: string;
+  readonly errorMessage?: string;
+  readonly completedAt: Date;
+  readonly details?: Record<string, unknown>;
+}
+
+export interface WorkerError {
+  readonly code: string;
+  readonly message: string;
+  readonly timestamp: Date;
+  readonly context?: Record<string, unknown>;
+}
+
+// 인터페이스 분리 (ISP 적용)
+export interface WorkerInterface {
+  // 기본 생명주기
+  assignTask(task: WorkerTask): Promise<void>;
+  startExecution(): Promise<WorkerResult>;
+  pauseExecution(): Promise<void>;
+  resumeExecution(): Promise<void>;
+  cancelExecution(): Promise<void>;
+  
+  // 상태 관리
+  getStatus(): WorkerStatus;
+  getProgress(): WorkerProgress | null;
+  getCurrentTask(): WorkerTask | null;
+  
+  // 정리
+  cleanup(): Promise<void>;
+}
+
+export interface WorkspaceSetupInterface {
+  prepareWorkspace(task: WorkerTask): Promise<any>; // WorkspaceInfo
+  validateEnvironment(workspaceInfo: any): Promise<boolean>;
+  cleanupWorkspace(taskId: string): Promise<void>;
+}
+
+export interface PromptGeneratorInterface {
+  generateNewTaskPrompt(task: WorkerTask, workspaceInfo: any): Promise<string>;
+  generateResumePrompt(task: WorkerTask, workspaceInfo: any): Promise<string>;
+  generateFeedbackPrompt(task: WorkerTask, comments: ReadonlyArray<any>): Promise<string>;
+  generateMergePrompt(task: WorkerTask): Promise<string>;
+}
+
+export interface ResultProcessorInterface {
+  processOutput(output: string, task: WorkerTask): Promise<WorkerResult>;
+  extractPullRequestUrl(output: string): string | null;
+  extractErrorInfo(output: string): WorkerError | null;
+  generateStatusReport(task: WorkerTask, result: WorkerResult): Promise<any>; // TaskResponse
+}
+
+export interface DeveloperInterface {
+  executePrompt(prompt: string, workspaceDir: string): Promise<string>;
+  isAvailable(): Promise<boolean>;
+  getType(): 'claude' | 'gemini';
+}
+
+export interface WorkerDependencies {
+  readonly logger: any;
+  readonly workspaceSetup: WorkspaceSetupInterface;
+  readonly promptGenerator: PromptGeneratorInterface;
+  readonly resultProcessor: ResultProcessorInterface;
+  readonly developer: DeveloperInterface;
 }
