@@ -15,9 +15,28 @@ export class MockPullRequestService implements PullRequestService {
       throw new Error(`Pull request not found: ${repoId}/${prNumber}`);
     }
 
-    const pr = repoPrs.get(prNumber);
+    let pr = repoPrs.get(prNumber);
     if (!pr) {
       throw new Error(`Pull request not found: ${repoId}/${prNumber}`);
+    }
+
+    // 자동 병합 로직: PR이 생성된 지 30초 이상 지나고 'open' 상태면 'merged'로 변경
+    const now = new Date();
+    const timeSinceCreation = now.getTime() - pr.createdAt.getTime();
+    const autoMergeDelayMs = 30000; // 30초
+
+    console.log(`🔍 PR Check: ${repoId}/${prNumber} - Status: ${pr.status}, Time since creation: ${timeSinceCreation}ms (needs ${autoMergeDelayMs}ms)`);
+
+    if (pr.status === 'open' && timeSinceCreation > autoMergeDelayMs) {
+      const mergedPr: PullRequest = {
+        ...pr,
+        status: 'merged',
+        updatedAt: now
+      };
+      
+      repoPrs.set(prNumber, mergedPr);
+      console.log(`🔄 Auto-merged PR: ${repoId}/${prNumber} (${pr.title})`);
+      pr = mergedPr;
     }
 
     return pr;
@@ -53,7 +72,7 @@ export class MockPullRequestService implements PullRequestService {
       id: nextId,
       title: data.title,
       description: data.description,
-      url: `https://github.com/example/${repoId}/pull/${nextId}`,
+      url: `https://github.com/${repoId}/pull/${nextId}`,
       status: 'open',
       sourceBranch: data.sourceBranch,
       targetBranch: data.targetBranch,

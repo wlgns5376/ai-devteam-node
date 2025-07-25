@@ -1,0 +1,18 @@
+[
+  {
+    "id": "worker-1753447854759-pf59mx",
+    "status": "idle",
+    "workspaceDir": "./temp-workspace/worker-1753447854759-pf59mx",
+    "developerType": "claude",
+    "createdAt": "2025-07-25T12:50:54.759Z",
+    "lastActiveAt": "2025-07-25T12:50:55.768Z"
+  },
+  {
+    "id": "worker-1753447854760-69i54g",
+    "status": "idle",
+    "workspaceDir": "./temp-workspace/worker-1753447854760-69i54g",
+    "developerType": "claude",
+    "createdAt": "2025-07-25T12:50:54.760Z",
+    "lastActiveAt": "2025-07-25T12:50:54.760Z"
+  }
+]

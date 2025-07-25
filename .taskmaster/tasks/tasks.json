@@ -1,0 +1,312 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Setup Project Structure and Dependencies",
+        "description": "Initialize Node.js TypeScript project with required dependencies for AI DevTeam automation system",
+        "details": "Create package.json with TypeScript, Jest, and required dependencies. Setup tsconfig.json, Jest configuration, and basic project structure with src/, tests/, and docs/ directories. Configure pnpm workspace if needed. Install GitHub API client (@octokit/rest), child_process utilities, and file system libraries.",
+        "testStrategy": "Unit tests for project setup validation, dependency installation verification, and TypeScript compilation checks",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 2,
+        "title": "Implement Core Interfaces and Types",
+        "description": "Define TypeScript interfaces for all system components (Planner, Manager, Worker, Developer)",
+        "details": "Create interfaces for Task, WorkerStatus, PlannerConfig, ManagerConfig, WorkerPool, and Developer types. Define enums for task statuses (Todo, InProgress, InReview, Done) and worker states (Idle, Waiting, Working, Stopped). Include GitHub project board integration types and PR management interfaces.",
+        "testStrategy": "Type checking tests and interface validation to ensure proper TypeScript compilation and type safety",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 3,
+        "title": "Implement GitHub API Integration Service",
+        "description": "Create Mock GitHub service for initial workflow validation, then implement GitHub Projects API integration",
+        "status": "pending",
+        "dependencies": [
+          2
+        ],
+        "priority": "high",
+        "details": "Initially implement MockGitHubService class to enable Planner development and workflow testing. Include methods for: fetching mock project board tasks, updating task status, creating/updating PR links, retrieving PR approval status and comments. After core logic validation, replace with real GitHubService using @octokit/rest for API calls, GitHub token authentication, rate limiting and error handling.",
+        "testStrategy": "Start with mock service testing for workflow validation. Test CRUD operations on mock project items, verify state transitions, and test integration with Planner. Later add GitHub API response mocking, authentication handling tests, and error scenarios for real implementation",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement MockGitHubService for workflow validation",
+            "description": "Create mock service with in-memory data to enable Planner implementation and testing",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Implement MockGitHubService with same interface as planned GitHubService. Use in-memory data structures to simulate project boards, tasks, and PRs. Include configurable delays and error scenarios for realistic testing.",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Design GitHubService interface",
+            "description": "Define common interface that both Mock and real implementations will follow",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Create IGitHubService interface with methods for task management, PR operations, and status updates. Ensure interface supports both mock and real implementations seamlessly.",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Implement real GitHubService with Octokit",
+            "description": "Replace mock with actual GitHub API integration after workflow validation",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Implement GitHubService using @octokit/rest for GitHub Projects API. Include authentication, rate limiting, error handling, and all methods defined in interface. Switch from mock to real service after Planner validation.",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Implement Repository Management Service",
+        "description": "Create service for Git repository operations including clone, fetch, and worktree management",
+        "details": "Implement RepositoryService class with methods for: repository cloning, fetching latest changes, creating git worktrees for task branches, managing concurrent git operations with locks. Use child_process to execute git commands. Handle workspace directory management and cleanup.",
+        "testStrategy": "Test git operations with mock repositories, verify worktree creation/deletion, test concurrent operation handling, and workspace management",
+        "priority": "high",
+        "dependencies": [
+          2
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Implement JSON-based State Management",
+        "description": "Create persistent state management system using JSON files for metadata and worker states",
+        "details": "Implement StateManager class with methods for: saving/loading worker states, task metadata persistence, workspace configuration storage. Use atomic file operations to prevent corruption. Include state validation and migration capabilities. Store in dedicated state/ directory.",
+        "testStrategy": "Test file I/O operations, atomic writes, state validation, and error recovery scenarios",
+        "priority": "medium",
+        "dependencies": [
+          2
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 6,
+        "title": "Implement Planner Component",
+        "description": "Create Planner class for managing project board tasks and coordinating with Manager using abstracted service interfaces",
+        "status": "pending",
+        "dependencies": [
+          5,
+          12
+        ],
+        "priority": "high",
+        "details": "Implement Planner class with methods for: periodic task fetching through abstracted project board service interface, task status updates (Todo->InProgress->InReview->Done), task state management coordination with JSON state system, and Manager communication. Use MockProjectBoardService initially with interface-based design for future GitHub service integration. Include configurable polling intervals and error handling with Logger integration.",
+        "testStrategy": "Mock project board service interactions through abstracted interfaces, test task status transitions with JSON state management, verify polling mechanisms, test Manager communication protocols, and validate Logger integration",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Define ProjectBoardService interface",
+            "description": "Create abstracted interface for project board operations",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Define IProjectBoardService interface with methods for fetching tasks, updating task status, and retrieving task metadata. This interface will be implemented by MockProjectBoardService initially and GitHub service later.",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement MockProjectBoardService",
+            "description": "Create mock implementation of project board service for testing and initial development",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Implement MockProjectBoardService class that implements IProjectBoardService interface. Provide simulated task data and status updates for development and testing purposes.",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Implement Planner core class",
+            "description": "Create main Planner class with dependency injection for services",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Implement Planner class constructor with IProjectBoardService, JSON state manager (Task 5), and Logger (Task 12) dependencies. Set up configurable polling intervals and error handling framework.",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Implement task fetching mechanism",
+            "description": "Add periodic task fetching through abstracted service interface",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Implement task fetching logic that uses IProjectBoardService to retrieve tasks and coordinates with JSON state management system. Include polling timer and error recovery mechanisms.",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Implement task status update system",
+            "description": "Add task status transition handling with state persistence",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Implement methods for updating task status (Todo->InProgress->InReview->Done) through both the abstracted service interface and JSON state system. Ensure state consistency between services.",
+            "testStrategy": ""
+          },
+          {
+            "id": 6,
+            "title": "Implement Manager communication interface",
+            "description": "Add communication methods for coordinating with Manager component",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Implement methods for communicating task updates, status changes, and coordination signals with the Manager component. Include event-based communication patterns.",
+            "testStrategy": ""
+          },
+          {
+            "id": 7,
+            "title": "Add comprehensive error handling and logging",
+            "description": "Integrate Logger component and implement robust error handling",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Add comprehensive error handling for all Planner operations with proper logging through Logger component (Task 12). Include retry mechanisms and graceful degradation strategies.",
+            "testStrategy": ""
+          },
+          {
+            "id": 8,
+            "title": "Create unit tests for Planner component",
+            "description": "Implement comprehensive test suite for Planner functionality",
+            "status": "pending",
+            "dependencies": [],
+            "details": "Create unit tests covering all Planner methods, mock service interactions, task status transitions, Manager communication, and error handling scenarios. Use dependency injection for easy mocking.",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Implement Worker Pool Management",
+        "description": "Create WorkerPool class for managing multiple Worker instances with min/max constraints",
+        "details": "Implement WorkerPool class with methods for: creating/destroying workers, assigning tasks to available workers, monitoring worker states, enforcing min/max pool size constraints. Include worker lifecycle management and automatic recovery from stopped workers.",
+        "testStrategy": "Test worker creation/destruction, pool size management, worker assignment algorithms, and recovery mechanisms",
+        "priority": "medium",
+        "dependencies": [
+          2,
+          5
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 8,
+        "title": "Implement Worker Component",
+        "description": "Create Worker class for handling individual task execution and Developer interaction",
+        "details": "Implement Worker class with methods for: task directory creation, worktree setup, local instruction delivery (CLAUDE.local.md), Developer prompt generation, state management (Idle, Waiting, Working, Stopped), and task completion handling. Include cleanup mechanisms.",
+        "testStrategy": "Test worktree operations, directory management, prompt generation, state transitions, and cleanup procedures",
+        "priority": "high",
+        "dependencies": [
+          4,
+          7
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 9,
+        "title": "Implement Developer Interface",
+        "description": "Create Developer class for Claude Code and Gemini CLI integration",
+        "details": "Implement Developer class with methods for: executing AI developer commands (Claude Code, Gemini CLI), prompt delivery, command execution monitoring, PR link extraction, timeout handling. Support multiple AI developer types with pluggable architecture.",
+        "testStrategy": "Mock AI developer command execution, test prompt delivery, verify PR link extraction, and test timeout scenarios",
+        "priority": "high",
+        "dependencies": [
+          8
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 10,
+        "title": "Implement Manager Component",
+        "description": "Create Manager class for coordinating Workers and repository management",
+        "details": "Implement Manager class with methods for: workspace management, repository cloning/updating, worker assignment, worker state monitoring, task coordination with Planner. Handle concurrent repository operations and worker lifecycle management.",
+        "testStrategy": "Test worker coordination, repository management, concurrent operation handling, and Planner communication",
+        "priority": "high",
+        "dependencies": [
+          4,
+          8
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 11,
+        "title": "Implement Prompt Generation System",
+        "description": "Create system for generating context-aware prompts for different task scenarios",
+        "details": "Implement PromptGenerator class with methods for: new task prompts, resume work prompts, merge request prompts, feedback handling prompts. Include CLAUDE.local.md template generation and context-aware prompt customization based on task type and repository structure.",
+        "testStrategy": "Test prompt generation for different scenarios, validate CLAUDE.local.md creation, and verify context integration",
+        "priority": "medium",
+        "dependencies": [
+          8
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 12,
+        "title": "Implement Logger Component",
+        "description": "Create comprehensive logging system for all system components",
+        "details": "Implement Logger class with methods for: structured logging with different levels (debug, info, warn, error), component-specific log formatting, log rotation, and optional remote logging integration. Include performance metrics logging and error tracking.",
+        "testStrategy": "Test log level filtering, log formatting, rotation mechanisms, and integration with all system components",
+        "priority": "medium",
+        "dependencies": [
+          2
+        ],
+        "status": "done",
+        "subtasks": []
+      },
+      {
+        "id": 13,
+        "title": "Implement Main Orchestration System",
+        "description": "Create main application orchestrator that coordinates all components",
+        "details": "Implement MainOrchestrator class with methods for: system initialization, component lifecycle management, periodic task scheduling, graceful shutdown handling. Include configuration loading, dependency injection, and system health monitoring.",
+        "testStrategy": "Test system startup/shutdown, component coordination, error propagation, and configuration management",
+        "priority": "high",
+        "dependencies": [
+          6,
+          10,
+          12
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 14,
+        "title": "Implement Concurrency Control for Git Operations",
+        "description": "Create locking mechanism for concurrent git operations on same repository",
+        "details": "Implement GitOperationLock class with methods for: repository-level locking, queued operation handling, timeout management for git fetch and worktree operations. Use file-based locking or in-memory locks with proper cleanup and deadlock prevention.",
+        "testStrategy": "Test concurrent git operations, lock acquisition/release, timeout handling, and deadlock prevention scenarios",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          10
+        ],
+        "status": "pending",
+        "subtasks": []
+      },
+      {
+        "id": 15,
+        "title": "Implement Configuration and CLI Interface",
+        "description": "Create configuration management and command-line interface for the AI DevTeam system",
+        "details": "Implement ConfigManager class and CLI interface with methods for: loading configuration from JSON/YAML files, environment variable handling, CLI argument parsing, system status commands, and interactive setup. Include validation and default configuration templates.",
+        "testStrategy": "Test configuration loading, CLI command parsing, validation rules, and interactive setup workflows",
+        "priority": "medium",
+        "dependencies": [
+          13
+        ],
+        "status": "pending",
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2025-07-24T13:00:49.188Z",
+      "updated": "2025-07-24T13:52:05.559Z",
+      "description": "Tasks for master context"
+    }
+  }
+}

@@ -122,6 +122,63 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     });
   }
 
+  async getWorkerByTaskId(taskId: string): Promise<Worker | null> {
+    for (const worker of this.workers.values()) {
+      if (worker.currentTaskId === taskId) {
+        return worker;
+      }
+    }
+    return null;
+  }
+
+  async getWorkerInstance(workerId: string, pullRequestService?: any): Promise<any | null> {
+    // 실제로는 Worker 인스턴스를 관리해야 하지만, 
+    // 현재는 Mock 구현이므로 간단히 처리
+    const worker = this.workers.get(workerId);
+    if (!worker) {
+      return null;
+    }
+
+    // Mock Worker 인스턴스 반환
+    return {
+      getCurrentTask: () => worker.currentTaskId ? { taskId: worker.currentTaskId } : null,
+      getStatus: () => worker.status,
+      startExecution: async () => {
+        // Mock 실행 - 성공적으로 PR 생성
+        this.dependencies.logger.info('Mock worker task execution', { workerId, taskId: worker.currentTaskId });
+        
+        // 1-3초 대기 (작업 시뮬레이션)
+        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+        
+        // 실제로 MockPullRequestService에 PR 생성
+        let prUrl: string;
+        if (pullRequestService) {
+          const pr = await pullRequestService.createPullRequest('example/repo', {
+            title: `Fix: Complete task ${worker.currentTaskId}`,
+            description: `This PR completes the task ${worker.currentTaskId} assigned to worker ${workerId}`,
+            sourceBranch: `feature/task-${worker.currentTaskId}`,
+            targetBranch: 'main',
+            author: 'ai-worker'
+          });
+          prUrl = pr.url;
+          this.dependencies.logger.info('Created PR in MockPullRequestService', { 
+            workerId, 
+            taskId: worker.currentTaskId, 
+            prId: pr.id,
+            prUrl: pr.url 
+          });
+        } else {
+          prUrl = `https://github.com/example/repo/pull/${Math.floor(Math.random() * 1000) + 1}`;
+        }
+        
+        return {
+          success: true,
+          pullRequestUrl: prUrl
+        };
+      }
+    };
+  }
+
   async updateWorkerStatus(workerId: string, status: WorkerStatus): Promise<void> {
     const worker = this.workers.get(workerId);
     if (!worker) {

@@ -1,0 +1,39 @@
+{
+  "nodeEnv": "development",
+  "planner": {
+    "boardId": "ai-devteam-board",
+    "repoId": "example/ai-devteam-demo",
+    "monitoringIntervalMs": 15000,
+    "maxRetryAttempts": 3,
+    "timeoutMs": 60000
+  },
+  "manager": {
+    "workspaceRoot": "./workspace",
+    "workerPool": {
+      "minWorkers": 1,
+      "maxWorkers": 3,
+      "workerTimeoutMs": 300000
+    },
+    "gitConfig": {
+      "cloneDepth": 1,
+      "enableConcurrencyLock": true
+    },
+    "pullRequest": {
+      "provider": "github",
+      "config": {
+        "baseUrl": "https://api.github.com"
+      }
+    }
+  },
+  "developer": {
+    "claudeCodePath": "claude",
+    "claudeCodeTimeoutMs": 300000,
+    "geminiCliPath": "gemini",
+    "geminiCliTimeoutMs": 300000
+  },
+  "logger": {
+    "level": "debug",
+    "filePath": "./logs/app.log",
+    "enableConsole": true
+  }
+}

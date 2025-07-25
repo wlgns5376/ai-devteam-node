@@ -37,9 +37,12 @@ interface MockResultProcessor extends ResultProcessorInterface {
 }
 
 interface MockDeveloper extends DeveloperInterface {
+  readonly type: any;
+  initialize: jest.Mock;
   executePrompt: jest.Mock;
+  cleanup: jest.Mock;
   isAvailable: jest.Mock;
-  getType: jest.Mock;
+  setTimeout: jest.Mock;
 }
 
 describe('Worker', () => {
@@ -80,9 +83,12 @@ describe('Worker', () => {
     };
 
     mockDeveloper = {
+      type: 'mock',
+      initialize: jest.fn(),
       executePrompt: jest.fn(),
+      cleanup: jest.fn(),
       isAvailable: jest.fn(),
-      getType: jest.fn()
+      setTimeout: jest.fn()
     };
 
     worker = new Worker('worker-123', '/workspace/worker-123', 'claude', {

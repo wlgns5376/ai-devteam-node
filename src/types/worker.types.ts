@@ -114,16 +114,12 @@ export interface ResultProcessorInterface {
   generateStatusReport(task: WorkerTask, result: WorkerResult): Promise<any>; // TaskResponse
 }
 
-export interface DeveloperInterface {
-  executePrompt(prompt: string, workspaceDir: string): Promise<string>;
-  isAvailable(): Promise<boolean>;
-  getType(): 'claude' | 'gemini';
-}
+// DeveloperInterface는 developer.types.ts에 정의됨
 
 export interface WorkerDependencies {
   readonly logger: any;
   readonly workspaceSetup: WorkspaceSetupInterface;
   readonly promptGenerator: PromptGeneratorInterface;
   readonly resultProcessor: ResultProcessorInterface;
-  readonly developer: DeveloperInterface;
+  readonly developer: any; // DeveloperInterface from developer.types.ts
 }

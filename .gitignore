@@ -57,3 +57,5 @@ temp/
 # Task files
 # tasks.json
 # tasks/ 
+
+.claude/commands/

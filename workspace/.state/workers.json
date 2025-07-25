@@ -1,0 +1,18 @@
+[
+  {
+    "id": "worker-1753455654309-d8l3x1",
+    "status": "idle",
+    "workspaceDir": "./workspace/worker-1753455654309-d8l3x1",
+    "developerType": "claude",
+    "createdAt": "2025-07-25T15:00:54.309Z",
+    "lastActiveAt": "2025-07-25T15:00:54.309Z"
+  },
+  {
+    "id": "worker-1753455654330-28veyv",
+    "status": "idle",
+    "workspaceDir": "./workspace/worker-1753455654330-28veyv",
+    "developerType": "claude",
+    "createdAt": "2025-07-25T15:00:54.330Z",
+    "lastActiveAt": "2025-07-25T15:00:54.330Z"
+  }
+]

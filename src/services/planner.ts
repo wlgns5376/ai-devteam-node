@@ -218,14 +218,33 @@ export class Planner implements PlannerService {
         'IN_REVIEW'
       );
 
+      this.dependencies.logger.debug('Handling review tasks', {
+        boardId: this.config.boardId,
+        reviewItemsCount: reviewItems.length
+      });
+
       for (const item of reviewItems) {
+        this.dependencies.logger.debug('Processing review item', {
+          taskId: item.id,
+          title: item.title,
+          pullRequestUrls: item.pullRequestUrls
+        });
         if (item.pullRequestUrls.length > 0) {
           try {
             const prUrl = item.pullRequestUrls[0];
+            this.dependencies.logger.debug('Parsing PR URL', { taskId: item.id, prUrl });
             const { repoId, prNumber } = this.parsePullRequestUrl(prUrl);
+            
+            this.dependencies.logger.debug('Checking PR status', { taskId: item.id, repoId, prNumber });
 
             // 2. PR 상태 확인
             const pr = await this.dependencies.pullRequestService.getPullRequest(repoId, prNumber);
+            
+            this.dependencies.logger.debug('PR status retrieved', { 
+              taskId: item.id, 
+              prStatus: pr.status,
+              prCreatedAt: pr.createdAt 
+            });
 
             if (pr.status === 'merged') {
               // 승인됨 -> 완료로 변경
@@ -266,6 +285,11 @@ export class Planner implements PlannerService {
               }
             }
           } catch (error) {
+            this.dependencies.logger.error('Review task processing error', {
+              taskId: item.id,
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined
+            });
             this.addError('REVIEW_TASK_ERROR', `Failed to handle review task ${item.id}`, { error, taskId: item.id });
           }
         }

@@ -1,7 +1,7 @@
 import { 
   PlannerConfig, 
   ManagerConfig, 
-  DeveloperConfig, 
+  SystemDeveloperConfig, 
   LoggerConfig, 
   SystemConfig,
   ServiceProvider
@@ -165,10 +165,10 @@ describe('Config Types', () => {
     });
   });
 
-  describe('DeveloperConfig interface', () => {
+  describe('SystemDeveloperConfig interface', () => {
     it('should have all required properties with correct types', () => {
-      // Given: DeveloperConfig 인터페이스를 구현한 객체가 있을 때
-      const mockDeveloperConfig: DeveloperConfig = {
+      // Given: SystemDeveloperConfig 인터페이스를 구현한 객체가 있을 때
+      const mockDeveloperConfig: SystemDeveloperConfig = {
         claudeCodePath: '/usr/local/bin/claude-code',
         claudeCodeTimeoutMs: 300000,
         geminiCliPath: '/usr/local/bin/gemini',
@@ -354,7 +354,7 @@ describe('Config Types', () => {
       const systemConfig: SystemConfig = {
         planner: {} as PlannerConfig,
         manager: {} as ManagerConfig,
-        developer: {} as DeveloperConfig,
+        developer: {} as SystemDeveloperConfig,
         logger: {} as LoggerConfig,
         nodeEnv: 'development'
       };
@@ -372,7 +372,7 @@ describe('Config Types', () => {
       const config: SystemConfig = {
         planner: {} as PlannerConfig,
         manager: {} as ManagerConfig,
-        developer: {} as DeveloperConfig,
+        developer: {} as SystemDeveloperConfig,
         logger: {} as LoggerConfig,
         nodeEnv: 'production'
       };

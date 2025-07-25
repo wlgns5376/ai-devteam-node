@@ -34,7 +34,7 @@ export interface ManagerConfig {
   };
 }
 
-export interface DeveloperConfig {
+export interface SystemDeveloperConfig {
   readonly claudeCodePath: string;
   readonly claudeCodeTimeoutMs: number;
   readonly geminiCliPath: string;
@@ -50,7 +50,7 @@ export interface LoggerConfig {
 export interface SystemConfig {
   readonly planner: PlannerConfig;
   readonly manager: ManagerConfig;
-  readonly developer: DeveloperConfig;
+  readonly developer: SystemDeveloperConfig;
   readonly logger: LoggerConfig;
   readonly nodeEnv: 'development' | 'production' | 'test';
 }
