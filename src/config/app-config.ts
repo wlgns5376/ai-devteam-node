@@ -24,6 +24,8 @@ export interface AppEnvironment {
   readonly PROJECT_BOARD_ID?: string;
   readonly REPOSITORY_OWNER?: string;
   readonly REPOSITORY_NAME?: string;
+  readonly GITHUB_PROJECT_NUMBER?: string;
+  readonly GITHUB_OWNER?: string;
 }
 
 export class AppConfigLoader {
@@ -36,9 +38,9 @@ export class AppConfigLoader {
     return {
       nodeEnv,
       planner: {
-        boardId: env.PROJECT_BOARD_ID || 'default-board',
-        repoId: `${env.REPOSITORY_OWNER || 'example'}/${env.REPOSITORY_NAME || 'repo'}`,
-        monitoringIntervalMs: nodeEnv === 'development' ? 10000 : 30000, // 10초 vs 30초
+        boardId: env.GITHUB_PROJECT_NUMBER ? `PVT_kwHOAJ39a84A91F1` : 'default-board', // GitHub Project ID
+        repoId: `${env.GITHUB_OWNER || env.REPOSITORY_OWNER || 'example'}/${env.REPOSITORY_NAME || 'repo'}`,
+        monitoringIntervalMs: nodeEnv === 'development' ? 15000 : 30000, // 15초 vs 30초
         maxRetryAttempts: 3,
         timeoutMs: 60000
       },

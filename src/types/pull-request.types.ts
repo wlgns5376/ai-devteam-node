@@ -3,12 +3,14 @@ export interface PullRequest {
   readonly title: string;
   readonly description: string;
   readonly url?: string | undefined;
-  readonly status: string;  
+  readonly status: PullRequestState;  
   readonly sourceBranch: string;
   readonly targetBranch: string;
   readonly author: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  readonly isApproved?: boolean;
+  readonly reviewState?: ReviewState;
 }
 
 export enum PullRequestState {
@@ -42,20 +44,16 @@ export interface PullRequestComment {
   readonly metadata?: Record<string, unknown> | undefined;
 }
 
-export interface CreatePullRequestData {
-  readonly title: string;
-  readonly description: string;
-  readonly sourceBranch: string;
-  readonly targetBranch: string;
-  readonly author: string;
-}
-
 export interface PullRequestService {
+  // 조회 기능
   getPullRequest(repoId: string, prNumber: number): Promise<PullRequest>;
-  listPullRequests(repoId: string, status?: string): Promise<ReadonlyArray<PullRequest>>;
-  createPullRequest(repoId: string, data: CreatePullRequestData): Promise<PullRequest>;
-  updatePullRequestStatus(repoId: string, prNumber: number, status: string): Promise<PullRequest>;
-  addComment(repoId: string, prNumber: number, content: string, author: string): Promise<PullRequestComment>;
+  listPullRequests(repoId: string, status?: PullRequestState): Promise<ReadonlyArray<PullRequest>>;
+  
+  // 승인 상태 확인 (Planner가 사용)
+  isApproved(repoId: string, prNumber: number): Promise<boolean>;
+  getReviews(repoId: string, prNumber: number): Promise<ReadonlyArray<PullRequestReview>>;
+  
+  // 코멘트 조회 (Planner가 사용)
   getComments(repoId: string, prNumber: number): Promise<ReadonlyArray<PullRequestComment>>;
   getNewComments(repoId: string, prNumber: number, since: Date): Promise<ReadonlyArray<PullRequestComment>>;
   markCommentsAsProcessed(commentIds: string[]): Promise<void>;

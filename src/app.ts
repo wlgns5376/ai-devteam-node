@@ -3,8 +3,8 @@ import { Planner } from './services/planner';
 import { WorkerPoolManager } from './services/manager/worker-pool-manager';
 import { Logger, LogLevel } from './services/logger';
 import { StateManager } from './services/state-manager';
-import { MockProjectBoardService } from './services/mock-project-board';
-import { MockPullRequestService } from './services/mock-pull-request';
+import { ServiceFactory } from './services/service-factory';
+import { ProjectBoardService, PullRequestService } from './types';
 import { DeveloperFactory } from './services/developer/developer-factory';
 import { 
   PlannerDependencies, 
@@ -27,8 +27,8 @@ export class AIDevTeamApp {
   private workerPoolManager?: WorkerPoolManager;
   private logger?: Logger;
   private stateManager?: StateManager;
-  private projectBoardService?: MockProjectBoardService;
-  private pullRequestService?: MockPullRequestService;
+  private projectBoardService?: ProjectBoardService;
+  private pullRequestService?: PullRequestService;
   
   private isInitialized = false;
   private isRunning = false;
@@ -108,10 +108,17 @@ export class AIDevTeamApp {
       this.stateManager = new StateManager(`${this.config.manager.workspaceRoot}/.state`);
       this.logger.info('StateManager initialized');
 
-      // 3. Mock 서비스들 초기화
-      this.projectBoardService = new MockProjectBoardService();
-      this.pullRequestService = new MockPullRequestService();
-      this.logger.info('Mock services initialized');
+      // 3. 서비스들 초기화
+      // GitHub Projects v2 및 PullRequest 서비스 사용
+      const serviceFactory = new ServiceFactory(this.logger);
+      const githubV2Config = ServiceFactory.createGitHubV2ConfigFromEnv();
+      this.projectBoardService = serviceFactory.createProjectBoardService(githubV2Config);
+      this.pullRequestService = serviceFactory.createPullRequestService(githubV2Config);
+      this.logger.info('Services initialized', { 
+        projectBoardService: 'GitHub Projects v2',
+        pullRequestService: 'GitHub',
+        config: githubV2Config
+      });
 
       // 4. WorkerPoolManager 초기화
       this.workerPoolManager = new WorkerPoolManager(

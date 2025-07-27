@@ -1,9 +1,10 @@
-import { PullRequest, PullRequestService, PullRequestComment, CreatePullRequestData } from '@/types';
+import { PullRequest, PullRequestService, PullRequestComment, PullRequestReview, PullRequestState, ReviewState } from '../types';
 
 export class MockPullRequestService implements PullRequestService {
   private pullRequests: Map<string, Map<number, PullRequest>> = new Map();
   private comments: Map<string, PullRequestComment[]> = new Map();
-  private nextPrId: Map<string, number> = new Map();
+  private reviews: Map<string, PullRequestReview[]> = new Map();
+  private processedComments: Set<string> = new Set();
 
   constructor() {
     this.initializeMockData();
@@ -15,39 +16,27 @@ export class MockPullRequestService implements PullRequestService {
       throw new Error(`Pull request not found: ${repoId}/${prNumber}`);
     }
 
-    let pr = repoPrs.get(prNumber);
+    const pr = repoPrs.get(prNumber);
     if (!pr) {
       throw new Error(`Pull request not found: ${repoId}/${prNumber}`);
     }
 
-    // 자동 병합 로직: PR이 생성된 지 30초 이상 지나고 'open' 상태면 'merged'로 변경
-    const now = new Date();
-    const timeSinceCreation = now.getTime() - pr.createdAt.getTime();
-    const autoMergeDelayMs = 30000; // 30초
+    // 승인 상태 업데이트
+    const isApproved = await this.isApproved(repoId, prNumber);
+    const reviews = await this.getReviews(repoId, prNumber);
+    const reviewState = this.determineReviewState(reviews);
 
-    console.log(`🔍 PR Check: ${repoId}/${prNumber} - Status: ${pr.status}, Time since creation: ${timeSinceCreation}ms (needs ${autoMergeDelayMs}ms)`);
-
-    if (pr.status === 'open' && timeSinceCreation > autoMergeDelayMs) {
-      const mergedPr: PullRequest = {
-        ...pr,
-        status: 'merged',
-        updatedAt: now
-      };
-      
-      repoPrs.set(prNumber, mergedPr);
-      console.log(`🔄 Auto-merged PR: ${repoId}/${prNumber} (${pr.title})`);
-      pr = mergedPr;
-    }
-
-    return pr;
+    return {
+      ...pr,
+      isApproved,
+      reviewState
+    };
   }
 
-  async listPullRequests(repoId: string, status?: string): Promise<ReadonlyArray<PullRequest>> {
+  async listPullRequests(repoId: string, status?: PullRequestState): Promise<ReadonlyArray<PullRequest>> {
     const repoPrs = this.pullRequests.get(repoId);
     if (!repoPrs) {
-      // 동적으로 레포지토리 생성
-      this.initializeRepo(repoId);
-      return this.listPullRequests(repoId, status);
+      return [];
     }
 
     let prs = Array.from(repoPrs.values());
@@ -56,223 +45,218 @@ export class MockPullRequestService implements PullRequestService {
       prs = prs.filter(pr => pr.status === status);
     }
 
-    return [...prs];
-  }
-
-  async createPullRequest(repoId: string, data: CreatePullRequestData): Promise<PullRequest> {
-    // 레포지토리가 없으면 생성
-    if (!this.pullRequests.has(repoId)) {
-      this.initializeRepo(repoId);
+    // 승인 상태 업데이트
+    const updatedPrs: PullRequest[] = [];
+    for (const pr of prs) {
+      const isApproved = await this.isApproved(repoId, pr.id);
+      const reviews = await this.getReviews(repoId, pr.id);
+      const reviewState = this.determineReviewState(reviews);
+      
+      updatedPrs.push({
+        ...pr,
+        isApproved,
+        reviewState
+      });
     }
 
-    const repoPrs = this.pullRequests.get(repoId)!;
-    const nextId = this.nextPrId.get(repoId) || 1;
-    
-    const newPr: PullRequest = {
-      id: nextId,
-      title: data.title,
-      description: data.description,
-      url: `https://github.com/${repoId}/pull/${nextId}`,
-      status: 'open',
-      sourceBranch: data.sourceBranch,
-      targetBranch: data.targetBranch,
-      author: data.author,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    repoPrs.set(nextId, newPr);
-    this.nextPrId.set(repoId, nextId + 1);
-
-    // 빈 코멘트 배열 초기화
-    this.comments.set(`${repoId}/${nextId}`, []);
-
-    return newPr;
+    return updatedPrs.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   }
 
-  async updatePullRequestStatus(repoId: string, prNumber: number, status: string): Promise<PullRequest> {
-    const pr = await this.getPullRequest(repoId, prNumber);
+  async isApproved(repoId: string, prNumber: number): Promise<boolean> {
+    const reviews = await this.getReviews(repoId, prNumber);
     
-    const updatedPr: PullRequest = {
-      id: pr.id,
-      title: pr.title,
-      description: pr.description,
-      url: pr.url,
-      status,
-      sourceBranch: pr.sourceBranch,
-      targetBranch: pr.targetBranch,
-      author: pr.author,
-      createdAt: pr.createdAt,
-      updatedAt: new Date()
-    };
+    // 최신 리뷰 상태를 사용자별로 확인
+    const latestReviewsByUser = new Map<string, PullRequestReview>();
+    
+    for (const review of [...reviews].reverse()) { // 최신순으로 정렬
+      if (!latestReviewsByUser.has(review.reviewer)) {
+        latestReviewsByUser.set(review.reviewer, review);
+      }
+    }
 
-    const repoPrs = this.pullRequests.get(repoId)!;
-    repoPrs.set(prNumber, updatedPr);
+    // 최소 한 명의 승인이 있고, 요청된 변경사항이 없어야 함
+    const hasApproval = Array.from(latestReviewsByUser.values())
+      .some(review => review.state === ReviewState.APPROVED);
+    
+    const hasChangesRequested = Array.from(latestReviewsByUser.values())
+      .some(review => review.state === ReviewState.CHANGES_REQUESTED);
 
-    return updatedPr;
+    return hasApproval && !hasChangesRequested;
   }
 
-  async addComment(repoId: string, prNumber: number, content: string, author: string): Promise<PullRequestComment> {
-    // PR 존재 확인
-    await this.getPullRequest(repoId, prNumber);
-
-    const commentKey = `${repoId}/${prNumber}`;
-    const existingComments = this.comments.get(commentKey) || [];
-    
-    const newComment: PullRequestComment = {
-      id: `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      content,
-      author,
-      createdAt: new Date(),
-      isProcessed: false
-    };
-
-    existingComments.push(newComment);
-    this.comments.set(commentKey, existingComments);
-
-    return newComment;
+  async getReviews(repoId: string, prNumber: number): Promise<ReadonlyArray<PullRequestReview>> {
+    const key = `${repoId}/${prNumber}`;
+    return this.reviews.get(key) || [];
   }
 
   async getComments(repoId: string, prNumber: number): Promise<ReadonlyArray<PullRequestComment>> {
-    // PR 존재 확인
-    await this.getPullRequest(repoId, prNumber);
-
-    const commentKey = `${repoId}/${prNumber}`;
-    const comments = this.comments.get(commentKey) || [];
+    const key = `${repoId}/${prNumber}`;
+    const comments = this.comments.get(key) || [];
     
-    return [...comments];
+    return comments.map(comment => ({
+      ...comment,
+      isProcessed: this.processedComments.has(comment.id)
+    }));
   }
 
   async getNewComments(repoId: string, prNumber: number, since: Date): Promise<ReadonlyArray<PullRequestComment>> {
-    // PR 존재 확인
-    await this.getPullRequest(repoId, prNumber);
-
-    const commentKey = `${repoId}/${prNumber}`;
-    const comments = this.comments.get(commentKey) || [];
+    const allComments = await this.getComments(repoId, prNumber);
     
-    // since 이후의 코멘트만 필터링하고 처리되지 않은 것만 반환
-    return comments.filter(comment => 
-      comment.createdAt > since && !comment.isProcessed
+    return allComments.filter(comment => 
+      comment.createdAt > since || 
+      (comment.updatedAt && comment.updatedAt > since)
     );
   }
 
   async markCommentsAsProcessed(commentIds: string[]): Promise<void> {
-    // 모든 코멘트에서 해당 ID들을 찾아서 처리됨으로 표시
-    for (const [commentKey, comments] of this.comments.entries()) {
-      for (let i = 0; i < comments.length; i++) {
-        const comment = comments[i];
-        if (comment && commentIds.includes(comment.id)) {
-          const updatedComment: PullRequestComment = {
-            id: comment.id,
-            content: comment.content,
-            author: comment.author,
-            createdAt: comment.createdAt,
-            updatedAt: comment.updatedAt,
-            isProcessed: true,
-            metadata: comment.metadata
-          };
-          comments[i] = updatedComment;
-        }
-      }
+    for (const id of commentIds) {
+      this.processedComments.add(id);
     }
   }
 
   private initializeMockData(): void {
-    this.initializeRepo('repo-1');
-    this.initializeRepo('test-repo');
-    this.initializeRepo('example/test-repo');
-    this.initializeRepo('example/ai-devteam');
-  }
-
-  private initializeRepo(repoId: string): void {
-    const repoPrs = new Map<number, PullRequest>();
-    const baseDate = new Date();
-
-    // 기본 PR들 생성
-    const mockPrs: PullRequest[] = [
-      {
-        id: 1,
-        title: 'Add user authentication system',
-        description: 'This PR implements JWT-based authentication with login/logout functionality',
-        url: `https://github.com/example/${repoId}/pull/1`,
-        status: 'open',
-        sourceBranch: 'feature/auth-system',
-        targetBranch: 'main',
-        author: 'claude-dev',
-        createdAt: new Date(baseDate.getTime() - 2 * 24 * 60 * 60 * 1000), // 2일 전
-        updatedAt: new Date(baseDate.getTime() - 4 * 60 * 60 * 1000) // 4시간 전
-      },
-      {
-        id: 2,
-        title: 'Fix database connection pool',
-        description: 'Resolves connection pool exhaustion issues under high load',
-        url: `https://github.com/example/${repoId}/pull/2`,
-        status: 'merged',
-        sourceBranch: 'bugfix/db-pool',
-        targetBranch: 'main',
-        author: 'gemini-dev',
-        createdAt: new Date(baseDate.getTime() - 5 * 24 * 60 * 60 * 1000), // 5일 전
-        updatedAt: new Date(baseDate.getTime() - 3 * 24 * 60 * 60 * 1000) // 3일 전
-      },
-      {
-        id: 3,
-        title: 'Implement real-time notifications',
-        description: 'Adds WebSocket-based real-time notification system',
-        url: `https://github.com/example/${repoId}/pull/3`,
-        status: 'open',
-        sourceBranch: 'feature/notifications',
-        targetBranch: 'develop',
-        author: 'claude-dev',
-        createdAt: new Date(baseDate.getTime() - 1 * 24 * 60 * 60 * 1000), // 1일 전
-        updatedAt: new Date(baseDate.getTime() - 2 * 60 * 60 * 1000) // 2시간 전
-      }
-    ];
-
-    mockPrs.forEach(pr => {
-      repoPrs.set(pr.id, pr);
+    // Mock repository
+    const repoId = 'wlgns5376/ai-devteam-test';
+    
+    // Mock Pull Requests
+    const mockPRs = new Map<number, PullRequest>();
+    
+    mockPRs.set(1, {
+      id: 1,
+      title: 'Add authentication system',
+      description: 'Implement JWT-based authentication with login/logout functionality',
+      url: 'https://github.com/wlgns5376/ai-devteam-test/pull/1',
+      status: PullRequestState.OPEN,
+      sourceBranch: 'feature/auth',
+      targetBranch: 'main',
+      author: 'ai-developer',
+      createdAt: new Date('2024-01-01T10:00:00Z'),
+      updatedAt: new Date('2024-01-02T15:30:00Z'),
+      isApproved: false,
+      reviewState: ReviewState.CHANGES_REQUESTED
     });
 
-    this.pullRequests.set(repoId, repoPrs);
-    this.nextPrId.set(repoId, 4); // 다음 ID는 4부터 시작
+    mockPRs.set(2, {
+      id: 2,
+      title: 'Fix database connection pooling',
+      description: 'Resolve connection leak issues in production',
+      url: 'https://github.com/wlgns5376/ai-devteam-test/pull/2',
+      status: PullRequestState.MERGED,
+      sourceBranch: 'fix/db-connection',
+      targetBranch: 'main',
+      author: 'ai-developer',
+      createdAt: new Date('2024-01-03T09:00:00Z'),
+      updatedAt: new Date('2024-01-04T11:00:00Z'),
+      isApproved: true,
+      reviewState: ReviewState.APPROVED
+    });
 
-    // 기본 코멘트들 생성
-    this.initializeComments(repoId);
-  }
+    mockPRs.set(3, {
+      id: 3,
+      title: 'Update documentation',
+      description: 'Add API documentation and usage examples',
+      url: 'https://github.com/wlgns5376/ai-devteam-test/pull/3',
+      status: PullRequestState.OPEN,
+      sourceBranch: 'docs/api-docs',
+      targetBranch: 'main',
+      author: 'ai-developer',
+      createdAt: new Date('2024-01-05T14:00:00Z'),
+      updatedAt: new Date('2024-01-05T16:30:00Z'),
+      isApproved: true,
+      reviewState: ReviewState.APPROVED
+    });
 
-  private initializeComments(repoId: string): void {
-    const baseDate = new Date();
+    this.pullRequests.set(repoId, mockPRs);
 
-    // PR 1에 대한 코멘트들
-    const pr1Comments: PullRequestComment[] = [
+    // Mock Reviews
+    this.reviews.set(`${repoId}/1`, [
+      {
+        id: 'review-1-1',
+        state: ReviewState.CHANGES_REQUESTED,
+        comment: 'Please add input validation for the login form',
+        reviewer: 'reviewer1',
+        submittedAt: new Date('2024-01-02T11:00:00Z')
+      }
+    ]);
+
+    this.reviews.set(`${repoId}/2`, [
+      {
+        id: 'review-2-1',
+        state: ReviewState.APPROVED,
+        comment: 'LGTM! Good fix for the connection pooling issue.',
+        reviewer: 'reviewer1',
+        submittedAt: new Date('2024-01-04T10:30:00Z')
+      }
+    ]);
+
+    this.reviews.set(`${repoId}/3`, [
+      {
+        id: 'review-3-1',
+        state: ReviewState.APPROVED,
+        comment: 'Documentation looks comprehensive. Approving.',
+        reviewer: 'reviewer2',
+        submittedAt: new Date('2024-01-05T16:00:00Z')
+      }
+    ]);
+
+    // Mock Comments
+    this.comments.set(`${repoId}/1`, [
       {
         id: 'comment-1-1',
-        content: 'Great work on the authentication system! Could you add unit tests for the JWT validation?',
-        author: 'reviewer-1',
-        createdAt: new Date(baseDate.getTime() - 12 * 60 * 60 * 1000), // 12시간 전
-        isProcessed: false
+        content: 'Could you also add unit tests for the authentication endpoints?',
+        author: 'reviewer1',
+        createdAt: new Date('2024-01-02T12:00:00Z'),
+        isProcessed: false,
+        metadata: { type: 'review_feedback' }
       },
       {
         id: 'comment-1-2',
-        content: 'I\'ve added comprehensive tests for JWT validation and error handling.',
-        author: 'claude-dev',
-        createdAt: new Date(baseDate.getTime() - 6 * 60 * 60 * 1000), // 6시간 전
-        isProcessed: false
+        content: 'I\'ll add the unit tests in the next commit.',
+        author: 'ai-developer',
+        createdAt: new Date('2024-01-02T15:00:00Z'),
+        isProcessed: false,
+        metadata: { type: 'developer_response' }
       }
-    ];
+    ]);
 
-    // PR 2에 대한 코멘트들
-    const pr2Comments: PullRequestComment[] = [
+    this.comments.set(`${repoId}/3`, [
       {
-        id: 'comment-2-1',
-        content: 'This fix looks good. The connection pool monitoring should help prevent future issues.',
-        author: 'reviewer-2',
-        createdAt: new Date(baseDate.getTime() - 3 * 24 * 60 * 60 * 1000), // 3일 전
-        isProcessed: true
+        id: 'comment-3-1',
+        content: 'The API examples are very helpful!',
+        author: 'reviewer2',
+        createdAt: new Date('2024-01-05T15:30:00Z'),
+        isProcessed: false,
+        metadata: { type: 'positive_feedback' }
       }
-    ];
+    ]);
+  }
 
-    this.comments.set(`${repoId}/1`, pr1Comments);
-    this.comments.set(`${repoId}/2`, pr2Comments);
-    this.comments.set(`${repoId}/3`, []); // PR 3은 코멘트 없음
+  private determineReviewState(reviews: ReadonlyArray<PullRequestReview>): ReviewState {
+    if (reviews.length === 0) {
+      return ReviewState.COMMENTED;
+    }
+
+    // 최신 리뷰들의 상태를 확인
+    const latestReviewsByUser = new Map<string, ReviewState>();
+    
+    for (const review of [...reviews].reverse()) {
+      if (!latestReviewsByUser.has(review.reviewer)) {
+        latestReviewsByUser.set(review.reviewer, review.state);
+      }
+    }
+
+    const states = Array.from(latestReviewsByUser.values());
+    
+    // 변경 요청이 있으면 우선
+    if (states.includes(ReviewState.CHANGES_REQUESTED)) {
+      return ReviewState.CHANGES_REQUESTED;
+    }
+    
+    // 승인이 있으면 승인
+    if (states.includes(ReviewState.APPROVED)) {
+      return ReviewState.APPROVED;
+    }
+    
+    return ReviewState.COMMENTED;
   }
 }
