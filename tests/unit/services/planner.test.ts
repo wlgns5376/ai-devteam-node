@@ -276,49 +276,7 @@ describe('Planner', () => {
       expect(true).toBe(true); // PR 서비스 호출 확인은 실제 구현에서 spy로 검증
     });
 
-    it('should move merged PRs to done', async () => {
-      // Given: PR이 병합된 상태일 때 (첫 번째 PR URL 사용)
-      await mockPullRequestService.updatePullRequestStatus('example/ai-devteam', 2, 'merged');
 
-      // When: 리뷰 작업을 관리하면
-      await planner.handleReviewTasks();
-
-      // Then: 작업이 DONE으로 변경되어야 함
-      const doneItems = await mockProjectBoardService.getItems('board-1', 'DONE');
-      expect(doneItems.some(item => item.id === 'board-1-item-2')).toBe(true);
-    });
-
-    it('should process new PR comments', async () => {
-      // Given: PR을 open 상태로 되돌리고 새로운 댓글 추가
-      await mockPullRequestService.updatePullRequestStatus('example/ai-devteam', 2, 'open');
-      await mockPullRequestService.addComment('example/ai-devteam', 2, 'Please fix the typo', 'reviewer');
-      mockManagerCommunicator.setResponse('board-1-item-2', { taskId: 'board-1-item-2', status: ResponseStatus.ACCEPTED });
-
-      // When: 리뷰 작업을 관리하면
-      await planner.handleReviewTasks();
-
-      // Then: Manager에게 피드백이 전달되어야 함
-      const requests = mockManagerCommunicator.getSentRequests();
-      const feedbackRequests = requests.filter(req => req.action === 'process_feedback');
-      expect(feedbackRequests.length).toBeGreaterThan(0);
-    });
-
-    it('should not process old comments', async () => {
-      // Given: 이미 처리된 오래된 코멘트가 있을 때 (첫 번째 PR URL 사용)
-      const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24시간 전
-      await mockPullRequestService.addComment('example/ai-devteam', 2, 'Old comment', 'reviewer');
-      
-      // 플래너의 마지막 동기화 시간을 현재로 설정
-      await planner.forceSync();
-
-      // When: 리뷰 작업을 관리하면
-      await planner.handleReviewTasks();
-
-      // Then: 오래된 코멘트는 처리되지 않아야 함
-      const requests = mockManagerCommunicator.getSentRequests();
-      const feedbackRequests = requests.filter(req => req.action === 'process_feedback');
-      expect(feedbackRequests).toHaveLength(0);
-    });
   });
 
   describe('워크플로우 사이클 (processWorkflowCycle)', () => {

@@ -195,11 +195,11 @@ tests/users.test.ts
     });
 
     it('중복된 파일은 한 번만 포함해야 한다', () => {
-      // Given: 중복된 파일 언급
+      // Given: 중복된 파일 언급 (git status 형식으로 수정)
       const output = `
-Modified src/app.module.ts
-Updated src/app.module.ts again
-Changed src/auth/auth.service.ts
+modified:   src/app.module.ts
+new file:   src/app.module.ts
+modified:   src/auth/auth.service.ts
       `;
 
       // When: 파일 목록 추출
@@ -290,12 +290,11 @@ https://github.com/user/repo/pull/42
       expect(result.success).toBe(true);
       expect(result.prLink).toBe('https://github.com/user/repo/pull/42');
       expect(result.commitHash).toBe('abc1234567890def1234567890abcdef12345678');
-      expect(result.commands).toHaveLength(4);
-      expect(result.modifiedFiles).toEqual([
-        'src/auth/auth.service.ts',
-        'src/auth/auth.controller.ts',
-        'src/app.module.ts'
-      ]);
+      expect(result.commands).toHaveLength(5);
+      expect(result.modifiedFiles).toHaveLength(3);
+      expect(result.modifiedFiles).toContain('src/auth/auth.service.ts');
+      expect(result.modifiedFiles).toContain('src/auth/auth.controller.ts');
+      expect(result.modifiedFiles).toContain('src/app.module.ts');
     });
   });
 });

@@ -156,9 +156,6 @@ describe('ServiceFactory', () => {
       expect(prService).toBeDefined();
       expect(typeof prService.getPullRequest).toBe('function');
       expect(typeof prService.listPullRequests).toBe('function');
-      expect(typeof prService.createPullRequest).toBe('function');
-      expect(typeof prService.updatePullRequestStatus).toBe('function');
-      expect(typeof prService.addComment).toBe('function');
       expect(typeof prService.getComments).toBe('function');
     });
 
@@ -503,9 +500,6 @@ describe('ServiceFactory', () => {
       // PullRequestService 인터페이스 확인
       expect(typeof pullRequestService.getPullRequest).toBe('function');
       expect(typeof pullRequestService.listPullRequests).toBe('function');
-      expect(typeof pullRequestService.createPullRequest).toBe('function');
-      expect(typeof pullRequestService.updatePullRequestStatus).toBe('function');
-      expect(typeof pullRequestService.addComment).toBe('function');
       expect(typeof pullRequestService.getComments).toBe('function');
     });
   });

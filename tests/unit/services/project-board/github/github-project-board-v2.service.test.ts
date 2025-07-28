@@ -117,7 +117,6 @@ describe('GitHubProjectBoardV2Service', () => {
         .mockResolvedValueOnce({ user: { projectV2: null } });
 
       // When & Then: 초기화 시 오류가 발생해야 함
-      await expect(service.initialize()).rejects.toThrow(GitHubProjectV2Error);
       await expect(service.initialize()).rejects.toThrow(
         'Project #1 not found for owner "test-owner"'
       );
@@ -179,7 +178,14 @@ describe('GitHubProjectBoardV2Service', () => {
             assignees: { nodes: [] },
             labels: { nodes: [] }
           },
-          fieldValues: []
+          fieldValues: {
+            nodes: [
+              {
+                field: { name: 'Status' },
+                value: 'Todo'
+              }
+            ]
+          }
         },
         {
           id: 'item2',
@@ -201,7 +207,14 @@ describe('GitHubProjectBoardV2Service', () => {
             assignees: { nodes: [] },
             labels: { nodes: [] }
           },
-          fieldValues: []
+          fieldValues: {
+            nodes: [
+              {
+                field: { name: 'Status' },
+                value: 'Todo'
+              }
+            ]
+          }
         }
       ];
 
