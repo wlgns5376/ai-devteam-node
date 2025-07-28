@@ -1,23 +1,8 @@
 import { ServiceFactory } from '@/services/service-factory';
 import { MockProjectBoardService } from '@/services/mock-project-board';
 import { MockPullRequestService } from '@/services/mock-pull-request';
-import { GitHubProjectBoardService } from '@/services/project-board/github/github-project-board.service';
 import { ProjectBoardService, PullRequestService, ServiceProvider, ProviderConfig } from '@/types';
 
-// Mock GitHubApiClient to avoid Octokit ESM issues
-jest.mock('@/services/project-board/github/github-api-client', () => {
-  return {
-    GitHubApiClient: jest.fn().mockImplementation(() => ({
-      listProjects: jest.fn(),
-      getProject: jest.fn(),
-      listColumns: jest.fn(),
-      listCards: jest.fn(),
-      getCard: jest.fn(),
-      updateCard: jest.fn(),
-      moveCard: jest.fn()
-    }))
-  };
-});
 
 describe('ServiceFactory', () => {
   let factory: ServiceFactory;
@@ -54,14 +39,13 @@ describe('ServiceFactory', () => {
       expect(service).toBeInstanceOf(MockProjectBoardService);
     });
 
-    it('should create GitHubProjectBoardService for GitHub provider', () => {
+    it('should create GitHubProjectBoardV2Service for GitHub provider', () => {
       // Given: ServiceFactory가 있을 때
       const config: ProviderConfig = {
         type: ServiceProvider.GITHUB,
         apiToken: 'github-token',
         options: {
           owner: 'test-owner',
-          repo: 'test-repo',
           projectNumber: 1
         }
       };
@@ -69,9 +53,9 @@ describe('ServiceFactory', () => {
       // When: GitHub 프로바이더로 ProjectBoardService를 생성하면
       const service = factory.createProjectBoardService(config);
 
-      // Then: GitHubProjectBoardService 인스턴스가 반환되어야 함
+      // Then: GitHubProjectBoardV2Service 인스턴스가 반환되어야 함
       expect(service).toBeDefined();
-      expect(service).toBeInstanceOf(GitHubProjectBoardService);
+      expect(service.constructor.name).toBe('GitHubProjectBoardV2Service');
     });
 
     it('should implement ProjectBoardService interface', () => {
@@ -104,7 +88,7 @@ describe('ServiceFactory', () => {
       // When: 필수 옵션 없이 GitHub 서비스를 생성하려고 하면
       // Then: 에러가 발생해야 함
       expect(() => factory.createProjectBoardService(config))
-        .toThrow('GitHub owner and repo are required');
+        .toThrow('GitHub owner is required for Projects v2');
     });
 
     it('should throw error for GitHub provider without token', () => {
@@ -527,12 +511,12 @@ describe('ServiceFactory', () => {
       const config1: ProviderConfig = {
         type: ServiceProvider.GITHUB,
         apiToken: 'token1',
-        options: { owner: 'owner1', repo: 'repo1' }
+        options: { owner: 'owner1', projectNumber: 1 }
       };
       const config2: ProviderConfig = {
         type: ServiceProvider.GITHUB,
         apiToken: 'token2',
-        options: { owner: 'owner2', repo: 'repo2' }
+        options: { owner: 'owner2', projectNumber: 2 }
       };
 
       // When: 다른 설정으로 서비스를 생성하면
@@ -562,72 +546,4 @@ describe('ServiceFactory', () => {
     });
   });
 
-  describe('createGitHubConfig 편의 메소드', () => {
-    it('should create GitHub config with environment token', () => {
-      // Given: 환경변수에 GITHUB_TOKEN이 설정되어 있을 때
-      const originalToken = process.env.GITHUB_TOKEN;
-      process.env.GITHUB_TOKEN = 'env-token';
-
-      try {
-        // When: GitHub 설정을 생성하면
-        const config = ServiceFactory.createGitHubConfig({
-          owner: 'test-owner',
-          repo: 'test-repo',
-          projectNumber: 1
-        });
-
-        // Then: 올바른 설정이 반환되어야 함
-        expect(config).toEqual({
-          type: ServiceProvider.GITHUB,
-          apiToken: 'env-token',
-          options: {
-            owner: 'test-owner',
-            repo: 'test-repo',
-            projectNumber: 1,
-            apiVersion: 'rest'
-          }
-        });
-      } finally {
-        // 환경변수 복원
-        if (originalToken) {
-          process.env.GITHUB_TOKEN = originalToken;
-        } else {
-          delete process.env.GITHUB_TOKEN;
-        }
-      }
-    });
-
-    it('should create GitHub config with provided token', () => {
-      // Given: 토큰이 직접 제공될 때
-      // When: GitHub 설정을 생성하면
-      const config = ServiceFactory.createGitHubConfig({
-        owner: 'test-owner',
-        repo: 'test-repo',
-        token: 'provided-token'
-      });
-
-      // Then: 제공된 토큰이 사용되어야 함
-      expect(config.apiToken).toBe('provided-token');
-    });
-
-    it('should throw error when no token is available', () => {
-      // Given: 토큰이 제공되지 않고 환경변수도 없을 때
-      const originalToken = process.env.GITHUB_TOKEN;
-      delete process.env.GITHUB_TOKEN;
-
-      try {
-        // When: GitHub 설정을 생성하려고 하면
-        // Then: 에러가 발생해야 함
-        expect(() => ServiceFactory.createGitHubConfig({
-          owner: 'test-owner',
-          repo: 'test-repo'
-        })).toThrow('GitHub token is required');
-      } finally {
-        // 환경변수 복원
-        if (originalToken) {
-          process.env.GITHUB_TOKEN = originalToken;
-        }
-      }
-    });
-  });
 });

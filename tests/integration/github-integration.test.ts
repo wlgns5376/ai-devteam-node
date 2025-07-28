@@ -11,51 +11,9 @@
  */
 
 import { ServiceFactory } from '@/services/service-factory';
-import { GitHubProjectBoardService } from '@/services/project-board/github/github-project-board.service';
 import { ServiceProvider, ProviderConfig } from '@/types';
 import { Logger } from '@/services/logger';
 
-// Mock GitHubApiClient for ESM compatibility in integration tests
-// 실제 API 호출을 원하는 경우, 이 모킹을 제거하고 실제 토큰과 프로젝트를 설정하세요
-jest.mock('@/services/project-board/github/github-api-client', () => {
-  return {
-    GitHubApiClient: jest.fn().mockImplementation(() => ({
-      listProjects: jest.fn().mockResolvedValue({
-        data: [{
-          id: 1,
-          name: 'Test Project',
-          number: 1,
-          state: 'open',
-          html_url: 'https://github.com/test/test/projects/1'
-        }]
-      }),
-      getProject: jest.fn().mockResolvedValue({
-        data: {
-          id: 1,
-          name: 'Test Project',
-          body: 'Test Description',
-          number: 1,
-          state: 'open',
-          html_url: 'https://github.com/test/test/projects/1',
-          created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-01T00:00:00Z'
-        }
-      }),
-      listColumns: jest.fn().mockResolvedValue({
-        data: [
-          { id: 1, name: 'To do' },
-          { id: 2, name: 'In progress' },
-          { id: 3, name: 'In review' },
-          { id: 4, name: 'Done' }
-        ]
-      }),
-      listCards: jest.fn().mockResolvedValue({ data: [] }),
-      getCard: jest.fn(),
-      updateCard: jest.fn(),
-      moveCard: jest.fn()
-    }))
-  };
-});
 
 // 실제 GitHub API 테스트는 환경변수가 설정된 경우에만 실행
 const SKIP_INTEGRATION_TESTS = !process.env.GITHUB_TOKEN || process.env.SKIP_INTEGRATION_TESTS === 'true';
@@ -74,7 +32,6 @@ describe('GitHub Integration Tests', () => {
     apiToken: process.env.GITHUB_TOKEN || 'test-token',
     options: {
       owner: process.env.GITHUB_TEST_OWNER || 'test-owner',
-      repo: process.env.GITHUB_TEST_REPO || 'test-repo',
       projectNumber: process.env.GITHUB_TEST_PROJECT_NUMBER 
         ? parseInt(process.env.GITHUB_TEST_PROJECT_NUMBER) 
         : 1
@@ -82,28 +39,28 @@ describe('GitHub Integration Tests', () => {
   };
 
   describe('ServiceFactory GitHub Integration', () => {
-    (SKIP_INTEGRATION_TESTS ? it.skip : it)('should create working GitHub service', async () => {
-      // Given: 실제 GitHub 설정이 있을 때
-      const config = ServiceFactory.createGitHubConfig({
+    (SKIP_INTEGRATION_TESTS ? it.skip : it)('should create working GitHub v2 service', async () => {
+      // Given: 실제 GitHub v2 설정이 있을 때
+      const config = ServiceFactory.createGitHubV2Config({
         owner: testConfig.options!.owner as string,
-        repo: testConfig.options!.repo as string,
         projectNumber: testConfig.options!.projectNumber as number
       });
 
       // When: GitHub 서비스를 생성하면
       const service = factory.createProjectBoardService(config);
 
-      // Then: GitHubProjectBoardService 인스턴스가 반환되어야 함
-      expect(service).toBeInstanceOf(GitHubProjectBoardService);
+      // Then: GitHubProjectBoardV2Service 인스턴스가 반환되어야 함
+      expect(service.constructor.name).toBe('GitHubProjectBoardV2Service');
     });
 
-    (SKIP_INTEGRATION_TESTS ? it.skip : it)('should initialize GitHub service successfully', async () => {
+    (SKIP_INTEGRATION_TESTS ? it.skip : it)('should handle basic service operations', async () => {
       // Given: GitHub 서비스가 있을 때
-      const service = factory.createProjectBoardService(testConfig) as GitHubProjectBoardService;
+      const service = factory.createProjectBoardService(testConfig);
 
-      // When: 초기화를 시도하면
-      // Then: 에러 없이 완료되어야 함 (실제 프로젝트가 있는 경우)
-      await expect(service.initialize()).resolves.not.toThrow();
+      // When: 기본 서비스가 생성되면
+      // Then: 서비스 인스턴스가 정상적으로 생성되어야 함
+      expect(service).toBeDefined();
+      expect(typeof service.getBoard).toBe('function');
     }, 10000); // 10초 타임아웃
 
     (SKIP_INTEGRATION_TESTS ? it.skip : it)('should handle authentication errors gracefully', async () => {
@@ -141,34 +98,37 @@ describe('GitHub Integration Tests', () => {
   });
 
   describe('Environment Configuration', () => {
-    it('should create config from environment variables', () => {
+    it('should create v2 config from environment variables', () => {
       // Given: 환경변수가 설정되어 있을 때
       const originalToken = process.env.GITHUB_TOKEN;
+      const originalOwner = process.env.GITHUB_OWNER;
+      const originalProjectNumber = process.env.GITHUB_PROJECT_NUMBER;
+      
       process.env.GITHUB_TOKEN = 'env-test-token';
+      process.env.GITHUB_OWNER = 'test-owner';
+      process.env.GITHUB_PROJECT_NUMBER = '1';
 
       try {
-        // When: 환경변수에서 설정을 생성하면
-        const config = ServiceFactory.createGitHubConfig({
-          owner: 'test-owner',
-          repo: 'test-repo'
-        });
+        // When: 환경변수에서 v2 설정을 생성하면
+        const config = ServiceFactory.createGitHubV2ConfigFromEnv();
 
         // Then: 올바른 설정이 생성되어야 함
         expect(config.apiToken).toBe('env-test-token');
         expect(config.type).toBe(ServiceProvider.GITHUB);
         expect(config.options).toEqual({
           owner: 'test-owner',
-          repo: 'test-repo',
-          apiVersion: 'rest',
-          projectNumber: undefined
+          projectNumber: 1,
+          apiVersion: 'v2',
+          repositoryFilter: undefined
         });
       } finally {
         // 환경변수 복원
-        if (originalToken) {
-          process.env.GITHUB_TOKEN = originalToken;
-        } else {
-          delete process.env.GITHUB_TOKEN;
-        }
+        if (originalToken) process.env.GITHUB_TOKEN = originalToken;
+        else delete process.env.GITHUB_TOKEN;
+        if (originalOwner) process.env.GITHUB_OWNER = originalOwner;
+        else delete process.env.GITHUB_OWNER; 
+        if (originalProjectNumber) process.env.GITHUB_PROJECT_NUMBER = originalProjectNumber;
+        else delete process.env.GITHUB_PROJECT_NUMBER;
       }
     });
 
@@ -181,7 +141,7 @@ describe('GitHub Integration Tests', () => {
           apiToken: 'token'
           // options 누락
         });
-      }).toThrow('GitHub owner and repo are required');
+      }).toThrow('GitHub owner is required for Projects v2');
     });
   });
 });

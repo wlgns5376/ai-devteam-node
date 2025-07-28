@@ -1,3 +1,2 @@
-export * from './github-project-board.service';
-export * from './github-api-client';
-export * from './types';
+export * from './github-project-board-v2.service';
+export * from './graphql-types';

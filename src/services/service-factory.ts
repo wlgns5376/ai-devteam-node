@@ -1,10 +1,8 @@
 import { ProjectBoardService, PullRequestService, ServiceProvider, ProviderConfig } from '@/types';
 import { MockProjectBoardService } from './mock-project-board';
 import { MockPullRequestService } from './mock-pull-request';
-import { GitHubProjectBoardService } from './project-board/github/github-project-board.service';
 import { GitHubProjectBoardV2Service } from './project-board/github/github-project-board-v2.service';
 import { GitHubPullRequestService } from './pull-request/github/github-pull-request.service';
-import { GitHubProjectConfig } from './project-board/github/types';
 import { ProjectV2Config } from './project-board/github/graphql-types';
 import { Logger } from './logger';
 
@@ -52,37 +50,10 @@ export class ServiceFactory {
       throw new Error('GitHub API token is required');
     }
 
-    const options = config.options || {};
-    const apiVersion = options.apiVersion as string || 'rest';
-
-    if (apiVersion === 'graphql' || apiVersion === 'v2') {
-      // Projects v2 (GraphQL) 서비스 생성
-      return this.createGitHubProjectBoardV2Service(config);
-    } else {
-      // Projects Classic (REST) 서비스 생성  
-      return this.createGitHubProjectBoardClassicService(config);
-    }
+    // Projects v2 (GraphQL) 서비스만 지원
+    return this.createGitHubProjectBoardV2Service(config);
   }
 
-  private createGitHubProjectBoardClassicService(config: ProviderConfig): GitHubProjectBoardService {
-    const options = config.options || {};
-    const githubConfig: GitHubProjectConfig = {
-      token: config.apiToken,
-      owner: options.owner as string || '',
-      repo: options.repo as string || ''
-    };
-
-    // projectNumber가 있는 경우에만 추가
-    if (typeof options.projectNumber === 'number') {
-      githubConfig.projectNumber = options.projectNumber;
-    }
-
-    if (!githubConfig.owner || !githubConfig.repo) {
-      throw new Error('GitHub owner and repo are required for Projects Classic');
-    }
-
-    return new GitHubProjectBoardService(githubConfig, this.logger);
-  }
 
   private createGitHubProjectBoardV2Service(config: ProviderConfig): GitHubProjectBoardV2Service {
     const options = config.options || {};
@@ -149,29 +120,6 @@ export class ServiceFactory {
     };
   }
 
-  // 편의 메소드: 환경변수에서 GitHub Classic 설정 읽기
-  static createGitHubConfig(options: {
-    owner: string;
-    repo: string;
-    projectNumber?: number;
-    token?: string;
-  }): ProviderConfig {
-    const token = options.token || process.env.GITHUB_TOKEN;
-    if (!token) {
-      throw new Error('GitHub token is required. Set GITHUB_TOKEN environment variable or provide token in options.');
-    }
-
-    return {
-      type: ServiceProvider.GITHUB,
-      apiToken: token,
-      options: {
-        owner: options.owner,
-        repo: options.repo,
-        projectNumber: options.projectNumber,
-        apiVersion: 'rest'
-      }
-    };
-  }
 
   // 편의 메소드: GitHub Projects v2 설정 생성
   static createGitHubV2Config(options: {
