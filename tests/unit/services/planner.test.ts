@@ -64,7 +64,12 @@ describe('Planner', () => {
     mockLogger = Logger.createConsoleLogger();
     mockManagerCommunicator = new MockManagerCommunicator();
 
-    await mockStateManager.initialize();
+    try {
+      await mockStateManager.initialize();
+    } catch (error) {
+      console.error('StateManager initialization failed:', error);
+      throw error;
+    }
     
     // Clear previous test data
     mockManagerCommunicator.clearRequests();
@@ -88,7 +93,9 @@ describe('Planner', () => {
   });
 
   afterEach(async () => {
-    await planner.stopMonitoring();
+    if (planner) {
+      await planner.stopMonitoring();
+    }
   });
 
   describe('초기화', () => {
