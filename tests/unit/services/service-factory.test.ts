@@ -159,17 +159,19 @@ describe('ServiceFactory', () => {
       expect(typeof prService.getComments).toBe('function');
     });
 
-    it('should throw error for unsupported GitHub provider', () => {
+    it('should create GitHub PullRequestService for GitHub provider', () => {
       // Given: ServiceFactory가 있을 때
       const config: ProviderConfig = {
         type: ServiceProvider.GITHUB,
         apiToken: 'github-token'
       };
 
-      // When: 아직 구현되지 않은 GitHub 프로바이더로 서비스를 생성하려고 하면
-      // Then: 에러가 발생해야 함
-      expect(() => factory.createPullRequestService(config))
-        .toThrow('GitHub PullRequestService not implemented yet');
+      // When: GitHub 프로바이더로 PullRequestService를 생성하면
+      const service = factory.createPullRequestService(config);
+
+      // Then: GitHubPullRequestService 인스턴스가 반환되어야 함
+      expect(service).toBeDefined();
+      expect(service.constructor.name).toBe('GitHubPullRequestService');
     });
   });
 
@@ -581,7 +583,8 @@ describe('ServiceFactory', () => {
           options: {
             owner: 'test-owner',
             repo: 'test-repo',
-            projectNumber: 1
+            projectNumber: 1,
+            apiVersion: 'rest'
           }
         });
       } finally {
