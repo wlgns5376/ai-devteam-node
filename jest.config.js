@@ -1,6 +1,6 @@
 /** @type {import('jest').Config} */
 module.exports = {
-  preset: 'ts-jest',
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: [
@@ -10,10 +10,13 @@ module.exports = {
     '**/?(*.)+(spec|test).ts'
   ],
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.ts$': ['ts-jest', {
+      useESM: true,
+      tsconfig: 'tsconfig.test.json'
+    }],
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@octokit)/)'
+    'node_modules/(?!(@octokit/.*|universal-user-agent|before-after-hook|is-plain-object|deprecation)/)'
   ],
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -42,13 +45,9 @@ module.exports = {
     '^@/utils/(.*)$': '<rootDir>/src/utils/$1'
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+  setupFiles: ['<rootDir>/tests/jest.setup.ts'],
   verbose: true,
   clearMocks: true,
   restoreMocks: true,
-  extensionsToTreatAsEsm: ['.ts'],
-  globals: {
-    'ts-jest': {
-      useESM: true
-    }
-  }
+  extensionsToTreatAsEsm: ['.ts']
 };
