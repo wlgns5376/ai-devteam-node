@@ -14,6 +14,7 @@ import {
   ProjectV2FieldValue,
   ProjectV2ItemFieldSingleSelectValue,
   ProjectV2ItemFieldTextValue,
+  ProjectV2ItemFieldPullRequestValue,
   GetProjectV2Response,
   GetProjectV2ItemsResponse,
   GitHubProjectV2Error,
@@ -349,9 +350,7 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
         }
 
         // PR URL 처리
-        if (content.__typename === 'PullRequest') {
-          pullRequestUrls = [content.url];
-        }
+        pullRequestUrls = this.extractPullRequestUrls(item, content);
       } else if (content.__typename === 'DraftIssue') {
         title = content.title;
         description = content.body || undefined;
@@ -382,6 +381,70 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
         projectV2ItemId: item.id
       }
     };
+  }
+
+  /**
+   * 아이템에서 PR URL들을 추출
+   * ProjectV2ItemFieldPullRequestValue와 timelineItems에서 PR 정보를 가져옴
+   */
+  private extractPullRequestUrls(item: ProjectV2Item, content: ProjectV2ItemContent): string[] {
+    const prUrls: string[] = [];
+
+    // 1. PullRequest 타입이면 자신의 URL 추가 (closed가 아닌 경우만)
+    if (content.__typename === 'PullRequest' && content.url && content.state !== 'CLOSED') {
+      prUrls.push(content.url);
+    }
+
+    // 2. PullRequestValue 필드에서 PR URL 추출
+    const prFieldUrls = this.extractPullRequestUrlsFromFields(item);
+    prUrls.push(...prFieldUrls);
+
+    // 3. Issue의 timelineItems에서 연결된 PR URL 추출 (closed가 아닌 경우만)
+    if (content.__typename === 'Issue' && content.timelineItems?.nodes) {
+      const timelinePRs = content.timelineItems.nodes
+        .filter(timelineItem => {
+          // PullRequest인지 확인
+          if (timelineItem.__typename === 'ConnectedEvent' && timelineItem.subject?.__typename === 'PullRequest') {
+            return timelineItem.subject.state !== 'CLOSED';
+          } else if (timelineItem.__typename === 'CrossReferencedEvent' && timelineItem.source?.__typename === 'PullRequest') {
+            return timelineItem.source.state !== 'CLOSED';
+          }
+          return false;
+        })
+        .map(timelineItem => {
+          if (timelineItem.__typename === 'ConnectedEvent' && timelineItem.subject) {
+            return timelineItem.subject.url;
+          } else if (timelineItem.__typename === 'CrossReferencedEvent' && timelineItem.source) {
+            return timelineItem.source.url;
+          }
+          return null;
+        })
+        .filter((url): url is string => url !== null);
+      
+      prUrls.push(...timelinePRs);
+    }
+
+    // 중복 제거 후 반환
+    return [...new Set(prUrls)];
+  }
+
+  /**
+   * 프로젝트 필드에서 PullRequest URL들을 추출 (closed가 아닌 경우만)
+   */
+  private extractPullRequestUrlsFromFields(item: ProjectV2Item): string[] {
+    const prUrls: string[] = [];
+
+    for (const fieldValue of item.fieldValues.nodes) {
+      if (fieldValue.__typename === 'ProjectV2ItemFieldPullRequestValue') {
+        const prFieldValue = fieldValue as ProjectV2ItemFieldPullRequestValue;
+        const fieldPRs = prFieldValue.pullRequests.nodes
+          .filter(pr => pr.state !== 'CLOSED')
+          .map(pr => pr.url);
+        prUrls.push(...fieldPRs);
+      }
+    }
+
+    return prUrls;
   }
 
   private getItemStatus(item: ProjectV2Item): string | null {

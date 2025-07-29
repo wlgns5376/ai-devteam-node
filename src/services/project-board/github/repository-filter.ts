@@ -38,7 +38,9 @@ export class RepositoryFilter {
     const content = item.content;
     if (content.__typename === 'Issue' || content.__typename === 'PullRequest') {
       const repo = content.repository;
-      return `${repo.owner.login}/${repo.name}`;
+      if (repo) {
+        return `${repo.owner.login}/${repo.name}`;
+      }
     }
 
     return null;

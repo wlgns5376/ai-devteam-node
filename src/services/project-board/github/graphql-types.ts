@@ -36,16 +36,16 @@ export interface ProjectV2Item {
 }
 
 export interface ProjectV2ItemContent {
-  __typename: 'Issue' | 'PullRequest';
+  __typename: 'Issue' | 'PullRequest' | 'DraftIssue';
   id: string;
-  number: number;
+  number?: number; // DraftIssue에는 number가 없을 수 있음
   title: string;
-  state: string;
-  url: string;
-  repository: {
+  state?: string; // DraftIssue에는 state가 없을 수 있음
+  url?: string; // DraftIssue에는 url이 없을 수 있음
+  repository?: {
     owner: { login: string };
     name: string;
-  };
+  }; // DraftIssue에는 repository가 없을 수 있음
   createdAt: string;
   updatedAt: string;
   body?: string;
@@ -60,6 +60,28 @@ export interface ProjectV2ItemContent {
       name: string;
       color: string;
     }>;
+  };
+  timelineItems?: {
+    nodes: TimelineItem[];
+  };
+}
+
+export interface TimelineItem {
+  __typename: 'ConnectedEvent' | 'CrossReferencedEvent';
+  createdAt: string;
+  subject?: {
+    __typename: 'PullRequest';
+    url: string;
+    number: number;
+    title: string;
+    state: string;
+  };
+  source?: {
+    __typename: 'PullRequest';
+    url: string;
+    number: number;
+    title: string;
+    state: string;
   };
 }
 
@@ -97,6 +119,22 @@ export interface ProjectV2ItemFieldIterationValue extends ProjectV2FieldValue {
   title: string;
   startDate: string;
   duration: number;
+}
+
+export interface ProjectV2ItemFieldPullRequestValue extends ProjectV2FieldValue {
+  __typename: 'ProjectV2ItemFieldPullRequestValue';
+  pullRequests: {
+    nodes: Array<{
+      url: string;
+      number: number;
+      title: string;
+      state: string;
+      repository: {
+        owner: { login: string };
+        name: string;
+      };
+    }>;
+  };
 }
 
 // 페이지네이션 관련 타입들

@@ -59,9 +59,9 @@ describe('PromptGenerator', () => {
       expect(prompt).toContain(task.boardItem.title);
       expect(prompt).toContain(task.boardItem.description);
       expect(prompt).toContain(workspaceInfo.workspaceDir);
-      expect(prompt).toContain('TDD 방식으로 개발해주세요');
-      expect(prompt).toContain('테스트 커버리지 80% 이상');
-      expect(prompt).toContain('PR 생성');
+      expect(prompt).toContain('GitHub 워크플로');
+      expect(prompt).toContain('gh pr create');
+      expect(prompt).toContain('PR 링크');
       
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Generated new task prompt',
@@ -136,6 +136,7 @@ describe('PromptGenerator', () => {
       expect(prompt).toContain('이전 진행 상황을 확인');
       expect(prompt).toContain('git status');
       expect(prompt).toContain('git log');
+      expect(prompt).toContain('GitHub 워크플로');
       expect(prompt).toContain('계속 진행해주세요');
       
       expect(mockLogger.debug).toHaveBeenCalledWith(
@@ -162,19 +163,27 @@ describe('PromptGenerator', () => {
       const comments = [
         {
           id: 'comment-1',
+          content: '이 함수의 성능을 개선해주세요',
           author: 'reviewer1',
-          body: '이 함수의 성능을 개선해주세요',
           createdAt: new Date(),
-          path: 'src/auth.ts',
-          line: 42
+          metadata: {
+            type: 'review_comment',
+            path: 'src/auth.ts',
+            line: 42,
+            url: 'https://github.com/owner/repo/pull/123#issuecomment-123456'
+          }
         },
         {
           id: 'comment-2',
+          content: '테스트 케이스를 추가해주세요',
           author: 'reviewer2',
-          body: '테스트 케이스를 추가해주세요',
           createdAt: new Date(),
-          path: 'tests/auth.test.ts',
-          line: 15
+          metadata: {
+            type: 'review_comment',
+            path: 'tests/auth.test.ts',
+            line: 15,
+            url: 'https://github.com/owner/repo/pull/123#issuecomment-123457'
+          }
         }
       ];
 
@@ -191,6 +200,10 @@ describe('PromptGenerator', () => {
       expect(prompt).toContain('tests/auth.test.ts:15');
       expect(prompt).toContain('reviewer1');
       expect(prompt).toContain('reviewer2');
+      expect(prompt).toContain('GitHub 워크플로');
+      expect(prompt).toContain('gh pr comment');
+      expect(prompt).toContain('https://github.com/owner/repo/pull/123#issuecomment-123456');
+      expect(prompt).toContain('https://github.com/owner/repo/pull/123#issuecomment-123457');
       
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Generated feedback processing prompt',
@@ -213,6 +226,42 @@ describe('PromptGenerator', () => {
       // Then: 코멘트 없음 메시지 포함
       expect(prompt).toContain('새로운 피드백이 없습니다');
       expect(prompt).toContain('현재 상태를 확인');
+      expect(prompt).toContain('GitHub 워크플로');
+      expect(prompt).toContain('gh pr view');
+    });
+
+    it('코멘트에 URL이 없어도 프롬프트를 생성해야 한다', async () => {
+      // Given: URL이 없는 피드백 작업
+      const task: WorkerTask = {
+        taskId: 'task-no-url',
+        action: WorkerAction.PROCESS_FEEDBACK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
+      const comments = [
+        {
+          id: 'comment-1',
+          content: '이 함수를 개선해주세요',
+          author: 'reviewer1',
+          createdAt: new Date(),
+          metadata: {
+            type: 'review_comment',
+            path: 'src/utils.ts',
+            line: 10
+            // url이 없는 경우
+          }
+        }
+      ];
+
+      // When: 피드백 프롬프트 생성
+      const prompt = await promptGenerator.generateFeedbackPrompt(task, comments);
+
+      // Then: URL 없이도 프롬프트가 생성됨
+      expect(prompt).toContain('이 함수를 개선해주세요');
+      expect(prompt).toContain('src/utils.ts:10');
+      expect(prompt).toContain('reviewer1');
+      expect(prompt).not.toContain('링크:');
     });
   });
 
@@ -236,9 +285,11 @@ describe('PromptGenerator', () => {
       // Then: 병합 프롬프트가 생성됨
       expect(prompt).toContain('PR 병합을 진행합니다');
       expect(prompt).toContain(task.taskId);
-      expect(prompt).toContain('git merge');
-      expect(prompt).toContain('충돌이 발생하면');
-      expect(prompt).toContain('병합 완료 후');
+      expect(prompt).toContain('GitHub CLI를 통한 병합');
+      expect(prompt).toContain('gh pr merge');
+      expect(prompt).toContain('gh pr view');
+      expect(prompt).toContain('충돌 발생시 처리');
+      expect(prompt).toContain('병합 완료 후 정리');
       
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Generated merge request prompt',
@@ -274,11 +325,10 @@ describe('PromptGenerator', () => {
       // When: 프롬프트 생성
       const prompt = await promptGenerator.generateNewTaskPrompt(task, workspaceInfo);
 
-      // Then: 공통 지침 포함
+      // Then: 공통 지침 포함  
       expect(prompt).toContain('CLAUDE.local.md 파일을 반드시 참고');
-      expect(prompt).toContain('TypeScript');
-      expect(prompt).toContain('Node.js');
-      expect(prompt).toContain('Jest');
+      expect(prompt).toContain('GitHub 워크플로');
+      expect(prompt).toContain('작업 요청');
     });
 
     it('잘못된 입력에 대해 에러를 발생시켜야 한다', async () => {

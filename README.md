@@ -103,7 +103,7 @@ cp .env.example .env
 # 필수 설정
 GITHUB_TOKEN=your_github_personal_access_token_here
 GITHUB_OWNER=your_github_username_or_organization
-GITHUB_PROJECT_ID=your_github_project_id
+GITHUB_PROJECT_NUMBER=your_github_project_number
 
 # 레포지토리 설정 (둘 중 하나 선택)
 # 방법 1: 다중 레포지토리 (권장)

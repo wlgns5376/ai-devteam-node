@@ -182,7 +182,7 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
         
         // Claude CLI 명령어 실행 확인
         expect(mockedExec).toHaveBeenCalledWith(
-          'claude -p "사용자 인증 기능을 구현해주세요"',
+          'claude --dangerously-skip-permissions -p "사용자 인증 기능을 구현해주세요"',
           expect.objectContaining({
             cwd: workspaceDir,
             timeout: 30000,
@@ -366,7 +366,7 @@ $ git commit -m "Refactor code structure"
 
       // Then: 올바른 명령어 확인
       expect(mockedExec).toHaveBeenCalledWith(
-        `claude -p "${prompt}"`,
+        `claude --dangerously-skip-permissions -p "${prompt}"`,
         expect.objectContaining({
           cwd: '/tmp/workspace',
           timeout: 30000
@@ -394,7 +394,7 @@ $ git commit -m "Refactor code structure"
 
       // Then: 이스케이프된 명령어 확인
       expect(mockedExec).toHaveBeenCalledWith(
-        `claude -p "이 \\"코드\\"를 분석해주세요"`,
+        `claude --dangerously-skip-permissions -p "이 \\"코드\\"를 분석해주세요"`,
         expect.any(Object),
         expect.any(Function)
       );

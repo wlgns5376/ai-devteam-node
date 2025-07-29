@@ -81,6 +81,36 @@ export const GET_PROJECT_V2_ITEMS = `
                     color
                   }
                 }
+                timelineItems(first: 50) {
+                  nodes {
+                    ... on ConnectedEvent {
+                      __typename
+                      createdAt
+                      subject {
+                        ... on PullRequest {
+                          __typename
+                          url
+                          number
+                          title
+                          state
+                        }
+                      }
+                    }
+                    ... on CrossReferencedEvent {
+                      __typename
+                      createdAt
+                      source {
+                        ... on PullRequest {
+                          __typename
+                          url
+                          number
+                          title
+                          state
+                        }
+                      }
+                    }
+                  }
+                }
               }
               ... on PullRequest {
                 __typename
@@ -174,6 +204,26 @@ export const GET_PROJECT_V2_ITEMS = `
                     }
                   }
                 }
+                ... on ProjectV2ItemFieldPullRequestValue {
+                  __typename
+                  pullRequests(first: 20) {
+                    nodes {
+                      url
+                      number
+                      title
+                      state
+                      repository {
+                        owner { login }
+                        name
+                      }
+                    }
+                  }
+                  field {
+                    ... on ProjectV2FieldCommon {
+                      name
+                    }
+                  }
+                }
               }
             }
           }
@@ -259,6 +309,36 @@ export const GET_PROJECT_V2_ITEM = `
                 color
               }
             }
+            timelineItems(first: 50) {
+              nodes {
+                ... on ConnectedEvent {
+                  __typename
+                  createdAt
+                  subject {
+                    ... on PullRequest {
+                      __typename
+                      url
+                      number
+                      title
+                      state
+                    }
+                  }
+                }
+                ... on CrossReferencedEvent {
+                  __typename
+                  createdAt
+                  source {
+                    ... on PullRequest {
+                      __typename
+                      url
+                      number
+                      title
+                      state
+                    }
+                  }
+                }
+              }
+            }
           }
           ... on PullRequest {
             __typename
@@ -332,6 +412,26 @@ export const GET_PROJECT_V2_ITEM = `
               title
               startDate
               duration
+              field {
+                ... on ProjectV2FieldCommon {
+                  name
+                }
+              }
+            }
+            ... on ProjectV2ItemFieldPullRequestValue {
+              __typename
+              pullRequests(first: 20) {
+                nodes {
+                  url
+                  number
+                  title
+                  state
+                  repository {
+                    owner { login }
+                    name
+                  }
+                }
+              }
               field {
                 ... on ProjectV2FieldCommon {
                   name

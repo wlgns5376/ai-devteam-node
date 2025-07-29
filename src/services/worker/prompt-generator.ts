@@ -23,43 +23,28 @@ export class PromptGenerator implements PromptGeneratorInterface {
 - **작업 ID**: ${task.taskId}
 - **저장소**: ${task.repositoryId}
 - **작업 제목**: ${task.boardItem?.title || '제목 없음'}
-- **작업 설명**: ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현을 진행해주세요'}
 - **작업 디렉토리**: ${workspaceInfo.workspaceDir}
 - **브랜치**: ${workspaceInfo.branchName}
 
-## 개발 환경
-- **언어**: Node.js 20+, TypeScript
-- **테스트**: Jest
-- **패키지 관리**: pnpm
+### 작업 설명
+${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현을 진행해주세요'}
 
 ## 작업 지침
 **중요**: 작업 디렉토리의 CLAUDE.local.md 파일을 반드시 참고해주세요. 해당 파일에는 프로젝트 특화 지침이 포함되어 있습니다.
 
-### 개발 방식
-1. **TDD 방식으로 개발해주세요**:
-   - 먼저 테스트 코드를 작성
-   - 테스트 실행하여 실패 확인 (Red)
-   - 테스트를 통과하는 코드 작성 (Green)
-   - 리팩토링 (Refactor)
-
-2. **품질 기준**:
-   - 테스트 커버리지 80% 이상 유지
-   - SOLID 원칙 준수
-   - Clean Code 원칙 적용
-   - TypeScript 엄격 모드 준수
-
-3. **작업 완료 기준**:
-   - 모든 테스트 통과
-   - 린트 에러 없음
-   - 타입 에러 없음
-   - PR 생성 완료
+## GitHub 워크플로
+작업 완료 후 다음 단계를 수행해주세요:
+1. **커밋**: \`git add .\` && \`git commit -m "feat(${task.taskId}): [작업 설명]"\`
+2. **푸시**: \`git push origin ${workspaceInfo.branchName}\`
+3. **PR 생성**: \`gh pr create --title "${task.boardItem?.title || task.taskId}" --body "작업 완료 요약"\`
+4. **PR 링크 제공**: 생성된 PR 링크를 응답에 포함
 
 ## 작업 요청
 위 작업을 수행하고, 완료되면 다음을 포함하여 응답해주세요:
-1. 작업 진행 상황 요약
-2. 생성된 PR 링크 (형식: "PR: https://github.com/...")
-3. 주요 변경 사항
-4. 테스트 결과
+1. **작업 진행 상황 요약**: 구현한 기능과 변경 사항
+2. **PR 링크**: \`PR: https://github.com/...\` 형식으로 제공
+3. **주요 변경 사항**: 추가/수정/삭제된 파일과 핵심 로직 설명
+4. **테스트 결과**: 실행된 테스트와 결과 상태
 
 작업을 시작해주세요!`;
 
@@ -98,15 +83,21 @@ export class PromptGenerator implements PromptGeneratorInterface {
 
 3. **작업 계속 진행**:
    - 이전 작업을 이어서 계속 진행해주세요
-   - TDD 방식 유지
-   - 테스트 커버리지 80% 이상 유지
+   - CLAUDE.local.md 파일의 개발 지침을 따라주세요
+
+## GitHub 워크플로
+작업 완료 후 다음 단계를 수행해주세요:
+1. **커밋**: \`git add .\` && \`git commit -m "feat(${task.taskId}): [추가 작업 설명]"\`
+2. **푸시**: \`git push origin ${workspaceInfo.branchName}\`
+3. **PR 업데이트**: 기존 PR이 있다면 자동 업데이트, 없다면 새로 생성
+4. **PR 링크 제공**: PR 링크를 응답에 포함
 
 ## 완료 요청
 작업이 완료되면 다음을 포함하여 응답해주세요:
-1. 이전 상태 요약
-2. 새로 진행한 작업 내용
-3. PR 링크 (형식: "PR: https://github.com/...")
-4. 테스트 결과
+1. **이전 상태 요약**: 재개 시점의 프로젝트 상태
+2. **새로 진행한 작업 내용**: 추가로 구현한 기능과 변경 사항
+3. **PR 링크**: \`PR: https://github.com/...\` 형식으로 제공
+4. **테스트 결과**: 실행된 테스트와 결과 상태
 
 계속 진행해주세요!`;
 
@@ -131,6 +122,11 @@ export class PromptGenerator implements PromptGeneratorInterface {
 ## 상황
 새로운 피드백이 없습니다. 현재 상태를 확인하고 필요한 경우 추가 작업을 진행해주세요.
 
+## GitHub 워크플로
+1. **PR 상태 확인**: \`gh pr view ${task.taskId} --json state,mergeable,reviewDecision\`
+2. **병합 준비 점검**: 모든 체크가 통과되었는지 확인
+3. **필요시 응답**: 현재 PR 상태를 응답에 포함
+
 현재 PR 상태를 확인하고 병합 준비가 되었는지 점검해주세요.`;
 
       this.dependencies.logger.debug('Generated feedback processing prompt', {
@@ -145,9 +141,9 @@ export class PromptGenerator implements PromptGeneratorInterface {
     const commentsSection = comments.map((comment, index) => `
 ### 코멘트 ${index + 1}
 - **작성자**: ${comment.author}
-- **파일**: ${comment.path}${comment.line ? `:${comment.line}` : ''}
-- **내용**: ${comment.body}
-- **작성일**: ${comment.createdAt}
+- **파일**: ${comment.metadata?.path || '전체'}${comment.metadata?.line ? `:${comment.metadata.line}` : ''}
+- **내용**: ${comment.content}
+- **작성일**: ${comment.createdAt}${comment.metadata?.url ? `\n- **링크**: ${comment.metadata.url}` : ''}
 `).join('\n');
 
     const prompt = `# PR 리뷰 피드백을 처리합니다
@@ -162,16 +158,21 @@ ${commentsSection}
 
 ## 처리 지침
 1. **각 피드백을 순서대로 검토하고 수정해주세요**
-2. **TDD 방식을 유지하며 수정 작업을 진행해주세요**
+2. **CLAUDE.local.md 파일의 개발 지침을 따라 수정 작업을 진행해주세요**
 3. **수정 사항에 대한 테스트도 함께 업데이트해주세요**
-4. **테스트 커버리지 80% 이상을 유지해주세요**
+
+## GitHub 워크플로
+피드백 처리 완료 후 다음 단계를 수행해주세요:
+1. **커밋**: \`git add .\` && \`git commit -m "fix(${task.taskId}): 리뷰 피드백 반영"\`
+2. **푸시**: \`git push origin ${task.taskId}\`
+3. **댓글 작성**: \`gh pr comment ${task.taskId} --body "리뷰 피드백이 반영되었습니다. 재검토 부탁드립니다."\`
 
 ## 완료 요청
 모든 피드백을 처리한 후 다음을 포함하여 응답해주세요:
-1. 처리한 피드백 요약
-2. 주요 변경 사항
-3. 테스트 결과
-4. 추가 커밋 정보
+1. **처리한 피드백 요약**: 각 코멘트별 수정 내용
+2. **주요 변경 사항**: 수정된 파일과 핵심 변경점
+3. **테스트 결과**: 실행된 테스트와 결과 상태
+4. **추가 커밋 정보**: 생성된 커밋 메시지와 해시
 
 피드백을 처리해주세요!`;
 
@@ -194,40 +195,41 @@ ${commentsSection}
 - **저장소**: ${task.repositoryId}
 - **작업 제목**: ${task.boardItem?.title || 'PR 병합'}
 
-## 병합 지침
-1. **현재 PR 상태를 확인해주세요**:
-   - 모든 체크가 통과되었는지 확인
-   - 충돌이 없는지 확인
-   - 리뷰 승인이 완료되었는지 확인
+## GitHub CLI를 통한 병합
+1. **PR 상태 확인**:
+   \`\`\`bash
+   gh pr view ${task.taskId} --json state,mergeable,reviewDecision,statusCheckRollup
+   \`\`\`
 
 2. **병합 실행**:
    \`\`\`bash
-   # 최신 main 브랜치로 전환
+   # GitHub CLI를 통한 병합 (권장)
+   gh pr merge ${task.taskId} --merge --delete-branch
+   
+   # 또는 수동 병합이 필요한 경우
    git checkout main
    git pull origin main
-   
-   # 작업 브랜치 병합
    git merge ${task.taskId}
-   
-   # 병합 완료 후 원격 저장소에 푸시
    git push origin main
+   git branch -d ${task.taskId}
+   git push origin --delete ${task.taskId}
    \`\`\`
 
-3. **충돌이 발생하면**:
-   - 충돌을 해결해주세요
-   - 테스트를 다시 실행해주세요
-   - 문제가 없으면 병합을 계속 진행해주세요
+3. **충돌 발생시 처리**:
+   - \`gh pr view ${task.taskId} --json mergeable\` 로 병합 가능 여부 확인
+   - 충돌이 있으면 로컬에서 해결 후 다시 푸시
+   - 테스트 재실행 및 검증
 
-4. **병합 완료 후**:
-   - 작업 브랜치 정리
-   - 관련 이슈 종료
+4. **병합 완료 후 정리**:
+   - 브랜치 자동 삭제 확인
+   - 관련 이슈가 있다면 자동 종료 확인
 
 ## 완료 요청
 병합이 완료되면 다음을 포함하여 응답해주세요:
-1. 병합 결과
-2. 발생한 충돌과 해결 방법 (있는 경우)
-3. 최종 테스트 결과
-4. 정리 완료 상태
+1. **병합 결과**: 성공 여부와 병합 방식
+2. **발생한 충돌과 해결 방법**: 충돌이 있었다면 해결 과정
+3. **최종 테스트 결과**: 병합 후 테스트 실행 결과
+4. **정리 완료 상태**: 브랜치 삭제 및 이슈 종료 상태
 
 병합을 진행해주세요!`;
 
