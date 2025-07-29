@@ -22,6 +22,15 @@ async function runDemo() {
   const pullRequestService = new MockPullRequestService();
 
   // 2. Worker Pool Manager 초기화
+  const developerConfig = {
+    timeoutMs: 30000,
+    maxRetries: 3,
+    retryDelayMs: 1000,
+    mock: {
+      responseDelay: 1000
+    }
+  };
+
   const workerPoolManager = new WorkerPoolManager(
     {
       workspaceBasePath: './temp-workspace',
@@ -31,7 +40,7 @@ async function runDemo() {
       gitOperationTimeoutMs: 60000,
       repositoryCacheTimeoutMs: 300000
     },
-    { logger, stateManager }
+    { logger, stateManager, developerConfig }
   );
 
   // 3. Mock 작업 데이터 준비

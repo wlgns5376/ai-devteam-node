@@ -12,7 +12,9 @@ import {
   ManagerCommunicator, 
   TaskRequest, 
   TaskResponse, 
-  ResponseStatus 
+  ResponseStatus,
+  DeveloperConfig,
+  SystemDeveloperConfig
 } from '@/types';
 
 export interface SystemStatus {
@@ -36,6 +38,21 @@ export class AIDevTeamApp {
   private startedAt: Date | undefined = undefined;
 
   constructor(private readonly config: AppConfig) {}
+
+  private createDeveloperConfig(systemConfig: SystemDeveloperConfig): DeveloperConfig {
+    return {
+      timeoutMs: systemConfig.claudeCodeTimeoutMs,
+      maxRetries: 3,
+      retryDelayMs: 1000,
+      claude: {
+        apiKey: process.env.ANTHROPIC_API_KEY || '',
+        model: 'claude-3-5-sonnet-20241022'
+      },
+      gemini: {
+        apiKey: process.env.GEMINI_API_KEY || ''
+      }
+    };
+  }
 
   private getLogLevel(level: string): LogLevel {
     switch (level) {
@@ -87,7 +104,7 @@ export class AIDevTeamApp {
         
         return {
           success: result.success,
-          pullRequestUrl: result.pullRequestUrl
+          ...(result.pullRequestUrl && { pullRequestUrl: result.pullRequestUrl })
         };
       }
 
@@ -185,7 +202,8 @@ export class AIDevTeamApp {
         { 
           logger: this.logger, 
           stateManager: this.stateManager,
-          workspaceManager
+          workspaceManager,
+          developerConfig: this.createDeveloperConfig(this.config.developer)
         }
       );
       this.logger.info('WorkerPoolManager and WorkspaceManager initialized');
