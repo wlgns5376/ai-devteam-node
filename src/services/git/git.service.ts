@@ -129,35 +129,69 @@ export class GitService implements GitServiceInterface {
         const parentDir = path.dirname(worktreePath);
         await fs.mkdir(parentDir, { recursive: true });
 
-        // 브랜치가 이미 존재하는지 확인
-        const branchExists = await this.branchExists(repoPath, branchName);
-        
-        let command: string;
-        if (branchExists) {
-          // 기존 브랜치를 사용하여 worktree 생성
-          command = `git worktree add "${worktreePath}" "${branchName}"`;
-        } else {
-          // 새 브랜치를 생성하며 worktree 추가
-          command = `git worktree add -b "${branchName}" "${worktreePath}"`;
+        // 이미 해당 경로에 worktree가 있는지 확인
+        const existingWorktree = await this.findWorktreeByPath(repoPath, worktreePath);
+        if (existingWorktree) {
+          this.dependencies.logger.info('Worktree already exists at path', {
+            repoPath,
+            branchName,
+            worktreePath,
+            existingBranch: existingWorktree.branch
+          });
+          return;
         }
 
-        const { stdout, stderr } = await execAsync(
-          command,
-          {
-            cwd: repoPath,
-            timeout: this.dependencies.gitOperationTimeoutMs
+        // 브랜치와 worktree 상태 확인
+        const branchExists = await this.branchExists(repoPath, branchName);
+        const branchInUse = branchExists ? await this.isBranchInWorktree(repoPath, branchName) : false;
+        
+        let command: string;
+        try {
+          if (branchExists && !branchInUse) {
+            // 기존 브랜치를 사용하여 worktree 생성
+            command = `git worktree add "${worktreePath}" "${branchName}"`;
+          } else if (branchExists && branchInUse) {
+            // 브랜치가 다른 worktree에서 사용 중인 경우 새 브랜치명 생성
+            const newBranchName = await this.generateUniqueBranchName(repoPath, branchName);
+            this.dependencies.logger.warn('Branch is in use, creating new branch', {
+              originalBranch: branchName,
+              newBranch: newBranchName
+            });
+            command = `git worktree add -b "${newBranchName}" "${worktreePath}"`;
+          } else {
+            // 새 브랜치를 생성하며 worktree 추가
+            command = `git worktree add -b "${branchName}" "${worktreePath}"`;
           }
-        );
 
-        if (stderr && !stderr.includes('Preparing worktree')) {
-          this.dependencies.logger.warn('Git worktree created with warnings', { stderr });
+          const { stderr } = await execAsync(
+            command,
+            {
+              cwd: repoPath,
+              timeout: this.dependencies.gitOperationTimeoutMs
+            }
+          );
+
+          if (stderr && !stderr.includes('Preparing worktree')) {
+            this.dependencies.logger.warn('Git worktree created with warnings', { stderr });
+          }
+        } catch (worktreeError) {
+          // worktree 생성 실패 시 기존 브랜치 정리 후 재시도
+          if (branchExists && worktreeError instanceof Error && worktreeError.message.includes('already exists')) {
+            this.dependencies.logger.warn('Branch conflict detected, attempting cleanup and retry', {
+              branchName,
+              error: worktreeError.message
+            });
+            
+            await this.cleanupBranchAndRetry(repoPath, branchName, worktreePath);
+          } else {
+            throw worktreeError;
+          }
         }
 
         this.dependencies.logger.info('Git worktree created successfully', { 
           repoPath,
           branchName,
-          worktreePath,
-          output: stdout
+          worktreePath
         });
 
       } catch (error) {
@@ -258,6 +292,102 @@ export class GitService implements GitServiceInterface {
     } catch {
       // grep이 일치하는 항목을 찾지 못하면 에러를 발생시키므로 false 반환
       return false;
+    }
+  }
+
+  /**
+   * 경로별로 기존 worktree를 찾습니다.
+   */
+  private async findWorktreeByPath(repoPath: string, targetPath: string): Promise<{ path: string; branch: string } | null> {
+    try {
+      const { stdout } = await execAsync('git worktree list', { cwd: repoPath, timeout: 5000 });
+      const worktrees = stdout.trim().split('\n').map(line => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 2 && parts[0] && parts[1]) {
+          return { path: parts[0], branch: parts[1].replace(/[[\]]/g, '') };
+        }
+        return null;
+      }).filter((wt): wt is { path: string; branch: string } => wt !== null);
+
+      return worktrees.find(wt => wt.path === targetPath) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 브랜치가 현재 어떤 worktree에서 사용 중인지 확인합니다.
+   */
+  private async isBranchInWorktree(repoPath: string, branchName: string): Promise<boolean> {
+    try {
+      const { stdout } = await execAsync('git worktree list', { cwd: repoPath, timeout: 5000 });
+      return stdout.includes(`[${branchName}]`);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 유니크한 브랜치명을 생성합니다.
+   */
+  private async generateUniqueBranchName(repoPath: string, baseName: string): Promise<string> {
+    let counter = 1;
+    let newName = `${baseName}-${counter}`;
+    
+    while (await this.branchExists(repoPath, newName)) {
+      counter++;
+      newName = `${baseName}-${counter}`;
+    }
+    
+    return newName;
+  }
+
+  /**
+   * 브랜치 충돌 정리 후 재시도합니다.
+   */
+  private async cleanupBranchAndRetry(repoPath: string, branchName: string, worktreePath: string): Promise<void> {
+    try {
+      // 브랜치가 worktree에서 사용 중인지 확인하고 정리
+      const branchInUse = await this.isBranchInWorktree(repoPath, branchName);
+      if (branchInUse) {
+        // 사용 중인 worktree 제거
+        await execAsync(`git worktree remove --force "${branchName}"`, { 
+          cwd: repoPath, 
+          timeout: 10000 
+        }).catch(() => {
+          // worktree 제거 실패는 무시 (이미 없을 수 있음)
+        });
+      }
+
+      // 브랜치 삭제 시도
+      await execAsync(`git branch -D "${branchName}"`, { 
+        cwd: repoPath, 
+        timeout: 5000 
+      }).catch(() => {
+        // 브랜치 삭제 실패는 무시 (이미 없을 수 있음)
+      });
+
+      // 새 브랜치로 worktree 생성
+      const { stdout } = await execAsync(
+        `git worktree add -b "${branchName}" "${worktreePath}"`,
+        {
+          cwd: repoPath,
+          timeout: this.dependencies.gitOperationTimeoutMs
+        }
+      );
+
+      this.dependencies.logger.info('Branch cleanup and worktree recreation successful', {
+        branchName,
+        worktreePath,
+        output: stdout
+      });
+    } catch (cleanupError) {
+      this.dependencies.logger.error('Failed to cleanup and retry worktree creation', {
+        branchName,
+        worktreePath,
+        error: cleanupError
+      });
+      throw cleanupError;
     }
   }
 

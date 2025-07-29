@@ -177,6 +177,10 @@ export class ResultProcessor implements ResultProcessorInterface {
   }
 
   private validateInputs(output: string, task: WorkerTask): void {
+    if (typeof output !== 'string') {
+      throw new Error(`Output must be a string, but received ${typeof output}`);
+    }
+    
     if (!output || output.trim() === '') {
       throw new Error('Output cannot be empty');
     }

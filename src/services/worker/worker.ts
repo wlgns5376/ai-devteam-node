@@ -113,11 +113,11 @@ export class Worker implements WorkerInterface {
 
       // 3. 작업 실행
       this.updateProgress(WorkerStage.EXECUTING_TASK, '작업 실행 중');
-      const output = await this.dependencies.developer.executePrompt(prompt, workspaceInfo.workspaceDir);
+      const developerOutput = await this.dependencies.developer.executePrompt(prompt, workspaceInfo.workspaceDir);
 
       // 4. 결과 처리
       this.updateProgress(WorkerStage.PROCESSING_RESULT, '결과 처리 중');
-      const result = await this.dependencies.resultProcessor.processOutput(output, task);
+      const result = await this.dependencies.resultProcessor.processOutput(developerOutput.rawOutput, task);
 
       // 5. 작업 완료
       this.updateProgress(WorkerStage.COMPLETING_TASK, '작업 완료 중');

@@ -32,11 +32,7 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
     try {
       const workspaceDir = this.generateWorkspaceDirectory(repositoryId, taskId);
       // boardItem에서 contentNumber와 contentType 정보를 사용하여 브랜치명 생성
-      let branchName = taskId;
-      if (boardItem?.contentNumber && boardItem?.contentType) {
-        const prefix = boardItem.contentType === 'pull_request' ? 'pr' : 'issue';
-        branchName = `${prefix}-${boardItem.contentNumber}`;
-      }
+      let branchName = this.generateBranchName(taskId, boardItem);
       const claudeLocalPath = path.join(workspaceDir, 'CLAUDE.local.md');
 
       // 디렉토리 존재 확인
@@ -90,11 +86,21 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
   }
 
   async setupWorktree(workspaceInfo: WorkspaceInfo): Promise<void> {
+    // 이미 생성된 worktree인지 확인 (플래그 + 실제 존재 여부)
     if (workspaceInfo.worktreeCreated) {
-      this.dependencies.logger.debug('Worktree already created, skipping', {
-        taskId: workspaceInfo.taskId
-      });
-      return;
+      const isWorktreeValid = await this.isWorktreeValid(workspaceInfo);
+      if (isWorktreeValid) {
+        this.dependencies.logger.debug('Worktree already exists and is valid, skipping', {
+          taskId: workspaceInfo.taskId,
+          workspaceDir: workspaceInfo.workspaceDir
+        });
+        return;
+      } else {
+        this.dependencies.logger.warn('Worktree flag is set but worktree is invalid, recreating', {
+          taskId: workspaceInfo.taskId,
+          workspaceDir: workspaceInfo.workspaceDir
+        });
+      }
     }
 
     try {
@@ -103,11 +109,20 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
         workspaceInfo.repositoryId
       );
 
-      await this.dependencies.gitService.createWorktree(
-        repositoryPath,
-        workspaceInfo.branchName,
-        workspaceInfo.workspaceDir
-      );
+      // 워크스페이스 디렉토리가 이미 Git worktree인지 확인
+      const isExistingWorktree = await this.isWorktreeValid(workspaceInfo);
+      if (isExistingWorktree) {
+        this.dependencies.logger.info('Worktree already exists, updating state', {
+          taskId: workspaceInfo.taskId,
+          workspaceDir: workspaceInfo.workspaceDir
+        });
+      } else {
+        await this.dependencies.gitService.createWorktree(
+          repositoryPath,
+          workspaceInfo.branchName,
+          workspaceInfo.workspaceDir
+        );
+      }
 
       // RepositoryManager에 worktree 등록
       await this.dependencies.repositoryManager.addWorktree(
@@ -295,5 +310,101 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
 4. 타입 에러 없음
 5. PR 작성 및 리뷰 준비 완료
 `;
+  }
+
+  /**
+   * boardItem 정보를 기반으로 브랜치명을 생성합니다.
+   * contentNumber가 있으면 issue-123 또는 pr-456 형태로 생성하고,
+   * 없으면 taskId를 사용합니다.
+   */
+  private generateBranchName(taskId: string, boardItem?: any): string {
+    // boardItem에서 contentNumber와 contentType 정보를 우선 사용
+    if (boardItem?.contentNumber && boardItem?.contentType) {
+      const prefix = boardItem.contentType === 'pull_request' ? 'pr' : 'issue';
+      const branchName = `${prefix}-${boardItem.contentNumber}`;
+      
+      this.dependencies.logger.debug('Generated branch name from contentNumber', {
+        taskId,
+        contentNumber: boardItem.contentNumber,
+        contentType: boardItem.contentType,
+        branchName
+      });
+      
+      return branchName;
+    }
+
+    // boardItem.title에서 이슈번호 추출 시도 (예: "Fix bug #123")
+    if (boardItem?.title) {
+      const issueMatch = boardItem.title.match(/#(\d+)/);
+      if (issueMatch) {
+        const issueNumber = issueMatch[1];
+        const branchName = `issue-${issueNumber}`;
+        
+        this.dependencies.logger.debug('Generated branch name from title', {
+          taskId,
+          title: boardItem.title,
+          issueNumber,
+          branchName
+        });
+        
+        return branchName;
+      }
+    }
+
+    // 최종 대안: taskId 사용 (하지만 가능한 한 짧게)
+    const shortTaskId = taskId.length > 20 ? taskId.substring(0, 20) : taskId;
+    
+    this.dependencies.logger.warn('Using taskId as branch name (no contentNumber available)', {
+      taskId,
+      shortTaskId,
+      boardItem: boardItem ? {
+        contentNumber: boardItem.contentNumber,
+        contentType: boardItem.contentType,
+        title: boardItem.title
+      } : null
+    });
+    
+    return shortTaskId;
+  }
+
+  /**
+   * 워크스페이스 디렉토리가 유효한 Git worktree인지 확인합니다.
+   */
+  private async isWorktreeValid(workspaceInfo: WorkspaceInfo): Promise<boolean> {
+    try {
+      // 디렉토리 존재 확인
+      const directoryExists = await this.checkDirectoryExists(workspaceInfo.workspaceDir);
+      if (!directoryExists) {
+        return false;
+      }
+
+      // Git 워크트리 확인: .git 파일이 존재하고 적절한 내용을 가지는지 확인
+      const gitPath = path.join(workspaceInfo.workspaceDir, '.git');
+      try {
+        const gitContent = await fs.readFile(gitPath, 'utf-8');
+        // Git worktree는 .git 파일에 "gitdir: ..." 형태로 저장됨
+        const isWorktree = gitContent.trim().startsWith('gitdir:');
+        
+        this.dependencies.logger.debug('Worktree validation result', {
+          taskId: workspaceInfo.taskId,
+          workspaceDir: workspaceInfo.workspaceDir,
+          gitPath,
+          isWorktree,
+          gitContent: gitContent.substring(0, 100) // 첫 100자만 로그
+        });
+
+        return isWorktree;
+      } catch {
+        // .git 파일이 없거나 읽을 수 없으면 worktree가 아님
+        return false;
+      }
+    } catch (error) {
+      this.dependencies.logger.error('Error validating worktree', {
+        taskId: workspaceInfo.taskId,
+        workspaceDir: workspaceInfo.workspaceDir,
+        error
+      });
+      return false;
+    }
   }
 }

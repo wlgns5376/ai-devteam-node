@@ -27,15 +27,25 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
         repositoryId: task.repositoryId
       });
 
-      // 기존 워크스페이스 확인 (재개 작업의 경우)
-      if (task.action === WorkerAction.RESUME_TASK || task.action === WorkerAction.PROCESS_FEEDBACK) {
-        const existingWorkspace = await this.dependencies.workspaceManager.getWorkspaceInfo(task.taskId);
-        if (existingWorkspace) {
+      // 기존 워크스페이스 확인 (모든 작업 타입에 대해)
+      const existingWorkspace = await this.dependencies.workspaceManager.getWorkspaceInfo(task.taskId);
+      if (existingWorkspace) {
+        // 기존 워크스페이스가 유효한지 검증
+        const isValid = await this.validateEnvironment(existingWorkspace);
+        if (isValid) {
           this.dependencies.logger.info('Reusing existing workspace', {
+            taskId: task.taskId,
+            workspaceDir: existingWorkspace.workspaceDir,
+            action: task.action
+          });
+          return existingWorkspace;
+        } else {
+          this.dependencies.logger.warn('Existing workspace is invalid, creating new one', {
             taskId: task.taskId,
             workspaceDir: existingWorkspace.workspaceDir
           });
-          return existingWorkspace;
+          // 유효하지 않은 워크스페이스 정리
+          await this.dependencies.workspaceManager.cleanupWorkspace(task.taskId);
         }
       }
 

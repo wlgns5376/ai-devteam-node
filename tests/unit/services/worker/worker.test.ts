@@ -203,7 +203,18 @@ describe('Worker', () => {
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
       mockPromptGenerator.generateNewTaskPrompt.mockResolvedValue('Generated prompt');
-      mockDeveloper.executePrompt.mockResolvedValue('Task completed successfully\nPR: https://github.com/owner/repo/pull/123');
+      mockDeveloper.executePrompt.mockResolvedValue({
+        rawOutput: 'Task completed successfully\nPR: https://github.com/owner/repo/pull/123',
+        result: { success: true, prLink: 'https://github.com/owner/repo/pull/123' },
+        executedCommands: [],
+        modifiedFiles: [],
+        metadata: {
+          startTime: new Date(),
+          endTime: new Date(),
+          duration: 1000,
+          developerType: 'mock' as const
+        }
+      });
       
       const expectedResult: WorkerResult = {
         taskId: task.taskId,
@@ -302,7 +313,18 @@ describe('Worker', () => {
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
       mockPromptGenerator.generateResumePrompt.mockResolvedValue('Resume prompt');
-      mockDeveloper.executePrompt.mockResolvedValue('Task resumed and completed');
+      mockDeveloper.executePrompt.mockResolvedValue({
+        rawOutput: 'Task resumed and completed',
+        result: { success: true },
+        executedCommands: [],
+        modifiedFiles: [],
+        metadata: {
+          startTime: new Date(),
+          endTime: new Date(),
+          duration: 1000,
+          developerType: 'mock' as const
+        }
+      });
       
       const expectedResult: WorkerResult = {
         taskId: resumeTask.taskId,
@@ -336,7 +358,18 @@ describe('Worker', () => {
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue({} as WorkspaceInfo);
       mockPromptGenerator.generateFeedbackPrompt.mockResolvedValue('Feedback prompt');
-      mockDeveloper.executePrompt.mockResolvedValue('Feedback processed');
+      mockDeveloper.executePrompt.mockResolvedValue({
+        rawOutput: 'Feedback processed',
+        result: { success: true },
+        executedCommands: [],
+        modifiedFiles: [],
+        metadata: {
+          startTime: new Date(),
+          endTime: new Date(),
+          duration: 1000,
+          developerType: 'mock' as const
+        }
+      });
       
       const expectedResult: WorkerResult = {
         taskId: feedbackTask.taskId,

@@ -161,6 +161,42 @@ describe('WorkspaceManager', () => {
       expect(workspaceInfo.branchName).toBe(taskId);
     });
 
+    it('title에서 이슈번호를 추출하여 브랜치명을 생성해야 한다', async () => {
+      // Given: contentNumber는 없지만 title에 이슈번호가 있는 경우
+      const taskId = 'PVTI_lADOIJKL';
+      const repositoryId = 'owner/repo';
+      const boardItem = {
+        id: taskId,
+        title: 'Fix critical bug #789',
+        contentType: 'draft_issue' as const
+      };
+
+      jest.spyOn(fs, 'mkdir').mockResolvedValue(undefined);
+      jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not exists'));
+
+      // When: Workspace 생성
+      const workspaceInfo = await workspaceManager.createWorkspace(taskId, repositoryId, boardItem);
+
+      // Then: title에서 추출한 이슈번호로 브랜치명 생성
+      expect(workspaceInfo.branchName).toBe('issue-789');
+    });
+
+    it('긴 taskId는 20자로 제한해야 한다', async () => {
+      // Given: 매우 긴 taskId
+      const longTaskId = 'PVTI_lAHOAJ39a84A91F1zgclc4E_very_long_task_id_that_exceeds_20_characters';
+      const repositoryId = 'owner/repo';
+
+      jest.spyOn(fs, 'mkdir').mockResolvedValue(undefined);
+      jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not exists'));
+
+      // When: Workspace 생성
+      const workspaceInfo = await workspaceManager.createWorkspace(longTaskId, repositoryId);
+
+      // Then: 20자로 제한된 브랜치명 생성
+      expect(workspaceInfo.branchName).toBe(longTaskId.substring(0, 20));
+      expect(workspaceInfo.branchName.length).toBe(20);
+    });
+
     it('이미 존재하는 디렉토리는 재사용해야 한다', async () => {
       // Given: 이미 존재하는 디렉토리
       const taskId = 'task-123';
@@ -259,12 +295,16 @@ describe('WorkspaceManager', () => {
       );
     });
 
-    it('이미 worktree가 생성된 경우 건너뛰어야 한다', async () => {
-      // Given: 이미 worktree가 생성된 상태
+    it('이미 worktree가 생성되고 유효한 경우 건너뛰어야 한다', async () => {
+      // Given: 이미 worktree가 생성된 상태이고 실제로 유효함
       const existingWorkspaceInfo = {
         ...workspaceInfo,
         worktreeCreated: true
       };
+
+      // Mock isWorktreeValid to return true (실제 구현에서는 private 메서드)
+      jest.spyOn(fs, 'access').mockResolvedValue(undefined);
+      jest.spyOn(fs, 'readFile').mockResolvedValue('gitdir: /path/to/git/worktrees/branch');
 
       // When: Worktree 설정
       await workspaceManager.setupWorktree(existingWorkspaceInfo);
@@ -272,8 +312,42 @@ describe('WorkspaceManager', () => {
       // Then: Git worktree 생성하지 않음
       expect(mockGitService.createWorktree).not.toHaveBeenCalled();
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Worktree already created, skipping',
-        { taskId: existingWorkspaceInfo.taskId }
+        'Worktree already exists and is valid, skipping',
+        { 
+          taskId: existingWorkspaceInfo.taskId,
+          workspaceDir: existingWorkspaceInfo.workspaceDir
+        }
+      );
+    });
+
+    it('worktree 플래그는 true이지만 실제로는 유효하지 않은 경우 재생성해야 한다', async () => {
+      // Given: worktreeCreated는 true이지만 실제로는 유효하지 않은 상태
+      const existingWorkspaceInfo = {
+        ...workspaceInfo,
+        worktreeCreated: true
+      };
+
+      const repositoryPath = '/repositories/owner_repo';
+      mockRepositoryManager.ensureRepository.mockResolvedValue(repositoryPath);
+      
+      // Mock isWorktreeValid to return false (유효하지 않음)
+      jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not found'));
+
+      // When: Worktree 설정
+      await workspaceManager.setupWorktree(existingWorkspaceInfo);
+
+      // Then: Git worktree 재생성
+      expect(mockGitService.createWorktree).toHaveBeenCalledWith(
+        repositoryPath,
+        existingWorkspaceInfo.branchName,
+        existingWorkspaceInfo.workspaceDir
+      );
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Worktree flag is set but worktree is invalid, recreating',
+        {
+          taskId: existingWorkspaceInfo.taskId,
+          workspaceDir: existingWorkspaceInfo.workspaceDir
+        }
       );
     });
   });
