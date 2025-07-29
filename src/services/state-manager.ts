@@ -1,23 +1,27 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { Task, TaskStatus, Worker, WorkerStatus, WorkspaceInfo } from '@/types';
+import { RepositoryState } from '@/types/manager.types';
 
 export class StateManager {
   private readonly dataDir: string;
   private readonly tasksFile: string;
   private readonly workersFile: string;
   private readonly workspacesFile: string;
+  private readonly repositoriesFile: string;
   private readonly lockFile: string;
 
   private tasks: Map<string, Task> = new Map();
   private workers: Map<string, Worker> = new Map();
   private workspaces: Map<string, WorkspaceInfo> = new Map();
+  private repositories: Map<string, RepositoryState> = new Map();
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
     this.tasksFile = path.join(dataDir, 'tasks.json');
     this.workersFile = path.join(dataDir, 'workers.json');
     this.workspacesFile = path.join(dataDir, 'workspaces.json');
+    this.repositoriesFile = path.join(dataDir, 'repositories.json');
     this.lockFile = path.join(dataDir, '.lock');
   }
 
@@ -30,6 +34,7 @@ export class StateManager {
       await this.loadTasks();
       await this.loadWorkers();
       await this.loadWorkspaces();
+      await this.loadRepositories();
     } catch (error) {
       throw new Error(`Failed to initialize StateManager: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -143,6 +148,29 @@ export class StateManager {
     return Array.from(this.workspaces.values());
   }
 
+  // Repository 관리 메서드들
+  async saveRepositoryState(repositoryState: RepositoryState): Promise<void> {
+    await this.withLock(async () => {
+      this.repositories.set(repositoryState.id, { ...repositoryState });
+      await this.persistRepositories();
+    });
+  }
+
+  async loadRepositoryState(repositoryId: string): Promise<RepositoryState | null> {
+    return this.repositories.get(repositoryId) || null;
+  }
+
+  async removeRepositoryState(repositoryId: string): Promise<void> {
+    await this.withLock(async () => {
+      this.repositories.delete(repositoryId);
+      await this.persistRepositories();
+    });
+  }
+
+  async getAllRepositories(): Promise<RepositoryState[]> {
+    return Array.from(this.repositories.values());
+  }
+
   // 프라이빗 메서드들
   private async loadTasks(): Promise<void> {
     try {
@@ -220,6 +248,32 @@ export class StateManager {
     const workspacesArray = Array.from(this.workspaces.values());
     const workspacesContent = JSON.stringify(workspacesArray, null, 2);
     await fs.writeFile(this.workspacesFile, workspacesContent, 'utf-8');
+  }
+
+  private async loadRepositories(): Promise<void> {
+    try {
+      const repositoriesContent = await fs.readFile(this.repositoriesFile, 'utf-8');
+      const repositoriesArray: RepositoryState[] = JSON.parse(repositoriesContent, this.dateReviver);
+      
+      this.repositories.clear();
+      for (const repository of repositoriesArray) {
+        this.repositories.set(repository.id, repository);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        // 파일이 없으면 빈 배열로 초기화
+        this.repositories.clear();
+        await this.persistRepositories();
+      } else {
+        throw new Error(`Failed to load repositories: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }
+
+  private async persistRepositories(): Promise<void> {
+    const repositoriesArray = Array.from(this.repositories.values());
+    const repositoriesContent = JSON.stringify(repositoriesArray, null, 2);
+    await fs.writeFile(this.repositoriesFile, repositoriesContent, 'utf-8');
   }
 
   private async withLock<T>(operation: () => Promise<T>): Promise<T> {

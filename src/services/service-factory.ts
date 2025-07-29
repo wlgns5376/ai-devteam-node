@@ -1,10 +1,15 @@
 import { ProjectBoardService, PullRequestService, ServiceProvider, ProviderConfig } from '@/types';
+import { GitServiceInterface, RepositoryManagerInterface } from '@/types/manager.types';
 import { MockProjectBoardService } from './mock-project-board';
 import { MockPullRequestService } from './mock-pull-request';
 import { GitHubProjectBoardV2Service } from './project-board/github/github-project-board-v2.service';
 import { GitHubPullRequestService } from './pull-request/github/github-pull-request.service';
 import { ProjectV2Config } from './project-board/github/graphql-types';
 import { Logger } from './logger';
+import { GitService } from './git/git.service';
+import { GitLockService } from './git/git-lock.service';
+import { RepositoryManager } from './manager/repository-manager';
+import { StateManager } from './state-manager';
 
 export interface ServiceBundle {
   readonly projectBoardService: ProjectBoardService;
@@ -14,6 +19,9 @@ export interface ServiceBundle {
 export class ServiceFactory {
   private projectBoardServices: Map<string, ProjectBoardService> = new Map();
   private pullRequestServices: Map<string, PullRequestService> = new Map();
+  private gitService: GitServiceInterface | null = null;
+  private gitLockService: GitLockService | null = null;
+  private repositoryManager: RepositoryManagerInterface | null = null;
   private logger: Logger;
 
   constructor(logger?: Logger) {
@@ -118,6 +126,61 @@ export class ServiceFactory {
       projectBoardService: this.createProjectBoardService(config),
       pullRequestService: this.createPullRequestService(config)
     };
+  }
+
+
+  createGitService(gitOperationTimeoutMs: number = 60000): GitServiceInterface {
+    if (!this.gitService) {
+      if (!this.gitLockService) {
+        this.gitLockService = new GitLockService({ 
+          logger: this.logger,
+          lockTimeoutMs: 5 * 60 * 1000 // 5분
+        });
+      }
+
+      this.gitService = new GitService({
+        logger: this.logger,
+        gitOperationTimeoutMs,
+        gitLockService: this.gitLockService
+      });
+    }
+    return this.gitService;
+  }
+
+  createGitLockService(lockTimeoutMs: number = 5 * 60 * 1000): GitLockService {
+    if (!this.gitLockService) {
+      this.gitLockService = new GitLockService({
+        logger: this.logger,
+        lockTimeoutMs
+      });
+    }
+    return this.gitLockService;
+  }
+
+  createRepositoryManager(
+    config: {
+      workspaceBasePath: string;
+      repositoryCacheTimeoutMs: number;
+      gitOperationTimeoutMs: number;
+      minWorkers: number;
+      maxWorkers: number;
+      workerRecoveryTimeoutMs: number;
+    },
+    stateManager: StateManager
+  ): RepositoryManagerInterface {
+    if (!this.repositoryManager) {
+      const gitService = this.createGitService(config.gitOperationTimeoutMs);
+      
+      this.repositoryManager = new RepositoryManager(
+        config,
+        {
+          logger: this.logger,
+          stateManager,
+          gitService
+        }
+      );
+    }
+    return this.repositoryManager;
   }
 
 

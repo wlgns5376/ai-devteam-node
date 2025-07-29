@@ -3,6 +3,7 @@ import {
   ManagerServiceConfig,
   WorkspaceInfo,
   GitServiceInterface,
+  RepositoryManagerInterface,
   ManagerError
 } from '@/types/manager.types';
 import { Logger } from '../logger';
@@ -14,6 +15,7 @@ interface WorkspaceManagerDependencies {
   readonly logger: Logger;
   readonly stateManager: StateManager;
   readonly gitService: GitServiceInterface;
+  readonly repositoryManager: RepositoryManagerInterface;
 }
 
 export class WorkspaceManager implements WorkspaceManagerInterface {
@@ -91,12 +93,20 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
     }
 
     try {
-      // 저장소 경로 계산 (실제 구현에서는 RepositoryManager에서 가져와야 함)
-      const repositoryPath = this.getRepositoryPath(workspaceInfo.repositoryId);
+      // RepositoryManager를 통해 저장소 확인 및 경로 가져오기
+      const repositoryPath = await this.dependencies.repositoryManager.ensureRepository(
+        workspaceInfo.repositoryId
+      );
 
       await this.dependencies.gitService.createWorktree(
         repositoryPath,
         workspaceInfo.branchName,
+        workspaceInfo.workspaceDir
+      );
+
+      // RepositoryManager에 worktree 등록
+      await this.dependencies.repositoryManager.addWorktree(
+        workspaceInfo.repositoryId,
         workspaceInfo.workspaceDir
       );
 
@@ -109,7 +119,8 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
 
       this.dependencies.logger.info('Git worktree created', {
         taskId: workspaceInfo.taskId,
-        branchName: workspaceInfo.branchName
+        branchName: workspaceInfo.branchName,
+        repositoryPath
       });
 
     } catch (error) {
@@ -153,9 +164,17 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
       // Git worktree 제거 (에러가 발생해도 계속 진행)
       if (workspaceInfo.worktreeCreated) {
         try {
-          const repositoryPath = this.getRepositoryPath(workspaceInfo.repositoryId);
+          const repositoryPath = await this.dependencies.repositoryManager.ensureRepository(
+            workspaceInfo.repositoryId
+          );
           await this.dependencies.gitService.removeWorktree(
             repositoryPath,
+            workspaceInfo.workspaceDir
+          );
+          
+          // RepositoryManager에서 worktree 제거
+          await this.dependencies.repositoryManager.removeWorktree(
+            workspaceInfo.repositoryId,
             workspaceInfo.workspaceDir
           );
         } catch (error) {
@@ -223,12 +242,6 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
     }
   }
 
-  private getRepositoryPath(repositoryId: string): string {
-    // 실제 구현에서는 RepositoryManager에서 저장소 경로를 가져와야 함
-    // 현재는 임시로 기본 경로 생성
-    const safeRepositoryId = repositoryId.replace('/', '_');
-    return path.join(this.config.workspaceBasePath, '..', 'repositories', safeRepositoryId);
-  }
 
   private generateClaudeLocalContent(workspaceInfo: WorkspaceInfo): string {
     return `# 작업 지침

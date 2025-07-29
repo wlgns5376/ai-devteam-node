@@ -10,8 +10,6 @@ export * from './project-board.types';
 // Pull request types
 export * from './pull-request.types';
 
-// Repository types
-export * from './repository.types';
 
 // Provider types
 export * from './provider.types';

@@ -4,11 +4,12 @@
 
 ```mermaid
 graph TB
-    subgraph "AIDevTeamApp"
+    subgraph "AIDevTeamApp (app.ts)"
         APP[AIDevTeamApp<br/>메인 애플리케이션]
         APP_INIT[initialize]
         APP_START[start]
         APP_STOP[stop]
+        MC[ManagerCommunicator<br/>구현체]
     end
     
     subgraph "Core Services"
@@ -21,18 +22,25 @@ graph TB
     subgraph "External Services"
         PBS[ProjectBoardService<br/>github-project-board-v2.service.ts]
         PRS[PullRequestService<br/>github-pull-request.service.ts]
+        GHGQL[GitHubGraphQLClient<br/>github-graphql-client.ts]
     end
     
     subgraph "Worker Dependencies"
         WS[WorkspaceSetup<br/>workspace-setup.ts]
         PG[PromptGenerator<br/>prompt-generator.ts]
         RP[ResultProcessor<br/>result-processor.ts]
-        DEV[Developer<br/>claude-developer.ts]
+        DEV[Developer<br/>claude-developer.ts/mock-developer.ts]
+        DF[DeveloperFactory<br/>developer-factory.ts]
     end
     
     subgraph "State & Logging"
         SM[StateManager<br/>state-manager.ts]
         LOG[Logger<br/>logger.ts]
+    end
+    
+    subgraph "Configuration & Types"
+        CFG[AppConfig<br/>app-config.ts]
+        TYPES[Types<br/>*.types.ts]
     end
     
     APP --> APP_INIT
@@ -42,10 +50,13 @@ graph TB
     APP_INIT --> PRS
     APP_INIT --> SM
     APP_INIT --> LOG
+    APP_INIT --> MC
     
     APP_START --> WPM
     APP_START --> PL
     
+    PL --> MC
+    MC --> WPM
     PL --> PBS
     PL --> PRS
     WPM --> WK
@@ -54,9 +65,19 @@ graph TB
     WK --> RP
     WK --> DEV
     
+    SF --> PBS
+    SF --> PRS
+    PBS --> GHGQL
+    DF --> DEV
+    
     WPM --> SM
     WK --> LOG
     PL --> LOG
+    PBS --> LOG
+    PRS --> LOG
+    
+    APP --> CFG
+    ALL --> TYPES
 ```
 
 ## 클래스 구조 및 의존성
@@ -364,45 +385,88 @@ sequenceDiagram
 
 ### 1. 비동기 처리 및 상태 관리
 - 모든 작업이 Promise 기반 비동기 처리
-- WorkflowState를 통한 작업 상태 추적
+- WorkflowState를 통한 작업 상태 추적 (processedTasks, processedComments, activeTasks)
 - Set과 Map을 활용한 중복 처리 방지
+- StateManager를 통한 Worker 및 작업 정보 지속화
 
 ### 2. Error Handling
-- 각 서비스별 Error 타입 정의
+- 각 서비스별 Error 타입 정의 (PlannerError, ManagerError)
 - 에러 로깅 및 재시도 메커니즘
-- Graceful shutdown 지원
+- Graceful shutdown 지원 (SIGTERM, SIGINT 핸들러)
+- 에러 개수 제한 (최대 100개, 50개로 자동 축소)
 
 ### 3. Worker Pool 관리
-- 동적 Worker 생성/제거
+- 동적 Worker 생성/제거 (minWorkers ~ maxWorkers)
 - Worker 상태 추적 (IDLE, WAITING, WORKING, STOPPED)
-- Worker 복구 메커니즘
+- Worker 복구 메커니즘 (recoverStoppedWorkers)
+- 작업별 Worker 할당 및 해제
 
 ### 4. 확장 가능한 아키텍처
-- ServiceFactory를 통한 서비스 생성
+- ServiceFactory를 통한 서비스 생성 (GitHub v2 기반)
 - 인터페이스 기반 의존성 주입
-- 설정 기반 동작 제어
+- 설정 기반 동작 제어 (AppConfig)
+- DeveloperFactory를 통한 개발자 구현체 선택
 
-### 5. 상태 지속성
-- StateManager를 통한 JSON 기반 상태 저장
-- Worker 및 작업 정보 지속화
+### 5. GitHub 통합
+- GitHub Projects v2 API 지원 (GraphQL 기반)
+- GitHub Pull Request API 지원
+- Repository 필터링 기능
+- PR 상태 추적 및 코멘트 처리
 
 ### 6. 로깅 시스템
 - 구조화된 로깅 (Logger 클래스)
-- 다양한 로그 레벨 지원
+- 다양한 로그 레벨 지원 (DEBUG, INFO, WARN, ERROR)
 - 파일 및 콘솔 출력 지원
+- 컨텍스트 정보 포함
 
-## Mock 구현 특징
+## 현재 구현 상태
 
-### WorkerPoolManager의 getWorkerInstance
-- 실제 Worker 인스턴스 대신 Mock 객체 반환
-- 간단한 작업 시뮬레이션 (1-3초 대기)
-- Mock PR 생성 및 URL 반환
+### ✅ 완전 구현됨
+- **AIDevTeamApp**: 메인 애플리케이션 및 초기화 로직
+- **Planner**: 전체 워크플로우 관리 (신규/진행중/리뷰 작업 처리)
+- **WorkerPoolManager**: Worker 풀 관리 및 작업 할당
+- **Worker**: 작업 실행 및 상태 관리
+- **ServiceFactory**: GitHub 서비스 생성
+- **Logger**: 구조화된 로깅
+- **StateManager**: 상태 지속성 관리
+- **GitHub Services**: Projects v2 및 PR 서비스
+- **Type Definitions**: 모든 타입 정의
 
-### 실제 구현에서 필요한 추가 작업
-- 실제 WorkspaceSetup 구현
-- 실제 PromptGenerator 구현  
-- 실제 ResultProcessor 구현
-- 실제 Developer (Claude Code) 통합
-- Git worktree 실제 관리 로직
+### 🔄 부분 구현됨 (Mock 포함)
+- **Developer**: claude-developer.ts와 mock-developer.ts 존재
+- **WorkspaceSetup**: 기본 구조 있으나 실제 Git worktree 로직 필요
+- **PromptGenerator**: 기본 구조 있으나 실제 프롬프트 생성 로직 필요
+- **ResultProcessor**: 기본 구조 있으나 실제 결과 처리 로직 필요
 
-이 구현은 전체 시스템의 골격을 제공하며, Mock 서비스를 통해 전체 흐름을 테스트할 수 있는 구조로 되어있습니다.
+### ❌ 미구현 (필요한 추가 작업)
+- **실제 Git worktree 관리**: 브랜치 생성, 체크아웃, 정리
+- **실제 Claude Code 통합**: 터미널 명령 실행 및 결과 파싱
+- **실제 Prompt 생성**: 작업 컨텍스트 기반 프롬프트 템플릿
+- **실제 결과 처리**: PR 생성 및 링크 추출
+- **Workspace Manager**: 저장소 클론 및 최신화 로직
+- **CLI Commands**: 실제 명령어 인터페이스
+
+## Mock vs 실제 구현
+
+### WorkerPoolManager의 getWorkerInstance (src/services/manager/worker-pool-manager.ts:146-180)
+```typescript
+// 현재: Mock 구현
+return {
+  startExecution: async () => {
+    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+    return {
+      success: true,
+      pullRequestUrl: `https://github.com/${repoId}/pull/${Math.floor(Math.random() * 1000) + 1}`
+    };
+  }
+};
+
+// 필요: 실제 Worker 인스턴스 반환
+```
+
+### Developer 구현 상태
+- **claude-developer.ts**: 기본 구조 있음, 실제 명령 실행 로직 필요
+- **mock-developer.ts**: 시뮬레이션용 Mock 구현 완료
+- **developer-factory.ts**: 구현체 선택 로직 완료
+
+이 구현은 전체 시스템의 핵심 아키텍처와 워크플로우를 완성했으며, Mock 서비스를 통해 전체 흐름을 테스트할 수 있는 구조입니다.

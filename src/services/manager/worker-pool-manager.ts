@@ -1,5 +1,6 @@
 import { 
   WorkerPoolManagerInterface,
+  WorkspaceManagerInterface,
   ManagerServiceConfig,
   ManagerError
 } from '@/types/manager.types';
@@ -10,6 +11,7 @@ import { StateManager } from '../state-manager';
 interface WorkerPoolManagerDependencies {
   readonly logger: Logger;
   readonly stateManager: StateManager;
+  readonly workspaceManager?: WorkspaceManagerInterface;
 }
 
 export class WorkerPoolManager implements WorkerPoolManagerInterface {

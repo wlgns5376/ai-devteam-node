@@ -1,6 +1,7 @@
 import { AppConfig } from './config/app-config';
 import { Planner } from './services/planner';
 import { WorkerPoolManager } from './services/manager/worker-pool-manager';
+import { WorkspaceManager } from './services/manager/workspace-manager';
 import { Logger, LogLevel } from './services/logger';
 import { StateManager } from './services/state-manager';
 import { ServiceFactory } from './services/service-factory';
@@ -121,6 +122,7 @@ export class AIDevTeamApp {
 
       // 2. StateManager 초기화
       this.stateManager = new StateManager(`${this.config.manager.workspaceRoot}/.state`);
+      await this.stateManager.initialize();
       this.logger.info('StateManager initialized');
 
       // 3. 서비스들 초기화
@@ -129,30 +131,66 @@ export class AIDevTeamApp {
       const githubV2Config = ServiceFactory.createGitHubV2ConfigFromEnv();
       this.projectBoardService = serviceFactory.createProjectBoardService(githubV2Config);
       this.pullRequestService = serviceFactory.createPullRequestService(githubV2Config);
+      
+      // Repository 관련 서비스 초기화
+      const gitService = serviceFactory.createGitService(this.config.manager.gitOperationTimeoutMs);
+      const repositoryManager = serviceFactory.createRepositoryManager(
+        {
+          workspaceBasePath: this.config.manager.workspaceRoot,
+          repositoryCacheTimeoutMs: this.config.manager.repositoryCacheTimeoutMs,
+          gitOperationTimeoutMs: this.config.manager.gitOperationTimeoutMs,
+          minWorkers: this.config.manager.workerPool.minWorkers,
+          maxWorkers: this.config.manager.workerPool.maxWorkers,
+          workerRecoveryTimeoutMs: this.config.manager.workerPool.workerTimeoutMs
+        },
+        this.stateManager
+      );
+      
       this.logger.info('Services initialized', { 
         projectBoardService: 'GitHub Projects v2',
         pullRequestService: 'GitHub',
+        gitService: 'GitService with Lock',
+        repositoryManager: 'RepositoryManager',
         config: githubV2Config
       });
 
-      // 4. WorkerPoolManager 초기화
+      // 4. WorkspaceManager 초기화
+      const workspaceManager = new WorkspaceManager(
+        {
+          workspaceBasePath: this.config.manager.workspaceRoot,
+          minWorkers: this.config.manager.workerPool.minWorkers,
+          maxWorkers: this.config.manager.workerPool.maxWorkers,
+          workerRecoveryTimeoutMs: this.config.manager.workerPool.workerTimeoutMs,
+          gitOperationTimeoutMs: this.config.manager.gitOperationTimeoutMs,
+          repositoryCacheTimeoutMs: this.config.manager.repositoryCacheTimeoutMs
+        },
+        {
+          logger: this.logger,
+          stateManager: this.stateManager,
+          gitService,
+          repositoryManager
+        }
+      );
+
+      // 5. WorkerPoolManager 초기화
       this.workerPoolManager = new WorkerPoolManager(
         {
           workspaceBasePath: this.config.manager.workspaceRoot,
           minWorkers: this.config.manager.workerPool.minWorkers,
           maxWorkers: this.config.manager.workerPool.maxWorkers,
           workerRecoveryTimeoutMs: this.config.manager.workerPool.workerTimeoutMs,
-          gitOperationTimeoutMs: 60000,
-          repositoryCacheTimeoutMs: 300000
+          gitOperationTimeoutMs: this.config.manager.gitOperationTimeoutMs,
+          repositoryCacheTimeoutMs: this.config.manager.repositoryCacheTimeoutMs
         },
         { 
           logger: this.logger, 
-          stateManager: this.stateManager 
+          stateManager: this.stateManager,
+          workspaceManager
         }
       );
-      this.logger.info('WorkerPoolManager initialized');
+      this.logger.info('WorkerPoolManager and WorkspaceManager initialized');
 
-      // 5. Manager Communicator 구현
+      // 6. Manager Communicator 구현
       const managerCommunicator: ManagerCommunicator = {
         sendTaskToManager: async (request: TaskRequest): Promise<TaskResponse> => {
           if (!this.workerPoolManager) {
@@ -298,7 +336,7 @@ export class AIDevTeamApp {
         }
       };
 
-      // 6. Planner 초기화
+      // 7. Planner 초기화
       const plannerDependencies: PlannerDependencies = {
         projectBoardService: this.projectBoardService,
         pullRequestService: this.pullRequestService,

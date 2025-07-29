@@ -104,6 +104,8 @@ describe('Config Types', () => {
           maxWorkers: 5,
           workerTimeoutMs: 600000
         },
+        gitOperationTimeoutMs: 60000,
+        repositoryCacheTimeoutMs: 300000,
         gitConfig: {
           cloneDepth: 1,
           enableConcurrencyLock: true
@@ -304,6 +306,8 @@ describe('Config Types', () => {
             maxWorkers: 5,
             workerTimeoutMs: 600000
           },
+          gitOperationTimeoutMs: 60000,
+          repositoryCacheTimeoutMs: 300000,
           gitConfig: {
             cloneDepth: 1,
             enableConcurrencyLock: true
@@ -414,6 +418,8 @@ describe('Config Types', () => {
             maxWorkers: 3,  // planner 폴링 간격과 조화
             workerTimeoutMs: 300000
           },
+          gitOperationTimeoutMs: 60000,
+          repositoryCacheTimeoutMs: 300000,
           gitConfig: {
             cloneDepth: 1,
             enableConcurrencyLock: true

@@ -1,10 +1,8 @@
 import { ProjectBoardService } from './project-board.types';
 import { PullRequestService } from './pull-request.types';
-import { RepositoryService } from './repository.types';
 
 export { ProjectBoardService } from './project-board.types';
 export { PullRequestService } from './pull-request.types';
-export { RepositoryService } from './repository.types';
 
 export enum ServiceProvider {
   MOCK = 'mock',
@@ -24,5 +22,4 @@ export interface ProviderConfig {
 export interface ServiceFactory {
   createProjectBoardService(config: ProviderConfig): ProjectBoardService;
   createPullRequestService(config: ProviderConfig): PullRequestService;
-  createRepositoryService(config: ProviderConfig): RepositoryService;
 }

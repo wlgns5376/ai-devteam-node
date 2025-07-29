@@ -1,6 +1,5 @@
 import { Worker, WorkerPool, WorkerStatus } from './worker.types';
 import { TaskRequest, TaskResponse } from './planner.types';
-import { Repository } from './repository.types';
 
 export interface ManagerServiceConfig {
   readonly workspaceBasePath: string;
@@ -70,6 +69,8 @@ export interface RepositoryManagerInterface {
   fetchRepository(repositoryId: string): Promise<void>;
   getRepositoryState(repositoryId: string): Promise<RepositoryState | null>;
   isRepositoryCloned(repositoryId: string): Promise<boolean>;
+  addWorktree(repositoryId: string, worktreePath: string): Promise<void>;
+  removeWorktree(repositoryId: string, worktreePath: string): Promise<void>;
 }
 
 export interface TaskRouterInterface {

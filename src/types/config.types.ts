@@ -30,6 +30,8 @@ export interface ManagerConfig {
     readonly maxWorkers: number;
     readonly workerTimeoutMs: number;
   };
+  readonly gitOperationTimeoutMs: number;
+  readonly repositoryCacheTimeoutMs: number;
   readonly gitConfig: {
     readonly cloneDepth: number;
     readonly enableConcurrencyLock: boolean;

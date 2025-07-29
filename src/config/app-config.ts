@@ -58,6 +58,8 @@ export class AppConfigLoader {
           maxWorkers: nodeEnv === 'development' ? 2 : 5,
           workerTimeoutMs: 300000 // 5분
         },
+        gitOperationTimeoutMs: 60000, // 1분
+        repositoryCacheTimeoutMs: 300000, // 5분
         gitConfig: {
           cloneDepth: 1,
           enableConcurrencyLock: true

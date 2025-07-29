@@ -14,6 +14,8 @@
       "maxWorkers": 3,
       "workerTimeoutMs": 300000
     },
+    "gitOperationTimeoutMs": 60000,
+    "repositoryCacheTimeoutMs": 300000,
     "gitConfig": {
       "cloneDepth": 1,
       "enableConcurrencyLock": true

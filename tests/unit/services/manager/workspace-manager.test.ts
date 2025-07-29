@@ -4,6 +4,7 @@ import { StateManager } from '@/services/state-manager';
 import { 
   ManagerServiceConfig,
   GitServiceInterface,
+  RepositoryManagerInterface,
   WorkspaceInfo
 } from '@/types';
 import fs from 'fs/promises';
@@ -14,6 +15,7 @@ describe('WorkspaceManager', () => {
   let mockLogger: jest.Mocked<Logger>;
   let mockStateManager: jest.Mocked<StateManager>;
   let mockGitService: jest.Mocked<GitServiceInterface>;
+  let mockRepositoryManager: jest.Mocked<RepositoryManagerInterface>;
   let config: ManagerServiceConfig;
   let tempWorkspaceDir: string;
 
@@ -40,6 +42,16 @@ describe('WorkspaceManager', () => {
       isValidRepository: jest.fn()
     } as any;
 
+    mockRepositoryManager = {
+      ensureRepository: jest.fn(),
+      cloneRepository: jest.fn(),
+      fetchRepository: jest.fn(),
+      getRepositoryState: jest.fn(),
+      isRepositoryCloned: jest.fn(),
+      addWorktree: jest.fn(),
+      removeWorktree: jest.fn()
+    } as any;
+
     tempWorkspaceDir = '/tmp/test-workspace';
     config = {
       workspaceBasePath: tempWorkspaceDir,
@@ -53,7 +65,8 @@ describe('WorkspaceManager', () => {
     workspaceManager = new WorkspaceManager(config, {
       logger: mockLogger,
       stateManager: mockStateManager,
-      gitService: mockGitService
+      gitService: mockGitService,
+      repositoryManager: mockRepositoryManager
     });
   });
 
@@ -134,16 +147,24 @@ describe('WorkspaceManager', () => {
     });
 
     it('Git worktree를 생성해야 한다', async () => {
-      // Given: Mock Git 서비스 성공 응답
+      // Given: Mock services 성공 응답
+      const repositoryPath = '/repositories/owner_repo';
+      mockRepositoryManager.ensureRepository.mockResolvedValue(repositoryPath);
+      mockRepositoryManager.addWorktree.mockResolvedValue(undefined);
       mockGitService.createWorktree.mockResolvedValue(undefined);
 
       // When: Worktree 설정
       await workspaceManager.setupWorktree(workspaceInfo);
 
-      // Then: Git worktree 생성됨
+      // Then: Repository 확인 후 Git worktree 생성됨
+      expect(mockRepositoryManager.ensureRepository).toHaveBeenCalledWith(workspaceInfo.repositoryId);
       expect(mockGitService.createWorktree).toHaveBeenCalledWith(
-        expect.any(String), // 저장소 경로
+        repositoryPath,
         workspaceInfo.branchName,
+        workspaceInfo.workspaceDir
+      );
+      expect(mockRepositoryManager.addWorktree).toHaveBeenCalledWith(
+        workspaceInfo.repositoryId,
         workspaceInfo.workspaceDir
       );
       
@@ -159,7 +180,9 @@ describe('WorkspaceManager', () => {
     });
 
     it('Git worktree 생성 실패 시 에러를 발생시켜야 한다', async () => {
-      // Given: Git 서비스 에러
+      // Given: Repository manager 성공, Git 서비스 에러
+      const repositoryPath = '/repositories/owner_repo';
+      mockRepositoryManager.ensureRepository.mockResolvedValue(repositoryPath);
       const gitError = new Error('Git worktree creation failed');
       mockGitService.createWorktree.mockRejectedValue(gitError);
 
@@ -278,7 +301,10 @@ describe('WorkspaceManager', () => {
         createdAt: new Date()
       };
 
+      const repositoryPath = '/repositories/owner_repo';
       mockStateManager.loadWorkspaceInfo.mockResolvedValue(workspaceInfo);
+      mockRepositoryManager.ensureRepository.mockResolvedValue(repositoryPath);
+      mockRepositoryManager.removeWorktree.mockResolvedValue(undefined);
       mockGitService.removeWorktree.mockResolvedValue(undefined);
       jest.spyOn(fs, 'rm').mockResolvedValue(undefined);
 
@@ -286,8 +312,13 @@ describe('WorkspaceManager', () => {
       await workspaceManager.cleanupWorkspace(taskId);
 
       // Then: 모든 리소스가 정리됨
+      expect(mockRepositoryManager.ensureRepository).toHaveBeenCalledWith(workspaceInfo.repositoryId);
       expect(mockGitService.removeWorktree).toHaveBeenCalledWith(
-        expect.any(String),
+        repositoryPath,
+        workspaceInfo.workspaceDir
+      );
+      expect(mockRepositoryManager.removeWorktree).toHaveBeenCalledWith(
+        workspaceInfo.repositoryId,
         workspaceInfo.workspaceDir
       );
       expect(fs.rm).toHaveBeenCalledWith(workspaceInfo.workspaceDir, { 
