@@ -62,7 +62,7 @@ describe('ClaudeDeveloper', () => {
       // Then: 사용 가능 상태
       const isAvailable = await claudeDeveloper.isAvailable();
       expect(isAvailable).toBe(true);
-      expect(mockLogger.info).toHaveBeenCalledWith('Claude Developer initialized');
+      expect(mockLogger.info).toHaveBeenCalledWith('Claude Developer initialized with API key');
     });
 
     it('타입이 claude여야 한다', () => {
@@ -93,19 +93,13 @@ describe('ClaudeDeveloper', () => {
       );
     }, 10000);
 
-    it('API 키가 없고 인증도 되지 않았으면 초기화 실패해야 한다', async () => {
+    it('API 키가 없어도 시스템 인증으로 초기화될 수 있어야 한다', async () => {
       // Given: API 키 없는 설정
       const configWithoutApiKey: DeveloperConfig = {
         timeoutMs: 30000,
         maxRetries: 3,
         retryDelayMs: 1000
       };
-      
-      // Mock으로 인증 상태 확인 실패 (claude auth status)
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(new Error('not authenticated'), null));
-        return {} as any;
-      });
       
       // Mock으로 CLI 확인 성공 (claude --version)
       mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
@@ -115,10 +109,13 @@ describe('ClaudeDeveloper', () => {
       
       const claudeDeveloper = new ClaudeDeveloper(configWithoutApiKey, { logger: mockLogger });
       
-      // When & Then: 초기화에서 에러 발생
-      await expect(claudeDeveloper.initialize()).rejects.toThrow(
-        'Claude API key is required or please run "claude auth login"'
-      );
+      // When: 초기화
+      await claudeDeveloper.initialize();
+      
+      // Then: 성공적으로 초기화되고 시스템 인증 메시지 로그
+      const isAvailable = await claudeDeveloper.isAvailable();
+      expect(isAvailable).toBe(true);
+      expect(mockLogger.info).toHaveBeenCalledWith('Claude Developer initialized (will use system authentication)');
     });
   });
 
