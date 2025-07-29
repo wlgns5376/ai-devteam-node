@@ -75,8 +75,15 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   }
 
   async getAvailableWorker(): Promise<WorkerType | null> {
-    const availableWorkers = Array.from(this.workers.values())
-      .filter(worker => worker.status === WorkerStatus.IDLE);
+    // Worker 인스턴스의 상태를 신뢰할 수 있는 소스로 사용
+    const availableWorkers: WorkerType[] = [];
+    
+    for (const [workerId, worker] of this.workers) {
+      const workerInstance = this.workerInstances.get(workerId);
+      if (workerInstance && workerInstance.getStatus() === WorkerStatus.IDLE) {
+        availableWorkers.push(worker);
+      }
+    }
 
     if (availableWorkers.length === 0) {
       // 최대 Worker 수 미만이면 새 Worker 생성 시도
@@ -119,35 +126,54 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       throw new Error(`Worker not found: ${workerId}`);
     }
 
-    const updatedWorker: WorkerType = {
-      ...worker,
-      status: WorkerStatus.WAITING,
-      currentTask: task,
-      lastActiveAt: new Date()
-    };
+    // Worker 인스턴스 상태 확인
+    const workerInstance = this.workerInstances.get(workerId);
+    if (!workerInstance) {
+      throw new Error(`Worker instance not found: ${workerId}`);
+    }
 
-    this.workers.set(workerId, updatedWorker);
-    await this.dependencies.stateManager.saveWorker(updatedWorker);
+    // Worker 인스턴스의 현재 상태 확인
+    const currentStatus = workerInstance.getStatus();
+    if (currentStatus !== WorkerStatus.IDLE) {
+      throw new Error(`Worker ${workerId} is not available (status: ${currentStatus})`);
+    }
 
-    this.dependencies.logger.info('Worker assigned to task', {
-      workerId,
-      taskId: task.taskId,
-      action: task.action,
-      repositoryId: task.repositoryId
-    });
+    // 이전 상태 백업 (롤백용)
+    const previousWorker = { ...worker };
 
-    // Worker 인스턴스에 작업 할당
     try {
-      const workerInstance = this.workerInstances.get(workerId);
-      if (workerInstance) {
-        await workerInstance.assignTask(task);
-      }
+      // 1. 먼저 Worker 인스턴스에 작업 할당 시도
+      await workerInstance.assignTask(task);
+
+      // 2. 성공한 경우에만 workers Map 업데이트
+      const updatedWorker: WorkerType = {
+        ...worker,
+        status: WorkerStatus.WAITING,
+        currentTask: task,
+        lastActiveAt: new Date()
+      };
+
+      this.workers.set(workerId, updatedWorker);
+      await this.dependencies.stateManager.saveWorker(updatedWorker);
+
+      this.dependencies.logger.info('Worker assigned to task', {
+        workerId,
+        taskId: task.taskId,
+        action: task.action,
+        repositoryId: task.repositoryId
+      });
     } catch (error) {
-      this.dependencies.logger.warn('Failed to assign task to worker instance', {
+      // 롤백: Worker 상태 복원
+      this.workers.set(workerId, previousWorker);
+      await this.dependencies.stateManager.saveWorker(previousWorker);
+
+      this.dependencies.logger.error('Failed to assign task to worker', {
         workerId,
         taskId: task.taskId,
         error
       });
+
+      throw error;
     }
   }
 
@@ -174,9 +200,11 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   }
 
   async getWorkerByTaskId(taskId: string): Promise<WorkerType | null> {
-    for (const worker of this.workers.values()) {
-      if (worker.currentTask?.taskId === taskId) {
-        return worker;
+    // Worker 인스턴스에서 현재 작업 확인
+    for (const [workerId, workerInstance] of this.workerInstances) {
+      const currentTask = workerInstance.getCurrentTask();
+      if (currentTask?.taskId === taskId) {
+        return this.workers.get(workerId) || null;
       }
     }
     return null;

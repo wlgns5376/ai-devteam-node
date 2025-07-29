@@ -5,7 +5,9 @@ import {
   WorkerStatus, 
   ManagerServiceConfig,
   ManagerError,
-  DeveloperConfig
+  DeveloperConfig,
+  WorkerTask,
+  WorkerAction
 } from '@/types';
 
 describe('WorkerPoolManager', () => {
@@ -296,6 +298,91 @@ describe('WorkerPoolManager', () => {
       expect(poolStatus.workers).toHaveLength(0);
       expect(poolStatus.activeWorkers).toBe(0);
       expect(mockLogger.info).toHaveBeenCalledWith('Worker pool shutdown completed');
+    });
+  });
+
+  describe('Worker 할당 동시성', () => {
+    beforeEach(async () => {
+      await workerPoolManager.initializePool();
+    });
+
+    it('이미 할당된 Worker에 재할당 시 에러를 발생시켜야 한다', async () => {
+      // Given: Worker를 작업에 할당
+      const worker = await workerPoolManager.getAvailableWorker();
+      const task1: WorkerTask = {
+        taskId: 'task-1',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+      await workerPoolManager.assignWorkerTask(worker!.id, task1);
+
+      // When & Then: 동일 Worker에 다른 작업 할당 시 에러
+      const task2: WorkerTask = {
+        taskId: 'task-2',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+      
+      await expect(
+        workerPoolManager.assignWorkerTask(worker!.id, task2)
+      ).rejects.toThrow(`Worker ${worker!.id} is not available`);
+    });
+
+    it('Worker 인스턴스가 없는 경우 에러를 발생시켜야 한다', async () => {
+      // Given: Worker Map에는 있지만 인스턴스가 없는 상황 시뮬레이션
+      const poolStatus = workerPoolManager.getPoolStatus();
+      const worker = poolStatus.workers[0];
+      
+      if (!worker) {
+        throw new Error('No worker found in pool');
+      }
+      
+      // Worker 인스턴스를 제거 (private 필드 접근을 위한 우회)
+      const manager = workerPoolManager as any;
+      manager.workerInstances.delete(worker.id);
+
+      // When & Then: 할당 시 에러
+      const task: WorkerTask = {
+        taskId: 'task-123',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+      
+      await expect(
+        workerPoolManager.assignWorkerTask(worker.id, task)
+      ).rejects.toThrow(`Worker instance not found: ${worker.id}`);
+    });
+
+    it('할당 실패 시 Worker 상태를 롤백해야 한다', async () => {
+      // Given: Worker 가져오기
+      const worker = await workerPoolManager.getAvailableWorker();
+      const originalStatus = worker!.status;
+      
+      // Worker 인스턴스의 assignTask가 실패하도록 mock
+      const manager = workerPoolManager as any;
+      const workerInstance = manager.workerInstances.get(worker!.id);
+      workerInstance.assignTask = jest.fn().mockRejectedValue(new Error('Assignment failed'));
+
+      const task: WorkerTask = {
+        taskId: 'task-fail',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
+      // When: 할당 시도 (실패할 것임)
+      await expect(
+        workerPoolManager.assignWorkerTask(worker!.id, task)
+      ).rejects.toThrow('Assignment failed');
+
+      // Then: Worker 상태가 원래대로 롤백됨
+      const poolStatus = workerPoolManager.getPoolStatus();
+      const rolledBackWorker = poolStatus.workers.find(w => w.id === worker!.id);
+      expect(rolledBackWorker!.status).toBe(originalStatus);
+      expect(rolledBackWorker!.currentTask).toBeUndefined();
     });
   });
 });
