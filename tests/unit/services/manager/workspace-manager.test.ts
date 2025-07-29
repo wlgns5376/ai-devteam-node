@@ -99,6 +99,68 @@ describe('WorkspaceManager', () => {
       );
     });
 
+    it('boardItem의 contentNumber를 사용하여 브랜치명을 생성해야 한다', async () => {
+      // Given: boardItem이 있는 작업 정보
+      const taskId = 'PVTI_lADOABCD';
+      const repositoryId = 'owner/repo';
+      const boardItem = {
+        id: taskId,
+        title: 'Fix bug',
+        contentNumber: 123,
+        contentType: 'issue' as const
+      };
+
+      jest.spyOn(fs, 'mkdir').mockResolvedValue(undefined);
+      jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not exists'));
+
+      // When: Workspace 생성
+      const workspaceInfo = await workspaceManager.createWorkspace(taskId, repositoryId, boardItem);
+
+      // Then: issue-123 형식의 브랜치명 생성
+      expect(workspaceInfo.branchName).toBe('issue-123');
+    });
+
+    it('PR의 경우 pr- 접두사를 사용해야 한다', async () => {
+      // Given: PR boardItem
+      const taskId = 'PVTI_lADOEFGH';
+      const repositoryId = 'owner/repo';
+      const boardItem = {
+        id: taskId,
+        title: 'Add feature',
+        contentNumber: 456,
+        contentType: 'pull_request' as const
+      };
+
+      jest.spyOn(fs, 'mkdir').mockResolvedValue(undefined);
+      jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not exists'));
+
+      // When: Workspace 생성
+      const workspaceInfo = await workspaceManager.createWorkspace(taskId, repositoryId, boardItem);
+
+      // Then: pr-456 형식의 브랜치명 생성
+      expect(workspaceInfo.branchName).toBe('pr-456');
+    });
+
+    it('contentNumber가 없으면 taskId를 브랜치명으로 사용해야 한다', async () => {
+      // Given: contentNumber가 없는 boardItem (DraftIssue)
+      const taskId = 'PVTI_lADOIJKL';
+      const repositoryId = 'owner/repo';
+      const boardItem = {
+        id: taskId,
+        title: 'Draft task',
+        contentType: 'draft_issue' as const
+      };
+
+      jest.spyOn(fs, 'mkdir').mockResolvedValue(undefined);
+      jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not exists'));
+
+      // When: Workspace 생성
+      const workspaceInfo = await workspaceManager.createWorkspace(taskId, repositoryId, boardItem);
+
+      // Then: taskId를 브랜치명으로 사용
+      expect(workspaceInfo.branchName).toBe(taskId);
+    });
+
     it('이미 존재하는 디렉토리는 재사용해야 한다', async () => {
       // Given: 이미 존재하는 디렉토리
       const taskId = 'task-123';

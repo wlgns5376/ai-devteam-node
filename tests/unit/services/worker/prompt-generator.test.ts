@@ -273,6 +273,7 @@ describe('PromptGenerator', () => {
         action: WorkerAction.MERGE_REQUEST,
         repositoryId: 'owner/repo',
         assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/42',
         boardItem: {
           id: 'task-merge',
           title: 'Merge approved PR'
@@ -286,7 +287,7 @@ describe('PromptGenerator', () => {
       expect(prompt).toContain('PR 병합을 진행합니다');
       expect(prompt).toContain(task.taskId);
       expect(prompt).toContain('GitHub CLI를 통한 병합');
-      expect(prompt).toContain('gh pr merge');
+      expect(prompt).toContain('gh pr merge 42');
       expect(prompt).toContain('gh pr view');
       expect(prompt).toContain('충돌 발생시 처리');
       expect(prompt).toContain('병합 완료 후 정리');
@@ -354,6 +355,110 @@ describe('PromptGenerator', () => {
       await expect(
         promptGenerator.generateNewTaskPrompt(invalidTask, workspaceInfo)
       ).rejects.toThrow('Invalid task: taskId cannot be empty');
+    });
+  });
+
+  describe('병합 프롬프트 생성', () => {
+    it('PR 병합을 위한 프롬프트를 생성해야 한다', async () => {
+      // Given: 병합 작업
+      const task: WorkerTask = {
+        taskId: 'PVTI_lADOABCD',
+        action: WorkerAction.MERGE_REQUEST,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/123',
+        boardItem: {
+          id: 'PVTI_lADOABCD',
+          title: 'Fix critical bug',
+          contentNumber: 123,
+          contentType: 'pull_request'
+        }
+      };
+
+      // When: 병합 프롬프트 생성
+      const prompt = await promptGenerator.generateMergePrompt(task);
+
+      // Then: 올바른 프롬프트 구성
+      expect(prompt).toContain('PR 병합을 진행합니다');
+      expect(prompt).toContain('PVTI_lADOABCD');
+      expect(prompt).toContain('owner/repo');
+      expect(prompt).toContain('https://github.com/owner/repo/pull/123');
+      expect(prompt).toContain('Fix critical bug');
+      expect(prompt).toContain('pr-123');
+      expect(prompt).toContain('gh pr view 123');
+      expect(prompt).toContain('gh pr merge 123');
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Generated merge request prompt',
+        expect.objectContaining({
+          taskId: 'PVTI_lADOABCD',
+          promptLength: expect.any(Number)
+        })
+      );
+    });
+
+    it('Issue 타입의 경우 issue- 접두사를 사용해야 한다', async () => {
+      // Given: Issue 기반 병합 작업
+      const task: WorkerTask = {
+        taskId: 'PVTI_lADOEFGH',
+        action: WorkerAction.MERGE_REQUEST,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/456',
+        boardItem: {
+          id: 'PVTI_lADOEFGH',
+          title: 'Implement feature',
+          contentNumber: 789,
+          contentType: 'issue'
+        }
+      };
+
+      // When: 병합 프롬프트 생성
+      const prompt = await promptGenerator.generateMergePrompt(task);
+
+      // Then: issue- 접두사 사용
+      expect(prompt).toContain('issue-789');
+    });
+
+    it('contentNumber가 없으면 taskId를 브랜치명으로 사용해야 한다', async () => {
+      // Given: contentNumber가 없는 병합 작업
+      const task: WorkerTask = {
+        taskId: 'PVTI_lADOIJKL',
+        action: WorkerAction.MERGE_REQUEST,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/111',
+        boardItem: {
+          id: 'PVTI_lADOIJKL',
+          title: 'Draft PR',
+          contentType: 'draft_issue'
+        }
+      };
+
+      // When: 병합 프롬프트 생성
+      const prompt = await promptGenerator.generateMergePrompt(task);
+
+      // Then: taskId를 브랜치명으로 사용
+      expect(prompt).toContain('PVTI_lADOIJKL');
+      expect(prompt).toContain('git merge PVTI_lADOIJKL');
+    });
+
+    it('pullRequestUrl이 없으면 에러를 발생시켜야 한다', async () => {
+      // Given: pullRequestUrl이 없는 병합 작업
+      const task: WorkerTask = {
+        taskId: 'PVTI_lADOMNOP',
+        action: WorkerAction.MERGE_REQUEST,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        boardItem: {
+          id: 'PVTI_lADOMNOP',
+          title: 'Test task'
+        }
+      };
+
+      // When & Then: 에러 발생
+      await expect(
+        promptGenerator.generateMergePrompt(task)
+      ).rejects.toThrow('Pull request URL is required for merge request');
     });
   });
 });

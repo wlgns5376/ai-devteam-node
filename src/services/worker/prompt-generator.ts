@@ -188,35 +188,47 @@ ${commentsSection}
   async generateMergePrompt(task: WorkerTask): Promise<string> {
     this.validateTaskInput(task);
 
+    if (!task.pullRequestUrl) {
+      throw new Error('Pull request URL is required for merge request');
+    }
+
+    // PR URL에서 PR 번호 추출 (예: https://github.com/owner/repo/pull/123)
+    const prNumber = task.pullRequestUrl.split('/').pop();
+    const branchName = task.boardItem?.contentNumber 
+      ? `${task.boardItem.contentType === 'pull_request' ? 'pr' : 'issue'}-${task.boardItem.contentNumber}`
+      : task.taskId;
+
     const prompt = `# PR 병합을 진행합니다
 
 ## 작업 정보
 - **작업 ID**: ${task.taskId}
 - **저장소**: ${task.repositoryId}
+- **PR URL**: ${task.pullRequestUrl}
 - **작업 제목**: ${task.boardItem?.title || 'PR 병합'}
+- **브랜치**: ${branchName}
 
 ## GitHub CLI를 통한 병합
 1. **PR 상태 확인**:
    \`\`\`bash
-   gh pr view ${task.taskId} --json state,mergeable,reviewDecision,statusCheckRollup
+   gh pr view ${prNumber} --json state,mergeable,reviewDecision,statusCheckRollup
    \`\`\`
 
 2. **병합 실행**:
    \`\`\`bash
    # GitHub CLI를 통한 병합 (권장)
-   gh pr merge ${task.taskId} --merge --delete-branch
+   gh pr merge ${prNumber} --merge --delete-branch
    
    # 또는 수동 병합이 필요한 경우
    git checkout main
    git pull origin main
-   git merge ${task.taskId}
+   git merge ${branchName}
    git push origin main
-   git branch -d ${task.taskId}
-   git push origin --delete ${task.taskId}
+   git branch -d ${branchName}
+   git push origin --delete ${branchName}
    \`\`\`
 
 3. **충돌 발생시 처리**:
-   - \`gh pr view ${task.taskId} --json mergeable\` 로 병합 가능 여부 확인
+   - \`gh pr view ${prNumber} --json mergeable\` 로 병합 가능 여부 확인
    - 충돌이 있으면 로컬에서 해결 후 다시 푸시
    - 테스트 재실행 및 검증
 

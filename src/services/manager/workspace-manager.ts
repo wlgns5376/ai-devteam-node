@@ -26,12 +26,17 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
     private readonly dependencies: WorkspaceManagerDependencies
   ) {}
 
-  async createWorkspace(taskId: string, repositoryId: string): Promise<WorkspaceInfo> {
+  async createWorkspace(taskId: string, repositoryId: string, boardItem?: any): Promise<WorkspaceInfo> {
     this.validateInputs(taskId, repositoryId);
 
     try {
       const workspaceDir = this.generateWorkspaceDirectory(repositoryId, taskId);
-      const branchName = taskId;
+      // boardItem에서 contentNumber와 contentType 정보를 사용하여 브랜치명 생성
+      let branchName = taskId;
+      if (boardItem?.contentNumber && boardItem?.contentType) {
+        const prefix = boardItem.contentType === 'pull_request' ? 'pr' : 'issue';
+        branchName = `${prefix}-${boardItem.contentNumber}`;
+      }
       const claudeLocalPath = path.join(workspaceDir, 'CLAUDE.local.md');
 
       // 디렉토리 존재 확인

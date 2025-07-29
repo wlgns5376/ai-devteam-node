@@ -79,7 +79,8 @@ describe('WorkspaceSetup', () => {
       // Then: 완전한 워크스페이스가 준비됨
       expect(mockWorkspaceManager.createWorkspace).toHaveBeenCalledWith(
         task.taskId,
-        task.repositoryId
+        task.repositoryId,
+        task.boardItem
       );
       expect(mockWorkspaceManager.setupWorktree).toHaveBeenCalledWith(expectedWorkspaceInfo);
       expect(mockWorkspaceManager.setupClaudeLocal).toHaveBeenCalledWith(expectedWorkspaceInfo);

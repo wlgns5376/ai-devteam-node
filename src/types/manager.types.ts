@@ -56,7 +56,7 @@ export interface WorkerPoolManagerInterface {
 }
 
 export interface WorkspaceManagerInterface {
-  createWorkspace(taskId: string, repositoryId: string): Promise<WorkspaceInfo>;
+  createWorkspace(taskId: string, repositoryId: string, boardItem?: any): Promise<WorkspaceInfo>;
   setupWorktree(workspaceInfo: WorkspaceInfo): Promise<void>;
   setupClaudeLocal(workspaceInfo: WorkspaceInfo): Promise<void>;
   cleanupWorkspace(taskId: string): Promise<void>;

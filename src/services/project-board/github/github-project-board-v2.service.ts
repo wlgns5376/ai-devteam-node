@@ -330,6 +330,8 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
     let createdAt = new Date();
     let updatedAt = new Date();
     let pullRequestUrls: string[] = [];
+    let contentNumber: number | undefined;
+    let contentType: 'issue' | 'pull_request' | 'draft_issue' | undefined;
 
     if (content) {
       if (content.__typename === 'Issue' || content.__typename === 'PullRequest') {
@@ -338,6 +340,8 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
         url = content.url;
         createdAt = new Date(content.createdAt);
         updatedAt = new Date(content.updatedAt);
+        contentNumber = content.number;
+        contentType = content.__typename === 'Issue' ? 'issue' : 'pull_request';
 
         // Assignees 처리
         if (content.assignees?.nodes && content.assignees.nodes.length > 0) {
@@ -356,6 +360,7 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
         description = content.body || undefined;
         createdAt = new Date(content.createdAt);
         updatedAt = new Date(content.updatedAt);
+        contentType = 'draft_issue';
 
         if (content.assignees?.nodes && content.assignees.nodes.length > 0) {
           assignee = content.assignees.nodes[0]?.login || null;
@@ -374,6 +379,8 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
       createdAt,
       updatedAt,
       pullRequestUrls,
+      contentNumber,
+      contentType,
       metadata: {
         type: item.type,
         repository: repoInfo ? `${repoInfo.owner}/${repoInfo.name}` : null,

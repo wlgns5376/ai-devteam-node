@@ -18,6 +18,8 @@ export interface ProjectBoardItem {
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly pullRequestUrls: ReadonlyArray<string>;
+  readonly contentNumber?: number | undefined;
+  readonly contentType?: 'issue' | 'pull_request' | 'draft_issue' | undefined;
   readonly metadata?: Record<string, unknown> | undefined;
 }
 

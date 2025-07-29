@@ -42,7 +42,8 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
       // 새 워크스페이스 생성
       let workspaceInfo = await this.dependencies.workspaceManager.createWorkspace(
         task.taskId,
-        task.repositoryId
+        task.repositoryId,
+        task.boardItem
       );
 
       // Git worktree 설정

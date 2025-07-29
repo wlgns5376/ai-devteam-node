@@ -50,6 +50,7 @@ export interface WorkerTask {
   readonly comments?: ReadonlyArray<any>; // PullRequestComment from planner types
   readonly assignedAt: Date;
   readonly repositoryId: string;
+  readonly pullRequestUrl?: string; // For merge request actions
 }
 
 export interface WorkerProgress {
