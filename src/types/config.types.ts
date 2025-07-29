@@ -2,12 +2,18 @@ import { ServiceProvider, ProviderConfig } from './provider.types';
 
 export { ServiceProvider } from './provider.types';
 
+export interface RepositoryFilterConfig {
+  readonly allowedRepositories?: string[];
+  readonly mode: 'whitelist' | 'blacklist';
+}
+
 export interface PlannerConfig {
   readonly pollingIntervalMs: number;
   readonly projectBoard: {
     readonly provider: ServiceProvider;
     readonly boardId: string;
     readonly config: ProviderConfig;
+    readonly repositoryFilter?: RepositoryFilterConfig;
   };
   readonly repository: {
     readonly provider: ServiceProvider;

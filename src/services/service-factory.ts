@@ -153,8 +153,9 @@ export class ServiceFactory {
     const owner = process.env.GITHUB_OWNER;
     const projectNumber = process.env.GITHUB_PROJECT_NUMBER;
     const token = process.env.GITHUB_TOKEN;
-    const allowedRepos = process.env.GITHUB_ALLOWED_REPOSITORIES;
-    const filterMode = process.env.GITHUB_FILTER_MODE as 'whitelist' | 'blacklist' | undefined;
+    const githubRepos = process.env.GITHUB_REPOS;
+    const githubRepo = process.env.GITHUB_REPO;
+    const filterMode = process.env.GITHUB_REPO_FILTER_MODE as 'whitelist' | 'blacklist' | undefined;
 
     if (!owner) {
       throw new Error('GITHUB_OWNER environment variable is required');
@@ -174,10 +175,10 @@ export class ServiceFactory {
     // 레포지토리 필터 설정
     let repositoryFilter: { allowedRepositories?: string[]; mode: 'whitelist' | 'blacklist' } | undefined;
     
-    if (allowedRepos) {
-      // 쉼표나 세미콜론으로 구분된 레포지토리 목록 파싱
-      const repositories = allowedRepos
-        .split(/[,;]/)
+    // GITHUB_REPOS 환경변수 우선 (새로운 방식)
+    if (githubRepos) {
+      const repositories = githubRepos
+        .split(',')
         .map(repo => repo.trim())
         .filter(repo => repo.length > 0);
 
@@ -187,6 +188,13 @@ export class ServiceFactory {
           mode: filterMode || 'whitelist'
         };
       }
+    }
+    // GITHUB_REPO 환경변수 사용 (기존 방식)
+    else if (githubRepo) {
+      repositoryFilter = {
+        allowedRepositories: [`${owner}/${githubRepo}`],
+        mode: 'whitelist'
+      };
     }
 
     return {

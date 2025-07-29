@@ -1,5 +1,6 @@
 import { ProjectBoardItem } from './project-board.types';
 import { PullRequestComment } from './pull-request.types';
+import { RepositoryFilterConfig } from './config.types';
 
 export interface PlannerServiceConfig {
   readonly boardId: string;
@@ -7,6 +8,7 @@ export interface PlannerServiceConfig {
   readonly monitoringIntervalMs: number;
   readonly maxRetryAttempts: number;
   readonly timeoutMs: number;
+  readonly repositoryFilter?: RepositoryFilterConfig;
 }
 
 export interface PlannerStatus {

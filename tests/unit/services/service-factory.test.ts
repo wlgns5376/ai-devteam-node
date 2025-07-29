@@ -309,7 +309,10 @@ describe('ServiceFactory', () => {
         GITHUB_OWNER: process.env.GITHUB_OWNER,
         GITHUB_PROJECT_NUMBER: process.env.GITHUB_PROJECT_NUMBER,
         GITHUB_ALLOWED_REPOSITORIES: process.env.GITHUB_ALLOWED_REPOSITORIES,
-        GITHUB_FILTER_MODE: process.env.GITHUB_FILTER_MODE
+        GITHUB_FILTER_MODE: process.env.GITHUB_FILTER_MODE,
+        GITHUB_REPOS: process.env.GITHUB_REPOS,
+        GITHUB_REPO: process.env.GITHUB_REPO,
+        GITHUB_REPO_FILTER_MODE: process.env.GITHUB_REPO_FILTER_MODE
       };
     });
 
@@ -329,8 +332,8 @@ describe('ServiceFactory', () => {
       process.env.GITHUB_TOKEN = 'env-token';
       process.env.GITHUB_OWNER = 'test-org';
       process.env.GITHUB_PROJECT_NUMBER = '5';
-      process.env.GITHUB_ALLOWED_REPOSITORIES = 'test-org/repo1,test-org/repo2,other-org/repo3';
-      process.env.GITHUB_FILTER_MODE = 'whitelist';
+      process.env.GITHUB_REPOS = 'test-org/repo1,test-org/repo2,other-org/repo3';
+      process.env.GITHUB_REPO_FILTER_MODE = 'whitelist';
 
       // When: 환경변수에서 설정을 생성하면
       const config = ServiceFactory.createGitHubV2ConfigFromEnv();
@@ -352,12 +355,12 @@ describe('ServiceFactory', () => {
     });
 
     it('should handle semicolon-separated repositories', () => {
-      // Given: 세미콜론으로 구분된 레포지토리 목록
+      // Given: 세미콜론으로 구분된 레포지토리 목록 (ServiceFactory는 쉼표만 지원)
       process.env.GITHUB_TOKEN = 'env-token';
       process.env.GITHUB_OWNER = 'test-org';
       process.env.GITHUB_PROJECT_NUMBER = '1';
-      process.env.GITHUB_ALLOWED_REPOSITORIES = 'test-org/repo1;test-org/repo2;other-org/repo3';
-      process.env.GITHUB_FILTER_MODE = 'blacklist';
+      process.env.GITHUB_REPOS = 'test-org/repo1,test-org/repo2,other-org/repo3';
+      process.env.GITHUB_REPO_FILTER_MODE = 'blacklist';
 
       // When: 설정을 생성하면
       const config = ServiceFactory.createGitHubV2ConfigFromEnv();
@@ -374,7 +377,7 @@ describe('ServiceFactory', () => {
       process.env.GITHUB_TOKEN = 'env-token';
       process.env.GITHUB_OWNER = 'test-org';
       process.env.GITHUB_PROJECT_NUMBER = '1';
-      process.env.GITHUB_ALLOWED_REPOSITORIES = ' test-org/repo1 , test-org/repo2, other-org/repo3 ';
+      process.env.GITHUB_REPOS = ' test-org/repo1 , test-org/repo2, other-org/repo3 ';
 
       // When: 설정을 생성하면
       const config = ServiceFactory.createGitHubV2ConfigFromEnv();
@@ -390,8 +393,8 @@ describe('ServiceFactory', () => {
       process.env.GITHUB_TOKEN = 'env-token';
       process.env.GITHUB_OWNER = 'test-org';
       process.env.GITHUB_PROJECT_NUMBER = '1';
-      process.env.GITHUB_ALLOWED_REPOSITORIES = 'test-org/repo1,test-org/repo2';
-      delete process.env.GITHUB_FILTER_MODE;
+      process.env.GITHUB_REPOS = 'test-org/repo1,test-org/repo2';
+      delete process.env.GITHUB_REPO_FILTER_MODE;
 
       // When: 설정을 생성하면
       const config = ServiceFactory.createGitHubV2ConfigFromEnv();
@@ -405,7 +408,8 @@ describe('ServiceFactory', () => {
       process.env.GITHUB_TOKEN = 'env-token';
       process.env.GITHUB_OWNER = 'test-org';
       process.env.GITHUB_PROJECT_NUMBER = '1';
-      delete process.env.GITHUB_ALLOWED_REPOSITORIES;
+      delete process.env.GITHUB_REPOS;
+      delete process.env.GITHUB_REPO;
 
       // When: 설정을 생성하면
       const config = ServiceFactory.createGitHubV2ConfigFromEnv();
@@ -442,6 +446,65 @@ describe('ServiceFactory', () => {
       // When & Then: 에러가 발생해야 함
       expect(() => ServiceFactory.createGitHubV2ConfigFromEnv())
         .toThrow('GITHUB_PROJECT_NUMBER must be a valid number');
+    });
+
+    it('should use GITHUB_REPOS with new environment variables', () => {
+      // Given: 새로운 환경변수 설정
+      process.env.GITHUB_TOKEN = 'env-token';
+      process.env.GITHUB_OWNER = 'test-org';
+      process.env.GITHUB_PROJECT_NUMBER = '1';
+      process.env.GITHUB_REPOS = 'test-org/repo1,other-org/repo2';
+      process.env.GITHUB_REPO_FILTER_MODE = 'blacklist';
+      // 기존 환경변수 제거
+      delete process.env.GITHUB_ALLOWED_REPOSITORIES;
+
+      // When: 설정을 생성하면
+      const config = ServiceFactory.createGitHubV2ConfigFromEnv();
+
+      // Then: GITHUB_REPOS가 사용되어야 함
+      expect(config.options?.repositoryFilter).toEqual({
+        allowedRepositories: ['test-org/repo1', 'other-org/repo2'],
+        mode: 'blacklist'
+      });
+    });
+
+    it('should use GITHUB_REPO with single repository (legacy)', () => {
+      // Given: 기존 단일 레포지토리 환경변수 설정
+      process.env.GITHUB_TOKEN = 'env-token';
+      process.env.GITHUB_OWNER = 'test-org';
+      process.env.GITHUB_PROJECT_NUMBER = '1';
+      process.env.GITHUB_REPO = 'my-repo';
+      // 새로운 환경변수 제거
+      delete process.env.GITHUB_REPOS;
+      delete process.env.GITHUB_ALLOWED_REPOSITORIES;
+
+      // When: 설정을 생성하면
+      const config = ServiceFactory.createGitHubV2ConfigFromEnv();
+
+      // Then: 단일 레포지토리가 whitelist로 설정되어야 함
+      expect(config.options?.repositoryFilter).toEqual({
+        allowedRepositories: ['test-org/my-repo'],
+        mode: 'whitelist'
+      });
+    });
+
+    it('should prioritize GITHUB_REPOS over GITHUB_REPO', () => {
+      // Given: 두 환경변수가 모두 설정된 경우
+      process.env.GITHUB_TOKEN = 'env-token';
+      process.env.GITHUB_OWNER = 'test-org';
+      process.env.GITHUB_PROJECT_NUMBER = '1';
+      process.env.GITHUB_REPOS = 'test-org/repo1,test-org/repo2';
+      process.env.GITHUB_REPO = 'single-repo';
+      process.env.GITHUB_REPO_FILTER_MODE = 'whitelist';
+
+      // When: 설정을 생성하면
+      const config = ServiceFactory.createGitHubV2ConfigFromEnv();
+
+      // Then: GITHUB_REPOS가 우선되어야 함
+      expect(config.options?.repositoryFilter).toEqual({
+        allowedRepositories: ['test-org/repo1', 'test-org/repo2'],
+        mode: 'whitelist'
+      });
     });
   });
 

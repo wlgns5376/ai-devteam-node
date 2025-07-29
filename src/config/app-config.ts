@@ -26,6 +26,9 @@ export interface AppEnvironment {
   readonly REPOSITORY_NAME?: string;
   readonly GITHUB_PROJECT_NUMBER?: string;
   readonly GITHUB_OWNER?: string;
+  readonly GITHUB_REPO?: string;
+  readonly GITHUB_REPOS?: string;
+  readonly GITHUB_REPO_FILTER_MODE?: string;
 }
 
 export class AppConfigLoader {
@@ -35,14 +38,18 @@ export class AppConfigLoader {
     const logLevel = env.LOG_LEVEL || 'info';
     const logFile = env.LOG_FILE || './logs/app.log';
 
+    // 레포지토리 필터 설정 처리
+    const repositoryFilter = this.buildRepositoryFilter(env);
+
     return {
       nodeEnv,
       planner: {
         boardId: env.GITHUB_PROJECT_NUMBER ? `PVT_kwHOAJ39a84A91F1` : 'default-board', // GitHub Project ID
-        repoId: `${env.GITHUB_OWNER || env.REPOSITORY_OWNER || 'example'}/${env.REPOSITORY_NAME || 'repo'}`,
+        repoId: `${env.GITHUB_OWNER || env.REPOSITORY_OWNER || 'example'}/${env.GITHUB_REPO || env.REPOSITORY_NAME || 'repo'}`,
         monitoringIntervalMs: nodeEnv === 'development' ? 15000 : 30000, // 15초 vs 30초
         maxRetryAttempts: 3,
-        timeoutMs: 60000
+        timeoutMs: 60000,
+        repositoryFilter
       },
       manager: {
         workspaceRoot,
@@ -99,6 +106,30 @@ export class AppConfigLoader {
       developer: { ...defaultConfig.developer, ...partialConfig.developer },
       logger: { ...defaultConfig.logger, ...partialConfig.logger }
     };
+  }
+
+  private static buildRepositoryFilter(env: AppEnvironment): any {
+    // GITHUB_REPOS가 설정된 경우 (새로운 방식)
+    if (env.GITHUB_REPOS) {
+      const repos = env.GITHUB_REPOS.split(',').map(repo => repo.trim()).filter(repo => repo.length > 0);
+      const mode = (env.GITHUB_REPO_FILTER_MODE || 'whitelist') as 'whitelist' | 'blacklist';
+      
+      return {
+        allowedRepositories: repos,
+        mode
+      };
+    }
+    
+    // GITHUB_REPO가 설정된 경우 (기존 방식)
+    if (env.GITHUB_REPO && env.GITHUB_OWNER) {
+      return {
+        allowedRepositories: [`${env.GITHUB_OWNER}/${env.GITHUB_REPO}`],
+        mode: 'whitelist' as const
+      };
+    }
+    
+    // 둘 다 없는 경우 필터 사용 안 함
+    return undefined;
   }
 
   static validate(config: AppConfig): void {
