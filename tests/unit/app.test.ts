@@ -12,7 +12,7 @@ jest.mock('../../src/services/manager/worker-pool-manager');
 jest.mock('../../src/services/planner');
 jest.mock('../../src/services/logger');
 
-describe('AIDevTeamApp - request_merge action', () => {
+describe('AIDevTeamApp - Worker execution fixes', () => {
   let app: AIDevTeamApp;
   let mockWorkerPoolManager: jest.Mocked<WorkerPoolManager>;
   let mockLogger: jest.Mocked<Logger>;
@@ -78,7 +78,7 @@ describe('AIDevTeamApp - request_merge action', () => {
   const mockRequest = {
     taskId: 'PVTI_test123',
     action: 'request_merge' as const,
-    pullRequestUrl: 'https://github.com/test/repo/pull/1',
+    pullRequestUrl: 'https://github.com/wlgns5376/ai-devteam-test/pull/5',
     boardItem: {
       id: 'PVTI_test123',
       title: 'Test Task',
@@ -100,10 +100,18 @@ describe('AIDevTeamApp - request_merge action', () => {
       debug: jest.fn()
     } as any;
 
+    const mockWorkerInstance = {
+      getStatus: jest.fn().mockReturnValue(WorkerStatus.IDLE),
+      getCurrentTask: jest.fn().mockReturnValue(null),
+      startExecution: jest.fn().mockResolvedValue({ success: true, pullRequestUrl: 'https://github.com/test/repo/pull/1' })
+    };
+
     mockWorkerPoolManager = {
       getWorkerByTaskId: jest.fn(),
       getAvailableWorker: jest.fn(),
       assignWorkerTask: jest.fn(),
+      getWorkerInstance: jest.fn().mockResolvedValue(mockWorkerInstance),
+      releaseWorker: jest.fn(),
       initializePool: jest.fn(),
       shutdown: jest.fn()
     } as any;
@@ -119,11 +127,11 @@ describe('AIDevTeamApp - request_merge action', () => {
     (app as any).workerPoolManager = mockWorkerPoolManager;
     (app as any).planner = mockPlanner;
     (app as any).isInitialized = true;
-    (app as any).extractRepositoryFromBoardItem = jest.fn().mockReturnValue('test/repo');
+    // extractRepositoryFromBoardItem을 실제 구현으로 유지
   });
 
   describe('handleTaskRequest - request_merge with existing worker', () => {
-    it('기존 worker가 있을 때 merge 요청을 성공적으로 처리해야 한다', async () => {
+    it('기존 worker가 있을 때 merge 요청을 성공적으로 처리하고 즉시 실행해야 한다', async () => {
       // Given
       mockWorkerPoolManager.getWorkerByTaskId.mockResolvedValue(mockWorker);
 
@@ -137,10 +145,11 @@ describe('AIDevTeamApp - request_merge action', () => {
         action: 'merge_request',
         pullRequestUrl: mockRequest.pullRequestUrl,
         boardItem: mockRequest.boardItem,
-        repositoryId: 'test/repo',
+        repositoryId: 'wlgns5376/ai-devteam-test',
         assignedAt: expect.any(Date)
       });
-      expect(mockLogger.info).toHaveBeenCalledWith('Merge request task assigned to worker', {
+      expect(mockWorkerPoolManager.getWorkerInstance).toHaveBeenCalledWith(mockWorker.id, undefined);
+      expect(mockLogger.info).toHaveBeenCalledWith('Merge request task assigned and started', {
         taskId: mockRequest.taskId,
         workerId: mockWorker.id,
         pullRequestUrl: mockRequest.pullRequestUrl
@@ -150,6 +159,39 @@ describe('AIDevTeamApp - request_merge action', () => {
         status: ResponseStatus.ACCEPTED,
         message: 'Merge request processing started',
         workerStatus: 'processing_merge'
+      });
+    });
+
+    it('Worker가 이미 작업 중일 때 중복 처리를 방지해야 한다', async () => {
+      // Given
+      const busyWorker = { ...mockWorker, status: WorkerStatus.WORKING };
+      const mockBusyWorkerInstance = {
+        getStatus: jest.fn().mockReturnValue(WorkerStatus.WORKING),
+        getCurrentTask: jest.fn().mockReturnValue({ taskId: mockRequest.taskId }),
+        startExecution: jest.fn()
+      } as any;
+      
+      mockWorkerPoolManager.getWorkerByTaskId.mockResolvedValue(busyWorker);
+      mockWorkerPoolManager.getWorkerInstance.mockResolvedValue(mockBusyWorkerInstance);
+
+      // When
+      const result = await (app as any).handleTaskRequest(mockRequest);
+
+      // Then
+      expect(mockWorkerPoolManager.getWorkerByTaskId).toHaveBeenCalledWith(mockRequest.taskId);
+      expect(mockWorkerPoolManager.getWorkerInstance).toHaveBeenCalledWith(busyWorker.id, undefined);
+      expect(mockBusyWorkerInstance.getStatus).toHaveBeenCalled();
+      expect(mockWorkerPoolManager.assignWorkerTask).not.toHaveBeenCalled();
+      expect(mockLogger.info).toHaveBeenCalledWith('Worker already processing merge request', {
+        taskId: mockRequest.taskId,
+        workerId: busyWorker.id,
+        status: WorkerStatus.WORKING
+      });
+      expect(result).toEqual({
+        taskId: mockRequest.taskId,
+        status: ResponseStatus.ACCEPTED,
+        message: 'Merge request already being processed',
+        workerStatus: 'already_processing'
       });
     });
   });
@@ -175,7 +217,7 @@ describe('AIDevTeamApp - request_merge action', () => {
         action: 'merge_request',
         pullRequestUrl: mockRequest.pullRequestUrl,
         boardItem: mockRequest.boardItem,
-        repositoryId: 'test/repo',
+        repositoryId: 'wlgns5376/ai-devteam-test',
         assignedAt: expect.any(Date)
       });
       expect(result).toEqual({
@@ -204,6 +246,58 @@ describe('AIDevTeamApp - request_merge action', () => {
         message: 'No available worker for merge request',
         workerStatus: 'no_available_worker'
       });
+    });
+  });
+
+  describe('extractRepositoryFromBoardItem', () => {
+    it('PR URL에서 저장소 ID를 올바르게 추출해야 한다', () => {
+      // Given
+      const pullRequestUrl = 'https://github.com/wlgns5376/ai-devteam-test/pull/5';
+      const boardItem = { id: 'test' };
+
+      // When
+      const result = (app as any).extractRepositoryFromBoardItem(boardItem, pullRequestUrl);
+
+      // Then
+      expect(result).toBe('wlgns5376/ai-devteam-test');
+    });
+
+    it('PR URL이 없으면 boardItem의 pullRequestUrls에서 추출해야 한다', () => {
+      // Given
+      const boardItem = {
+        pullRequestUrls: ['https://github.com/owner/repo/pull/1']
+      };
+
+      // When
+      const result = (app as any).extractRepositoryFromBoardItem(boardItem);
+
+      // Then
+      expect(result).toBe('owner/repo');
+    });
+
+    it('모든 정보가 없으면 config의 repoId를 사용해야 한다', () => {
+      // Given
+      const boardItem = {};
+      (app as any).config = { planner: { repoId: 'fallback/repo' } };
+
+      // When
+      const result = (app as any).extractRepositoryFromBoardItem(boardItem);
+
+      // Then
+      expect(result).toBe('fallback/repo');
+    });
+
+    it('잘못된 PR URL 형식에서도 안전하게 처리해야 한다', () => {
+      // Given
+      const pullRequestUrl = 'invalid-url';
+      const boardItem = {};
+      (app as any).config = { planner: { repoId: 'fallback/repo' } };
+
+      // When
+      const result = (app as any).extractRepositoryFromBoardItem(boardItem, pullRequestUrl);
+
+      // Then
+      expect(result).toBe('fallback/repo');
     });
   });
 });
