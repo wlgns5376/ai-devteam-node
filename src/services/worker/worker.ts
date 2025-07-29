@@ -85,6 +85,24 @@ export class Worker implements WorkerInterface {
         taskId: task.taskId
       });
 
+      // 0. Developer 초기화 확인 및 수행
+      if (this.dependencies.developer && typeof this.dependencies.developer.initialize === 'function') {
+        try {
+          await this.dependencies.developer.initialize();
+          this.dependencies.logger.debug('Developer initialized successfully', {
+            workerId: this.id,
+            developerType: this.developerType
+          });
+        } catch (error) {
+          this.dependencies.logger.error('Developer initialization failed', {
+            workerId: this.id,
+            developerType: this.developerType,
+            error
+          });
+          throw error;
+        }
+      }
+
       // 1. 워크스페이스 준비
       this.updateProgress(WorkerStage.PREPARING_WORKSPACE, '워크스페이스 준비 중');
       const workspaceInfo = await this.dependencies.workspaceSetup.prepareWorkspace(task);
