@@ -4,7 +4,8 @@ import { StateManager } from '@/services/state-manager';
 import { 
   WorkerStatus, 
   ManagerServiceConfig,
-  ManagerError
+  ManagerError,
+  DeveloperConfig
 } from '@/types';
 
 describe('WorkerPoolManager', () => {
@@ -12,6 +13,7 @@ describe('WorkerPoolManager', () => {
   let mockLogger: jest.Mocked<Logger>;
   let mockStateManager: jest.Mocked<StateManager>;
   let config: ManagerServiceConfig;
+  let developerConfig: DeveloperConfig;
 
   beforeEach(() => {
     // Given: Mock 의존성 설정
@@ -38,9 +40,19 @@ describe('WorkerPoolManager', () => {
       repositoryCacheTimeoutMs: 300000
     };
 
+    developerConfig = {
+      timeoutMs: 30000,
+      maxRetries: 3,
+      retryDelayMs: 1000,
+      claude: {
+        apiKey: 'test-api-key'
+      }
+    };
+
     workerPoolManager = new WorkerPoolManager(config, {
       logger: mockLogger,
-      stateManager: mockStateManager
+      stateManager: mockStateManager,
+      developerConfig
     });
   });
 

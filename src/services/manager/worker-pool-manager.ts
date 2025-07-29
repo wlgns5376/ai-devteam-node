@@ -5,10 +5,12 @@ import {
   ManagerError
 } from '@/types/manager.types';
 import { Worker as WorkerType, WorkerPool, WorkerStatus, WorkerUpdate } from '@/types/worker.types';
+import { DeveloperConfig, DeveloperType } from '@/types/developer.types';
 import { Worker } from '../worker/worker';
 import { WorkspaceSetup } from '../worker/workspace-setup';
 import { PromptGenerator } from '../worker/prompt-generator';
 import { ResultProcessor } from '../worker/result-processor';
+import { DeveloperFactory } from '../developer/developer-factory';
 import { Logger } from '../logger';
 import { StateManager } from '../state-manager';
 
@@ -16,6 +18,7 @@ interface WorkerPoolManagerDependencies {
   readonly logger: Logger;
   readonly stateManager: StateManager;
   readonly workspaceManager?: WorkspaceManagerInterface;
+  readonly developerConfig: DeveloperConfig;
 }
 
 export class WorkerPoolManager implements WorkerPoolManagerInterface {
@@ -291,6 +294,13 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   }
 
   private createWorkerInstance(worker: WorkerType): Worker {
+    // 실제 Developer 인스턴스 생성
+    const developer = DeveloperFactory.create(
+      worker.developerType,
+      this.dependencies.developerConfig,
+      { logger: this.dependencies.logger }
+    );
+
     // Worker 의존성 생성
     const dependencies = {
       logger: this.dependencies.logger,
@@ -304,22 +314,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       resultProcessor: new ResultProcessor({
         logger: this.dependencies.logger
       }),
-      developer: {
-        // Mock developer - 추후 실제 Developer 구현으로 교체 필요
-        async executePrompt(prompt: string, workspaceDir: string): Promise<any> {
-          return {
-            success: true,
-            output: 'Mock developer output',
-            rawOutput: 'Mock raw output'
-          };
-        },
-        async isAvailable(): Promise<boolean> {
-          return true;
-        },
-        getType(): 'claude' | 'gemini' {
-          return worker.developerType;
-        }
-      }
+      developer
     };
 
     return new Worker(
