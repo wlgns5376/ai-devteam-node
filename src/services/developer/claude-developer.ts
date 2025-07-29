@@ -12,6 +12,8 @@ import { ContextFileManager, ContextFileConfig } from './context-file-manager';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
+import * as fs from 'fs/promises';
+import * as os from 'os';
 
 const execAsync = promisify(exec);
 
@@ -84,6 +86,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
     }
 
     const startTime = new Date();
+    let promptFilePath: string | undefined;
 
     try {
       this.dependencies.logger.debug('Executing Claude prompt', { 
@@ -94,8 +97,11 @@ export class ClaudeDeveloper implements DeveloperInterface {
       // 긴 컨텍스트 처리 및 최적화된 프롬프트 생성
       const optimizedPrompt = await this.processLongContext(prompt, workspaceDir);
 
+      // 프롬프트를 tmp 파일로 저장
+      promptFilePath = await this.createPromptFile(optimizedPrompt);
+
       // Claude CLI 명령어 구성
-      const command = this.buildClaudeCommand(optimizedPrompt);
+      const command = this.buildClaudeCommand(promptFilePath);
       
       // 환경 변수 설정 (API 키가 있으면 설정, 없으면 로그인된 상태 사용)
       const env = {
@@ -157,9 +163,18 @@ export class ClaudeDeveloper implements DeveloperInterface {
         this.dependencies.logger.warn('Claude execution completed with warnings', { stderr });
       }
 
+      // tmp 파일 정리
+      if (promptFilePath) {
+        await this.cleanupPromptFile(promptFilePath);
+      }
+
       return output;
       
     } catch (error) {
+      // 에러 발생 시에도 tmp 파일 정리
+      if (promptFilePath) {
+        await this.cleanupPromptFile(promptFilePath);
+      }
       this.dependencies.logger.error('Claude Developer execution failed', { 
         error, 
         prompt: prompt.substring(0, 100) + '...',
@@ -219,12 +234,9 @@ export class ClaudeDeveloper implements DeveloperInterface {
   }
 
 
-  private buildClaudeCommand(prompt: string): string {
-    // 프롬프트에서 따옴표 이스케이프
-    const escapedPrompt = prompt.replace(/"/g, '\\"');
-    
-    // claude -p "프롬프트" 형태로 명령어 구성
-    return `claude --dangerously-skip-permissions -p "${escapedPrompt}"`;
+  private buildClaudeCommand(promptFilePath: string): string {
+    // 파일을 cat으로 읽어서 파이프로 전달하는 방식
+    return `cat "${promptFilePath}" | claude --dangerously-skip-permissions -p`;
   }
 
   /**
@@ -418,5 +430,50 @@ export class ClaudeDeveloper implements DeveloperInterface {
 `);
 
     return sections.join('\n');
+  }
+
+  /**
+   * 프롬프트를 임시 파일로 저장
+   */
+  private async createPromptFile(prompt: string): Promise<string> {
+    try {
+      const tmpDir = os.tmpdir();
+      const timestamp = Date.now();
+      const filename = `claude-prompt-${timestamp}-${Math.random().toString(36).substr(2, 9)}.txt`;
+      const filePath = path.join(tmpDir, filename);
+
+      await fs.writeFile(filePath, prompt, 'utf-8');
+
+      this.dependencies.logger.debug('Prompt file created', { 
+        filePath, 
+        promptLength: prompt.length 
+      });
+
+      return filePath;
+    } catch (error) {
+      this.dependencies.logger.error('Failed to create prompt file', { error });
+      throw new DeveloperError(
+        'Failed to create temporary prompt file',
+        DeveloperErrorCode.EXECUTION_FAILED,
+        'claude',
+        { originalError: error }
+      );
+    }
+  }
+
+  /**
+   * 임시 프롬프트 파일 정리
+   */
+  private async cleanupPromptFile(filePath: string): Promise<void> {
+    try {
+      await fs.unlink(filePath);
+      this.dependencies.logger.debug('Prompt file cleaned up', { filePath });
+    } catch (error) {
+      // 파일 삭제 실패는 로그만 남기고 에러를 던지지 않음
+      this.dependencies.logger.warn('Failed to cleanup prompt file', { 
+        filePath, 
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 }

@@ -180,9 +180,9 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
         expect(output.metadata.duration).toBeGreaterThan(0);
         expect(output.rawOutput).toBe(mockOutput);
         
-        // Claude CLI 명령어 실행 확인
+        // Claude CLI 명령어 실행 확인 (파일을 통한 파이프 방식)
         expect(mockedExec).toHaveBeenCalledWith(
-          'claude --dangerously-skip-permissions -p "사용자 인증 기능을 구현해주세요"',
+          expect.stringMatching(/^cat ".*claude-prompt-.*\.txt" \| claude --dangerously-skip-permissions -p$/),
           expect.objectContaining({
             cwd: workspaceDir,
             timeout: 30000,
@@ -364,9 +364,9 @@ $ git commit -m "Refactor code structure"
       const prompt = '테스트 프롬프트';
       await claudeDeveloper.executePrompt(prompt, '/tmp/workspace');
 
-      // Then: 올바른 명령어 확인
+      // Then: cat 파이프 명령어 패턴 확인
       expect(mockedExec).toHaveBeenCalledWith(
-        `claude --dangerously-skip-permissions -p "${prompt}"`,
+        expect.stringMatching(/^cat ".*\.txt" \| claude --dangerously-skip-permissions -p$/),
         expect.objectContaining({
           cwd: '/tmp/workspace',
           timeout: 30000
@@ -375,7 +375,7 @@ $ git commit -m "Refactor code structure"
       );
     });
 
-    it('프롬프트에 따옴표가 있으면 이스케이프되어야 한다', async () => {
+    it('프롬프트가 임시 파일을 통해 전달되어야 한다', async () => {
       // Given: 초기화
       mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
         process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
@@ -383,21 +383,30 @@ $ git commit -m "Refactor code structure"
       });
       await claudeDeveloper.initialize();
 
+      const mockWrite = jest.spyOn(require('fs/promises'), 'writeFile').mockResolvedValue(undefined);
+      const mockUnlink = jest.spyOn(require('fs/promises'), 'unlink').mockResolvedValue(undefined);
+
       mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
         process.nextTick(() => callback(null, { stdout: '작업 완료', stderr: '' }));
         return {} as any;
       });
 
-      // When: 따옴표가 포함된 프롬프트 실행
+      // When: 프롬프트 실행
       const prompt = '이 "코드"를 분석해주세요';
       await claudeDeveloper.executePrompt(prompt, '/tmp/workspace');
 
-      // Then: 이스케이프된 명령어 확인
-      expect(mockedExec).toHaveBeenCalledWith(
-        `claude --dangerously-skip-permissions -p "이 \\"코드\\"를 분석해주세요"`,
-        expect.any(Object),
-        expect.any(Function)
+      // Then: 파일 쓰기와 삭제가 호출되어야 함
+      expect(mockWrite).toHaveBeenCalledWith(
+        expect.stringMatching(/.*claude-prompt-.*\.txt$/),
+        prompt,
+        'utf-8'
       );
+      expect(mockUnlink).toHaveBeenCalledWith(
+        expect.stringMatching(/.*claude-prompt-.*\.txt$/)
+      );
+
+      mockWrite.mockRestore();
+      mockUnlink.mockRestore();
     });
   });
 });
