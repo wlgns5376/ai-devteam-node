@@ -29,20 +29,28 @@ export class ClaudeDeveloper implements DeveloperInterface {
 
   async initialize(): Promise<void> {
     try {
+      // API 키 또는 토큰 인증 확인
+      if (!this.config.claude?.apiKey) {
+        // 토큰 인증 확인 (claude auth login)
+        await this.checkClaudeAuth();
+      }
+      
       // Claude CLI 설치 확인
       await this.checkClaudeCLI();
       
       this.isInitialized = true;
-      
-      if (this.config.claude?.apiKey) {
-        this.dependencies.logger.info('Claude Developer initialized with API key');
-      } else {
-        this.dependencies.logger.info('Claude Developer initialized with token authentication');
-      }
+      this.dependencies.logger.info('Claude Developer initialized');
     } catch (error) {
       this.dependencies.logger.error('Claude Developer initialization failed', { error });
+      
+      // DeveloperError는 그대로 다시 throw
+      if (error instanceof DeveloperError) {
+        throw error;
+      }
+      
+      // 일반 에러는 CLI 설치 에러로 처리
       throw new DeveloperError(
-        'Claude CLI is not installed',
+        'Claude CLI is not installed or not accessible',
         DeveloperErrorCode.INITIALIZATION_FAILED,
         'claude',
         { originalError: error }
@@ -171,6 +179,20 @@ export class ClaudeDeveloper implements DeveloperInterface {
   setTimeout(timeoutMs: number): void {
     this.timeoutMs = timeoutMs;
     this.dependencies.logger.debug('Claude Developer timeout set', { timeoutMs });
+  }
+
+  private async checkClaudeAuth(): Promise<void> {
+    try {
+      // claude auth status로 로그인 상태 확인
+      await execAsync('claude auth status', { timeout: 5000 });
+    } catch (error) {
+      throw new DeveloperError(
+        'Claude API key is required or please run "claude auth login"',
+        DeveloperErrorCode.INITIALIZATION_FAILED,
+        'claude',
+        { originalError: error }
+      );
+    }
   }
 
   private async checkClaudeCLI(): Promise<void> {

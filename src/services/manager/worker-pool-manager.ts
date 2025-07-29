@@ -4,7 +4,11 @@ import {
   ManagerServiceConfig,
   ManagerError
 } from '@/types/manager.types';
-import { Worker, WorkerPool, WorkerStatus, WorkerUpdate } from '@/types/worker.types';
+import { Worker as WorkerType, WorkerPool, WorkerStatus, WorkerUpdate } from '@/types/worker.types';
+import { Worker } from '../worker/worker';
+import { WorkspaceSetup } from '../worker/workspace-setup';
+import { PromptGenerator } from '../worker/prompt-generator';
+import { ResultProcessor } from '../worker/result-processor';
 import { Logger } from '../logger';
 import { StateManager } from '../state-manager';
 
@@ -15,7 +19,8 @@ interface WorkerPoolManagerDependencies {
 }
 
 export class WorkerPoolManager implements WorkerPoolManagerInterface {
-  private workers: Map<string, Worker> = new Map();
+  private workers: Map<string, WorkerType> = new Map();
+  private workerInstances: Map<string, Worker> = new Map();
   private isInitialized = false;
   private errors: ManagerError[] = [];
 
@@ -38,7 +43,10 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       // 최소 Worker 수만큼 생성
       for (let i = 0; i < this.config.minWorkers; i++) {
         const worker = this.createWorker();
+        const workerInstance = this.createWorkerInstance(worker);
+        
         this.workers.set(worker.id, worker);
+        this.workerInstances.set(worker.id, workerInstance);
         await this.dependencies.stateManager.saveWorker(worker);
       }
 
@@ -63,7 +71,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     }
   }
 
-  async getAvailableWorker(): Promise<Worker | null> {
+  async getAvailableWorker(): Promise<WorkerType | null> {
     const availableWorkers = Array.from(this.workers.values())
       .filter(worker => worker.status === WorkerStatus.IDLE);
 
@@ -71,7 +79,10 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       // 최대 Worker 수 미만이면 새 Worker 생성 시도
       if (this.workers.size < this.config.maxWorkers) {
         const newWorker = this.createWorker();
+        const newWorkerInstance = this.createWorkerInstance(newWorker);
+        
         this.workers.set(newWorker.id, newWorker);
+        this.workerInstances.set(newWorker.id, newWorkerInstance);
         await this.dependencies.stateManager.saveWorker(newWorker);
         return newWorker;
       }
@@ -105,7 +116,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       throw new Error(`Worker not found: ${workerId}`);
     }
 
-    const updatedWorker: Worker = {
+    const updatedWorker: WorkerType = {
       ...worker,
       status: WorkerStatus.WAITING,
       currentTask: task,
@@ -124,8 +135,8 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
 
     // Worker 인스턴스에 작업 할당
     try {
-      const workerInstance = await this.getWorkerInstance(workerId);
-      if (workerInstance && workerInstance.assignTask) {
+      const workerInstance = this.workerInstances.get(workerId);
+      if (workerInstance) {
         await workerInstance.assignTask(task);
       }
     } catch (error) {
@@ -144,7 +155,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     }
 
     const { currentTask, ...workerWithoutTask } = worker;
-    const updatedWorker: Worker = {
+    const updatedWorker: WorkerType = {
       ...workerWithoutTask,
       status: WorkerStatus.IDLE,
       lastActiveAt: new Date()
@@ -159,7 +170,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     });
   }
 
-  async getWorkerByTaskId(taskId: string): Promise<Worker | null> {
+  async getWorkerByTaskId(taskId: string): Promise<WorkerType | null> {
     for (const worker of this.workers.values()) {
       if (worker.currentTask?.taskId === taskId) {
         return worker;
@@ -168,65 +179,8 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     return null;
   }
 
-  async getWorkerInstance(workerId: string, pullRequestService?: any): Promise<any | null> {
-    // 실제로는 Worker 인스턴스를 관리해야 하지만, 
-    // 현재는 Mock 구현이므로 간단히 처리
-    const worker = this.workers.get(workerId);
-    if (!worker) {
-      return null;
-    }
-
-    // Mock Worker 인스턴스 반환
-    return {
-      getCurrentTask: () => worker.currentTask || null,
-      getStatus: () => worker.status,
-      assignTask: async (task: any) => {
-        this.dependencies.logger.info('Mock worker task assigned', { 
-          workerId, 
-          taskId: task.taskId,
-          action: task.action,
-          repositoryId: task.repositoryId
-        });
-      },
-      startExecution: async () => {
-        // Mock 실행 - 성공적으로 PR 생성
-        const taskId = worker.currentTask?.taskId;
-        this.dependencies.logger.info('Mock worker task execution', { 
-          workerId, 
-          taskId,
-          repositoryId: worker.currentTask?.repositoryId
-        });
-        
-        // 1-3초 대기 (작업 시뮬레이션)
-        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-        
-        // 실제로 MockPullRequestService에 PR 생성
-        let prUrl: string;
-        if (pullRequestService) {
-          const pr = await pullRequestService.createPullRequest('example/repo', {
-            title: `Fix: Complete task ${taskId}`,
-            description: `This PR completes the task ${taskId} assigned to worker ${workerId}`,
-            sourceBranch: `feature/task-${taskId}`,
-            targetBranch: 'main',
-            author: 'ai-worker'
-          });
-          prUrl = pr.url;
-          this.dependencies.logger.info('Created PR in MockPullRequestService', { 
-            workerId, 
-            taskId, 
-            prId: pr.id,
-            prUrl: pr.url 
-          });
-        } else {
-          prUrl = `https://github.com/example/repo/pull/${Math.floor(Math.random() * 1000) + 1}`;
-        }
-        
-        return {
-          success: true,
-          pullRequestUrl: prUrl
-        };
-      }
-    };
+  async getWorkerInstance(workerId: string, pullRequestService?: any): Promise<Worker | null> {
+    return this.workerInstances.get(workerId) || null;
   }
 
   async updateWorkerStatus(workerId: string, status: WorkerStatus): Promise<void> {
@@ -235,7 +189,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       throw new Error(`Worker not found: ${workerId}`);
     }
 
-    const updatedWorker: Worker = {
+    const updatedWorker: WorkerType = {
       ...worker,
       status,
       lastActiveAt: new Date()
@@ -261,7 +215,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       const timeSinceLastActive = now - worker.lastActiveAt.getTime();
       
       if (timeSinceLastActive >= this.config.workerRecoveryTimeoutMs) {
-        const updatedWorker: Worker = {
+        const updatedWorker: WorkerType = {
           ...worker,
           status: WorkerStatus.WAITING,
           lastActiveAt: new Date()
@@ -303,14 +257,27 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   async shutdown(): Promise<void> {
     this.dependencies.logger.info('Shutting down worker pool');
     
+    // 모든 Worker 인스턴스 정리
+    for (const [workerId, workerInstance] of this.workerInstances) {
+      try {
+        await workerInstance.cleanup();
+      } catch (error) {
+        this.dependencies.logger.warn('Failed to cleanup worker instance', {
+          workerId,
+          error
+        });
+      }
+    }
+    
     // 모든 Worker 정리
     this.workers.clear();
+    this.workerInstances.clear();
     this.isInitialized = false;
     
     this.dependencies.logger.info('Worker pool shutdown completed');
   }
 
-  private createWorker(): Worker {
+  private createWorker(): WorkerType {
     const workerId = this.generateWorkerId();
     
     return {
@@ -321,6 +288,46 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       createdAt: new Date(),
       lastActiveAt: new Date()
     };
+  }
+
+  private createWorkerInstance(worker: WorkerType): Worker {
+    // Worker 의존성 생성
+    const dependencies = {
+      logger: this.dependencies.logger,
+      workspaceSetup: new WorkspaceSetup({
+        logger: this.dependencies.logger,
+        workspaceManager: this.dependencies.workspaceManager || null
+      }),
+      promptGenerator: new PromptGenerator({
+        logger: this.dependencies.logger
+      }),
+      resultProcessor: new ResultProcessor({
+        logger: this.dependencies.logger
+      }),
+      developer: {
+        // Mock developer - 추후 실제 Developer 구현으로 교체 필요
+        async executePrompt(prompt: string, workspaceDir: string): Promise<any> {
+          return {
+            success: true,
+            output: 'Mock developer output',
+            rawOutput: 'Mock raw output'
+          };
+        },
+        async isAvailable(): Promise<boolean> {
+          return true;
+        },
+        getType(): 'claude' | 'gemini' {
+          return worker.developerType;
+        }
+      }
+    };
+
+    return new Worker(
+      worker.id,
+      worker.workspaceDir,
+      worker.developerType,
+      dependencies
+    );
   }
 
   private generateWorkerId(): string {
