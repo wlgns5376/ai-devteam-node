@@ -5,6 +5,7 @@ import {
   DeveloperDependencies
 } from '@/types/developer.types';
 import { MockDeveloper } from './mock-developer';
+import { ClaudeDeveloper } from './claude-developer';
 
 export class DeveloperFactory {
   static create(
@@ -21,9 +22,7 @@ export class DeveloperFactory {
         if (!config.claude?.apiKey) {
           throw new Error('Claude API key is required');
         }
-        // TODO: ClaudeDeveloper 구현 후 실제 인스턴스 반환
-        // 임시로 Mock Developer 반환
-        return new MockDeveloper(config, dependencies);
+        return new ClaudeDeveloper(config, dependencies);
       
       case 'gemini':
         // Gemini 설정 검증

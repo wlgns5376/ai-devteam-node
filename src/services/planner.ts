@@ -195,6 +195,16 @@ export class Planner implements PlannerService {
               taskId: item.id,
               pullRequestUrl: response.pullRequestUrl
             });
+          } else if (response.status === ResponseStatus.COMPLETED && response.message === 'merged') {
+            // 병합 완료 시 DONE으로 변경
+            await this.dependencies.projectBoardService.updateItemStatus(item.id, 'DONE');
+            
+            // 완료된 작업을 활성 작업에서 제거
+            this.workflowState.activeTasks.delete(item.id);
+            
+            this.dependencies.logger.info('Task completed after merge', {
+              taskId: item.id
+            });
           } else if (response.status === ResponseStatus.ERROR) {
             this.addError('WORKER_ERROR', `Worker error for task ${item.id}`, {
               taskId: item.id,
@@ -229,6 +239,7 @@ export class Planner implements PlannerService {
           title: item.title,
           pullRequestUrls: item.pullRequestUrls
         });
+        
         if (item.pullRequestUrls.length > 0) {
           try {
             const prUrl = item.pullRequestUrls[0];
@@ -247,40 +258,67 @@ export class Planner implements PlannerService {
             });
 
             if (pr.status === 'merged') {
-              // 승인됨 -> 완료로 변경
+              // 이미 병합됨 -> 완료로 변경
               await this.dependencies.projectBoardService.updateItemStatus(item.id, 'DONE');
               
               // 완료된 작업을 활성 작업에서 제거
               this.workflowState.activeTasks.delete(item.id);
               
-              this.dependencies.logger.info('Task completed', {
+              this.dependencies.logger.info('Task completed (already merged)', {
                 taskId: item.id,
                 prUrl
               });
             } else {
-              // 3. 신규 코멘트 확인
-              const since = this.workflowState.lastSyncTime || new Date(Date.now() - 24 * 60 * 60 * 1000);
-              const newComments = await this.dependencies.pullRequestService.getNewComments(repoId, prNumber, since);
-
-              if (newComments.length > 0) {
-                // 4. Manager에게 피드백 전달
+              // 3. PR 승인 상태 확인
+              const isApproved = await this.dependencies.pullRequestService.isApproved(repoId, prNumber);
+              
+              if (isApproved) {
+                // 승인됨 -> Manager에게 병합 요청
                 const request: TaskRequest = {
                   taskId: item.id,
-                  action: TaskAction.PROCESS_FEEDBACK,
-                  comments: newComments
+                  action: TaskAction.REQUEST_MERGE,
+                  pullRequestUrl: prUrl
                 };
 
                 const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
 
                 if (response.status === ResponseStatus.ACCEPTED) {
-                  // 처리된 코멘트로 기록
-                  const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
-                  commentIds.forEach((id: string) => this.workflowState.processedComments.add(id));
-                  
-                  this.dependencies.logger.info('Feedback processed', {
+                  this.dependencies.logger.info('Merge request sent to manager', {
                     taskId: item.id,
-                    commentCount: newComments.length
+                    prUrl
                   });
+                } else {
+                  this.dependencies.logger.warn('Merge request rejected by manager', {
+                    taskId: item.id,
+                    reason: response.message
+                  });
+                }
+              } else {
+                // 4. 미승인 - 신규 코멘트 확인
+                const since = this.workflowState.lastSyncTime || new Date(Date.now() - 24 * 60 * 60 * 1000);
+                const newComments = await this.dependencies.pullRequestService.getNewComments(repoId, prNumber, since);
+
+                if (newComments.length > 0) {
+                  // 5. Manager에게 피드백 전달
+                  const request: TaskRequest = {
+                    taskId: item.id,
+                    action: TaskAction.PROCESS_FEEDBACK,
+                    pullRequestUrl: prUrl,
+                    comments: newComments
+                  };
+
+                  const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
+
+                  if (response.status === ResponseStatus.ACCEPTED) {
+                    // 처리된 코멘트로 기록
+                    const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
+                    commentIds.forEach((id: string) => this.workflowState.processedComments.add(id));
+                    
+                    this.dependencies.logger.info('Feedback processed', {
+                      taskId: item.id,
+                      commentCount: newComments.length
+                    });
+                  }
                 }
               }
             }

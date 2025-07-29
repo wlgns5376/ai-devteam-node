@@ -144,16 +144,39 @@ export class ResponseParser {
       'completed',
       'passed',
       'created pr',
-      '완료'
+      'ready',
+      'complete',
+      'done',
+      '완료',
+      '성공',
+      'created for review',
+      'has been created',
+      'all tests',
+      'ready!',
+      'ready for review',
+      'is complete',
+      'complete.',
+      'tests are still passing',
+      'still passing'
     ];
     
     const failureKeywords = [
-      'error',
+      'error:',
+      'error occurred',
+      'error while',
       'failed',
       'failure',
       'npm err!',
       'exit status 1',
-      'command failed'
+      'command failed',
+      'test failed',
+      'test suites: 1 failed',
+      'fail ',
+      'typeerror',
+      'syntaxerror',
+      'referenceerror',
+      'encountered an error',
+      'apologize'
     ];
     
     const lowerOutput = output.toLowerCase();

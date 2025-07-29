@@ -1,5 +1,6 @@
 import { DeveloperFactory } from '@/services/developer/developer-factory';
 import { MockDeveloper } from '@/services/developer/mock-developer';
+import { ClaudeDeveloper } from '@/services/developer/claude-developer';
 import { Logger } from '@/services/logger';
 import { 
   DeveloperConfig, 
@@ -46,7 +47,7 @@ describe('DeveloperFactory', () => {
       expect(developer.type).toBe('mock');
     });
 
-    it('Claude Developer를 생성해야 한다 (현재는 Mock 반환)', () => {
+    it('Claude Developer를 생성해야 한다', () => {
       // Given: Claude 타입과 설정
       const type: DeveloperType = 'claude';
       const claudeConfig = {
@@ -60,10 +61,10 @@ describe('DeveloperFactory', () => {
       // When: Developer 생성
       const developer = DeveloperFactory.create(type, claudeConfig, { logger: mockLogger });
 
-      // Then: 현재는 MockDeveloper 인스턴스 반환 (TODO: ClaudeDeveloper 구현 후 수정)
+      // Then: ClaudeDeveloper 인스턴스 반환
       expect(developer).toBeDefined();
-      expect(developer).toBeInstanceOf(MockDeveloper);
-      expect(developer.type).toBe('mock'); // 임시로 mock 타입 확인
+      expect(developer).toBeInstanceOf(ClaudeDeveloper);
+      expect(developer.type).toBe('claude');
     });
 
     it('Gemini Developer를 생성해야 한다 (현재는 Mock 반환)', () => {

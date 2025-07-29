@@ -8,7 +8,8 @@ import {
   PullRequestComment, 
   PlannerServiceConfig,
   TaskAction,
-  ResponseStatus 
+  ResponseStatus,
+  PullRequestState 
 } from '@/types';
 
 // Mock Manager Communicator for testing
@@ -277,25 +278,42 @@ describe('Planner', () => {
       const status = planner.getStatus();
       expect(status.errors.length).toBeGreaterThan(0);
     });
+
+    it('should handle merge completion', async () => {
+      // Given: 병합이 완료된 작업이 있을 때
+      mockManagerCommunicator.setResponse('board-1-item-3', { 
+        taskId: 'board-1-item-3',
+        status: ResponseStatus.COMPLETED,
+        message: 'merged'
+      });
+
+      // When: 진행중 작업을 추적하면
+      await planner.handleInProgressTasks();
+
+      // Then: 작업이 DONE으로 변경되어야 함
+      const doneItems = await mockProjectBoardService.getItems('board-1', 'DONE');
+      const completedItem = doneItems.find(item => item.id === 'board-1-item-3');
+      expect(completedItem).toBeDefined();
+      
+      // 활성 작업에서 제거되어야 함
+      const status = planner.getStatus();
+      expect(status.activeTasks).toBe(0);
+    });
   });
 
   describe('리뷰 작업 관리 (handleReviewTasks)', () => {
-    beforeEach(async () => {
-      // IN_REVIEW 상태의 작업 설정
-      await mockProjectBoardService.updateItemStatus('board-1-item-2', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-2', 'https://github.com/example/test-repo/pull/2');
-    });
-
-    it('should check PR approval status', async () => {
+    it('should handle review tasks successfully', async () => {
       // Given: IN_REVIEW 상태의 작업이 있을 때
+      mockManagerCommunicator.clearRequests();
+      await mockProjectBoardService.updateItemStatus('board-1-item-2', 'IN_REVIEW');
+      await mockProjectBoardService.addPullRequestToItem('board-1-item-2', 'https://github.com/wlgns5376/ai-devteam-test/pull/1');
+      
       // When: 리뷰 작업을 관리하면
       await planner.handleReviewTasks();
 
-      // Then: PR 상태가 확인되어야 함
-      expect(true).toBe(true); // PR 서비스 호출 확인은 실제 구현에서 spy로 검증
+      // Then: 에러 없이 완료되어야 함
+      expect(true).toBe(true);
     });
-
-
   });
 
   describe('워크플로우 사이클 (processWorkflowCycle)', () => {
