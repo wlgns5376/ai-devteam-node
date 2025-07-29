@@ -53,23 +53,35 @@ describe('Planner', () => {
   let planner: Planner;
   let mockProjectBoardService: MockProjectBoardService;
   let mockPullRequestService: MockPullRequestService;
-  let mockStateManager: StateManager;
+  let mockStateManager: any;
   let mockLogger: Logger;
   let mockManagerCommunicator: MockManagerCommunicator;
 
   beforeEach(async () => {
     mockProjectBoardService = new MockProjectBoardService();
     mockPullRequestService = new MockPullRequestService();
-    mockStateManager = new StateManager('./test-data');
+    
+    // Create mock StateManager instead of real one for tests
+    mockStateManager = {
+      initialize: jest.fn().mockResolvedValue(undefined),
+      saveTask: jest.fn().mockResolvedValue(undefined),
+      getTask: jest.fn().mockResolvedValue(undefined),
+      getAllTasks: jest.fn().mockResolvedValue([]),
+      getTasksByStatus: jest.fn().mockResolvedValue([]),
+      updateTaskStatus: jest.fn().mockResolvedValue(undefined),
+      removeTask: jest.fn().mockResolvedValue(undefined),
+      saveWorker: jest.fn().mockResolvedValue(undefined),
+      getWorker: jest.fn().mockResolvedValue(undefined),
+      getAllWorkers: jest.fn().mockResolvedValue([]),
+      updateWorkerStatus: jest.fn().mockResolvedValue(undefined),
+      removeWorker: jest.fn().mockResolvedValue(undefined),
+      saveWorkspace: jest.fn().mockResolvedValue(undefined),
+      getWorkspace: jest.fn().mockResolvedValue(undefined),
+      removeWorkspace: jest.fn().mockResolvedValue(undefined)
+    } as any;
+    
     mockLogger = Logger.createConsoleLogger();
     mockManagerCommunicator = new MockManagerCommunicator();
-
-    try {
-      await mockStateManager.initialize();
-    } catch (error) {
-      console.error('StateManager initialization failed:', error);
-      throw error;
-    }
     
     // Clear previous test data
     mockManagerCommunicator.clearRequests();

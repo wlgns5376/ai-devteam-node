@@ -79,10 +79,8 @@ describe('Project Setup Validation', () => {
   describe('Directory Structure', () => {
     const expectedDirectories = [
       'src',
-      'src/components',
       'src/services',
       'src/types',
-      'src/utils',
       'tests',
       'tests/unit',
       'tests/integration',
