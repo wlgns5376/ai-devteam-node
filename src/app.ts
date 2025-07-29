@@ -329,6 +329,53 @@ export class AIDevTeamApp {
                 message: 'Feedback processing started with full task information',
                 workerStatus: 'processing_feedback'
               };
+            } else if (request.action === 'request_merge') {
+              // PR 병합 요청 처리
+              let worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+              
+              // 기존 worker가 없으면 새로운 worker를 할당
+              if (!worker) {
+                worker = await this.workerPoolManager.getAvailableWorker();
+                if (!worker) {
+                  return {
+                    taskId: request.taskId,
+                    status: ResponseStatus.ERROR,
+                    message: 'No available worker for merge request',
+                    workerStatus: 'no_available_worker'
+                  };
+                }
+
+                this.logger?.info('Assigned new worker for merge request', {
+                  taskId: request.taskId,
+                  workerId: worker.id
+                });
+              }
+
+              // 병합 요청을 위한 작업 정보 생성
+              const mergeTask = {
+                taskId: request.taskId,
+                action: 'merge_request' as any,
+                pullRequestUrl: request.pullRequestUrl,
+                boardItem: request.boardItem,
+                repositoryId: this.extractRepositoryFromBoardItem(request.boardItem),
+                assignedAt: new Date()
+              };
+
+              // Worker에 병합 작업 할당
+              await this.workerPoolManager.assignWorkerTask(worker.id, mergeTask);
+
+              this.logger?.info('Merge request task assigned to worker', {
+                taskId: request.taskId,
+                workerId: worker.id,
+                pullRequestUrl: request.pullRequestUrl
+              });
+
+              return {
+                taskId: request.taskId,
+                status: ResponseStatus.ACCEPTED,
+                message: 'Merge request processing started',
+                workerStatus: 'processing_merge'
+              };
             }
 
             return {
