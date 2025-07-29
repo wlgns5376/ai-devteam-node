@@ -236,7 +236,12 @@ describe('StateManager', () => {
         {
           id: 'worker-2',
           status: WorkerStatus.WORKING,
-          currentTaskId: 'task-1',
+          currentTask: {
+            taskId: 'task-1',
+            action: 'start_new_task' as any,
+            assignedAt: new Date(),
+            repositoryId: 'test/repo'
+          },
           workspaceDir: '/workspace/worker-2',
           developerType: 'gemini',
           createdAt: new Date(),

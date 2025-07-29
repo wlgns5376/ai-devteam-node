@@ -43,21 +43,27 @@ describe('Worker Types', () => {
       expect(mockWorker.lastActiveAt).toBeInstanceOf(Date);
     });
 
-    it('should support optional currentTaskId property', () => {
-      // Given: currentTaskId를 포함한 Worker 객체가 있을 때
+    it('should support optional currentTask property', () => {
+      // Given: currentTask를 포함한 Worker 객체가 있을 때
       const workerWithTask: Worker = {
         id: 'worker-2',
         status: WorkerStatus.WORKING,
-        currentTaskId: 'task-1',
+        currentTask: {
+          taskId: 'task-1',
+          action: 'start_new_task' as any,
+          assignedAt: new Date(),
+          repositoryId: 'test/repo'
+        },
         workspaceDir: '/workspace/worker-2',
         developerType: 'gemini',
         createdAt: new Date(),
         lastActiveAt: new Date()
       };
 
-      // When: currentTaskId를 확인하면
+      // When: currentTask를 확인하면
       // Then: 올바른 타입으로 존재해야 함
-      expect(typeof workerWithTask.currentTaskId).toBe('string');
+      expect(typeof workerWithTask.currentTask?.taskId).toBe('string');
+      expect(workerWithTask.currentTask?.action).toBe('start_new_task');
     });
 
     it('should support both developer types', () => {
@@ -120,7 +126,12 @@ describe('Worker Types', () => {
           {
             id: 'worker-2',
             status: WorkerStatus.WORKING,
-            currentTaskId: 'task-1',
+            currentTask: {
+              taskId: 'task-1',
+              action: 'start_new_task' as any,
+              assignedAt: new Date(),
+              repositoryId: 'test/repo'
+            },
             workspaceDir: '/workspace/worker-2',
             developerType: 'gemini',
             createdAt: new Date(),
@@ -179,13 +190,18 @@ describe('Worker Types', () => {
       // Given: WorkerUpdate 인터페이스를 구현한 객체가 있을 때
       const workerUpdate: WorkerUpdate = {
         status: WorkerStatus.WORKING,
-        currentTaskId: 'task-2'
+        currentTask: {
+          taskId: 'task-2',
+          action: 'start_new_task' as any,
+          assignedAt: new Date(),
+          repositoryId: 'test/repo'
+        }
       };
 
       // When: 각 속성을 확인하면
       // Then: 올바른 타입으로 존재해야 함
       expect(Object.values(WorkerStatus)).toContain(workerUpdate.status);
-      expect(typeof workerUpdate.currentTaskId).toBe('string');
+      expect(typeof workerUpdate.currentTask?.taskId).toBe('string');
     });
 
     it('should allow empty update object', () => {
@@ -201,26 +217,31 @@ describe('Worker Types', () => {
       // Given: 모든 선택적 필드를 포함한 WorkerUpdate 객체가 있을 때
       const fullUpdate: WorkerUpdate = {
         status: WorkerStatus.STOPPED,
-        currentTaskId: 'task-3',
+        currentTask: {
+          taskId: 'task-3',
+          action: 'start_new_task' as any,
+          assignedAt: new Date(),
+          repositoryId: 'test/repo'
+        },
         lastActiveAt: new Date()
       };
 
       // When: 각 속성을 확인하면
       // Then: 올바른 타입으로 존재해야 함
       expect(Object.values(WorkerStatus)).toContain(fullUpdate.status);
-      expect(typeof fullUpdate.currentTaskId).toBe('string');
+      expect(typeof fullUpdate.currentTask?.taskId).toBe('string');
       expect(fullUpdate.lastActiveAt).toBeInstanceOf(Date);
     });
 
-    it('should allow clearing currentTaskId', () => {
-      // Given: currentTaskId를 undefined로 설정한 WorkerUpdate 객체가 있을 때
+    it('should allow clearing currentTask', () => {
+      // Given: currentTask를 undefined로 설정한 WorkerUpdate 객체가 있을 때
       const clearTaskUpdate: WorkerUpdate = {
         status: WorkerStatus.IDLE,
-        currentTaskId: undefined
+        currentTask: undefined
       };
 
       // When & Then: undefined 값도 유효해야 함
-      expect(clearTaskUpdate.currentTaskId).toBeUndefined();
+      expect(clearTaskUpdate.currentTask).toBeUndefined();
     });
   });
 });

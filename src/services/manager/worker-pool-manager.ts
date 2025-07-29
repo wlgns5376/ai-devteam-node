@@ -80,6 +80,24 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   }
 
   async assignWorker(workerId: string, taskId: string): Promise<void> {
+    // 레거시 메서드 - 호환성을 위해 유지하되 내부적으로 assignWorkerTask 호출
+    const worker = this.workers.get(workerId);
+    if (!worker) {
+      throw new Error(`Worker not found: ${workerId}`);
+    }
+
+    // 기본 WorkerTask 객체 생성 (제한된 정보만 포함)
+    const basicTask = {
+      taskId,
+      action: 'start_new_task' as any,
+      assignedAt: new Date(),
+      repositoryId: 'unknown' // 레거시 호환성을 위한 기본값
+    };
+
+    await this.assignWorkerTask(workerId, basicTask);
+  }
+
+  async assignWorkerTask(workerId: string, task: any): Promise<void> {
     const worker = this.workers.get(workerId);
     if (!worker) {
       throw new Error(`Worker not found: ${workerId}`);
@@ -88,7 +106,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     const updatedWorker: Worker = {
       ...worker,
       status: WorkerStatus.WAITING,
-      currentTaskId: taskId,
+      currentTask: task,
       lastActiveAt: new Date()
     };
 
@@ -97,8 +115,24 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
 
     this.dependencies.logger.info('Worker assigned to task', {
       workerId,
-      taskId
+      taskId: task.taskId,
+      action: task.action,
+      repositoryId: task.repositoryId
     });
+
+    // Worker 인스턴스에 작업 할당
+    try {
+      const workerInstance = await this.getWorkerInstance(workerId);
+      if (workerInstance && workerInstance.assignTask) {
+        await workerInstance.assignTask(task);
+      }
+    } catch (error) {
+      this.dependencies.logger.warn('Failed to assign task to worker instance', {
+        workerId,
+        taskId: task.taskId,
+        error
+      });
+    }
   }
 
   async releaseWorker(workerId: string): Promise<void> {
@@ -107,7 +141,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       throw new Error(`Worker not found: ${workerId}`);
     }
 
-    const { currentTaskId, ...workerWithoutTask } = worker;
+    const { currentTask, ...workerWithoutTask } = worker;
     const updatedWorker: Worker = {
       ...workerWithoutTask,
       status: WorkerStatus.IDLE,
@@ -118,13 +152,14 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     await this.dependencies.stateManager.saveWorker(updatedWorker);
 
     this.dependencies.logger.info('Worker released', {
-      workerId
+      workerId,
+      previousTaskId: currentTask?.taskId
     });
   }
 
   async getWorkerByTaskId(taskId: string): Promise<Worker | null> {
     for (const worker of this.workers.values()) {
-      if (worker.currentTaskId === taskId) {
+      if (worker.currentTask?.taskId === taskId) {
         return worker;
       }
     }
@@ -141,11 +176,24 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
 
     // Mock Worker 인스턴스 반환
     return {
-      getCurrentTask: () => worker.currentTaskId ? { taskId: worker.currentTaskId } : null,
+      getCurrentTask: () => worker.currentTask || null,
       getStatus: () => worker.status,
+      assignTask: async (task: any) => {
+        this.dependencies.logger.info('Mock worker task assigned', { 
+          workerId, 
+          taskId: task.taskId,
+          action: task.action,
+          repositoryId: task.repositoryId
+        });
+      },
       startExecution: async () => {
         // Mock 실행 - 성공적으로 PR 생성
-        this.dependencies.logger.info('Mock worker task execution', { workerId, taskId: worker.currentTaskId });
+        const taskId = worker.currentTask?.taskId;
+        this.dependencies.logger.info('Mock worker task execution', { 
+          workerId, 
+          taskId,
+          repositoryId: worker.currentTask?.repositoryId
+        });
         
         // 1-3초 대기 (작업 시뮬레이션)
         await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
@@ -154,16 +202,16 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
         let prUrl: string;
         if (pullRequestService) {
           const pr = await pullRequestService.createPullRequest('example/repo', {
-            title: `Fix: Complete task ${worker.currentTaskId}`,
-            description: `This PR completes the task ${worker.currentTaskId} assigned to worker ${workerId}`,
-            sourceBranch: `feature/task-${worker.currentTaskId}`,
+            title: `Fix: Complete task ${taskId}`,
+            description: `This PR completes the task ${taskId} assigned to worker ${workerId}`,
+            sourceBranch: `feature/task-${taskId}`,
             targetBranch: 'main',
             author: 'ai-worker'
           });
           prUrl = pr.url;
           this.dependencies.logger.info('Created PR in MockPullRequestService', { 
             workerId, 
-            taskId: worker.currentTaskId, 
+            taskId, 
             prId: pr.id,
             prUrl: pr.url 
           });

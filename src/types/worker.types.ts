@@ -23,7 +23,7 @@ export enum WorkerStage {
 export interface Worker {
   readonly id: string;
   readonly status: WorkerStatus;
-  readonly currentTaskId?: string;
+  readonly currentTask?: WorkerTask;
   readonly workspaceDir: string;
   readonly developerType: 'claude' | 'gemini';
   readonly createdAt: Date;
@@ -39,7 +39,7 @@ export interface WorkerPool {
 
 export interface WorkerUpdate {
   readonly status?: WorkerStatus;
-  readonly currentTaskId?: string | undefined;
+  readonly currentTask?: WorkerTask | undefined;
   readonly lastActiveAt?: Date;
 }
 

@@ -40,6 +40,10 @@ export class Worker implements WorkerInterface {
     return this._currentTask?.taskId;
   }
 
+  get currentTask(): WorkerTask | null {
+    return this._currentTask;
+  }
+
   get lastActiveAt(): Date {
     return this._lastActiveAt;
   }

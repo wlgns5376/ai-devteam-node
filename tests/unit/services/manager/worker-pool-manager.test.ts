@@ -68,7 +68,7 @@ describe('WorkerPoolManager', () => {
       const poolStatus = workerPoolManager.getPoolStatus();
       poolStatus.workers.forEach(worker => {
         expect(worker.status).toBe(WorkerStatus.IDLE);
-        expect(worker.currentTaskId).toBeUndefined();
+        expect(worker.currentTask).toBeUndefined();
       });
     });
 
@@ -112,7 +112,7 @@ describe('WorkerPoolManager', () => {
       const poolStatus = workerPoolManager.getPoolStatus();
       const assignedWorker = poolStatus.workers.find(w => w.id === worker!.id);
       expect(assignedWorker!.status).toBe(WorkerStatus.WAITING);
-      expect(assignedWorker!.currentTaskId).toBe(taskId);
+      expect(assignedWorker!.currentTask?.taskId).toBe(taskId);
       expect(mockStateManager.saveWorker).toHaveBeenCalledWith(assignedWorker);
     });
 
@@ -161,7 +161,7 @@ describe('WorkerPoolManager', () => {
       const poolStatus = workerPoolManager.getPoolStatus();
       const releasedWorker = poolStatus.workers.find(w => w.id === worker!.id);
       expect(releasedWorker!.status).toBe(WorkerStatus.IDLE);
-      expect(releasedWorker!.currentTaskId).toBeUndefined();
+      expect(releasedWorker!.currentTask).toBeUndefined();
     });
 
     it('존재하지 않는 Worker 해제 시 에러를 발생시켜야 한다', async () => {

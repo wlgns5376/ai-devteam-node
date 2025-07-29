@@ -46,6 +46,20 @@ export class AIDevTeamApp {
     }
   }
 
+  // Repository 정보 추출 헬퍼 메서드
+  private extractRepositoryFromBoardItem(boardItem: any): string {
+    // boardItem에서 repository 정보 추출
+    // 실제 구현에서는 GitHub Projects API 응답 구조에 맞게 수정
+    if (boardItem?.repository?.id) {
+      return boardItem.repository.id;
+    }
+    if (boardItem?.content?.repository?.nameWithOwner) {
+      return boardItem.content.repository.nameWithOwner;
+    }
+    // 기본값으로 config에서 repository 정보 사용
+    return this.config.planner?.repoId || 'unknown/repository';
+  }
+
   // Worker 작업 실행 헬퍼 메서드
   private async executeWorkerTask(workerId: string, request: TaskRequest): Promise<{success: boolean, pullRequestUrl?: string}> {
     try {
@@ -60,7 +74,8 @@ export class AIDevTeamApp {
       }
 
       // 작업이 이미 할당되어 있다면 실행
-      if (workerInstance.getCurrentTask()?.taskId === request.taskId) {
+      const currentTask = workerInstance.getCurrentTask();
+      if (currentTask?.taskId === request.taskId) {
         // 이미 실행 중인지 확인
         if (workerInstance.getStatus() === 'working') {
           return { success: false }; // 아직 진행 중
@@ -162,13 +177,29 @@ export class AIDevTeamApp {
                 };
               }
 
-              // Worker에 작업 할당
-              await this.workerPoolManager.assignWorker(availableWorker.id, request.taskId);
+              // PRD 요구사항에 맞는 전체 작업 정보 생성
+              const workerTask = {
+                taskId: request.taskId,
+                action: 'start_new_task' as any,
+                boardItem: request.boardItem,
+                repositoryId: this.extractRepositoryFromBoardItem(request.boardItem),
+                assignedAt: new Date()
+              };
+
+              // Worker에 전체 작업 정보 할당
+              await this.workerPoolManager.assignWorkerTask(availableWorker.id, workerTask);
+
+              this.logger?.info('Task assigned to worker with full info', {
+                taskId: request.taskId,
+                workerId: availableWorker.id,
+                repositoryId: workerTask.repositoryId,
+                action: workerTask.action
+              });
 
               return {
                 taskId: request.taskId,
                 status: ResponseStatus.ACCEPTED,
-                message: 'Task assigned to worker',
+                message: 'Task assigned to worker with full information',
                 workerStatus: 'assigned'
               };
 
@@ -219,10 +250,27 @@ export class AIDevTeamApp {
                 };
               }
 
+              // 기존 작업에 피드백 정보 추가
+              const feedbackTask = {
+                ...worker.currentTask,
+                action: 'process_feedback' as any,
+                comments: request.comments,
+                assignedAt: new Date()
+              };
+
+              // Worker에 피드백 작업 재할당
+              await this.workerPoolManager.assignWorkerTask(worker.id, feedbackTask);
+
+              this.logger?.info('Feedback task assigned to worker', {
+                taskId: request.taskId,
+                workerId: worker.id,
+                commentCount: request.comments?.length || 0
+              });
+
               return {
                 taskId: request.taskId,
                 status: ResponseStatus.ACCEPTED,
-                message: 'Feedback processing started',
+                message: 'Feedback processing started with full task information',
                 workerStatus: 'processing_feedback'
               };
             }
