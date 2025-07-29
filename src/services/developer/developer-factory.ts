@@ -18,10 +18,7 @@ export class DeveloperFactory {
         return new MockDeveloper(config, dependencies);
       
       case 'claude':
-        // Claude 설정 검증
-        if (!config.claude?.apiKey) {
-          throw new Error('Claude API key is required');
-        }
+        // Claude는 API 키 또는 로그인 방식 모두 지원
         return new ClaudeDeveloper(config, dependencies);
       
       case 'gemini':

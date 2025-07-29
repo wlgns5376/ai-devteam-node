@@ -23,11 +23,6 @@ export class ClaudeDeveloper implements DeveloperInterface {
     private readonly config: DeveloperConfig,
     private readonly dependencies: DeveloperDependencies
   ) {
-    // Claude 설정 검증
-    if (!config.claude?.apiKey) {
-      throw new Error('Claude API key is required');
-    }
-    
     this.timeoutMs = config.timeoutMs;
     this.responseParser = new ResponseParser();
   }
@@ -38,11 +33,16 @@ export class ClaudeDeveloper implements DeveloperInterface {
       await this.checkClaudeCLI();
       
       this.isInitialized = true;
-      this.dependencies.logger.info('Claude Developer initialized');
+      
+      if (this.config.claude?.apiKey) {
+        this.dependencies.logger.info('Claude Developer initialized with API key');
+      } else {
+        this.dependencies.logger.info('Claude Developer initialized with token authentication');
+      }
     } catch (error) {
       this.dependencies.logger.error('Claude Developer initialization failed', { error });
       throw new DeveloperError(
-        'Claude CLI is not installed or not accessible',
+        'Claude CLI is not installed',
         DeveloperErrorCode.INITIALIZATION_FAILED,
         'claude',
         { originalError: error }
@@ -70,11 +70,14 @@ export class ClaudeDeveloper implements DeveloperInterface {
       // Claude CLI 명령어 구성
       const command = this.buildClaudeCommand(prompt);
       
-      // 환경 변수 설정
+      // 환경 변수 설정 (API 키가 있으면 설정, 없으면 로그인된 상태 사용)
       const env = {
-        ...process.env,
-        ANTHROPIC_API_KEY: this.config.claude!.apiKey
+        ...process.env
       };
+      
+      if (this.config.claude?.apiKey) {
+        env.ANTHROPIC_API_KEY = this.config.claude.apiKey;
+      }
 
       // Claude CLI 실행
       const { stdout, stderr } = await execAsync(command, {
@@ -183,6 +186,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
       }
     }
   }
+
 
   private buildClaudeCommand(prompt: string): string {
     // 프롬프트에서 따옴표 이스케이프

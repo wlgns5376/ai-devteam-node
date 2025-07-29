@@ -175,7 +175,7 @@ describe('WorkspaceManager', () => {
       
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Git worktree created',
-        { taskId: workspaceInfo.taskId, branchName: workspaceInfo.branchName }
+        { taskId: workspaceInfo.taskId, branchName: workspaceInfo.branchName, repositoryPath }
       );
     });
 

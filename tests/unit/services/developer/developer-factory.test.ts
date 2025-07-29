@@ -110,10 +110,10 @@ describe('DeveloperFactory', () => {
         }
       };
 
-      // When & Then: 에러 발생
+      // When & Then: API 키 없이도 생성되어야 함 (토큰 인증 지원)
       expect(() => {
         DeveloperFactory.create(type, invalidConfig as DeveloperConfig, { logger: mockLogger });
-      }).toThrow('Claude API key is required');
+      }).not.toThrow();
     });
 
     it('Mock Developer는 추가 설정 없이도 생성되어야 한다', () => {
