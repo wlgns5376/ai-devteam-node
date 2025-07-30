@@ -365,6 +365,17 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
     const repoInfo = RepositoryFilter.extractRepositoryInfoFromItem(item);
     const status = this.getItemStatus(item);
 
+    // Repository 정보 디버깅 로그
+    if (content && (content.__typename === 'Issue' || content.__typename === 'PullRequest')) {
+      this.logger.debug('Repository info extracted from item', {
+        itemId: item.id,
+        contentType: content.__typename,
+        contentNumber: content.number,
+        repository: content.repository ? `${content.repository.owner.login}/${content.repository.name}` : 'null',
+        extractedRepoInfo: repoInfo ? `${repoInfo.owner}/${repoInfo.name}` : 'null'
+      });
+    }
+
     // 기본 아이템 정보
     let title = 'Untitled';
     let description: string | undefined;

@@ -80,6 +80,9 @@ export class AIDevTeamApp {
     }
     
     // 2. boardItem에서 repository 정보 추출
+    if (boardItem?.metadata?.repository) {
+      return boardItem.metadata.repository;
+    }
     if (boardItem?.repository?.id) {
       return boardItem.repository.id;
     }
