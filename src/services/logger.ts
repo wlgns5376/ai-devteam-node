@@ -11,6 +11,7 @@ export enum LogLevel {
 export interface LoggerConfig {
   level: LogLevel;
   filePath?: string;
+  logDirectory?: string;
   enableConsole?: boolean;
 }
 
@@ -26,6 +27,7 @@ export class Logger {
     this.config = {
       level: config.level,
       filePath: config.filePath || '',
+      logDirectory: config.logDirectory || '',
       enableConsole: config.enableConsole ?? true
     };
   }
@@ -63,7 +65,7 @@ export class Logger {
     }
 
     // 파일 출력
-    if (this.config.filePath) {
+    if (this.config.filePath || this.config.logDirectory) {
       this.writeToFile(logMessage);
     }
   }
@@ -90,11 +92,22 @@ export class Logger {
     return value;
   }
 
+  private getCurrentLogFilePath(): string {
+    // logDirectory가 설정되어 있으면 일자별 파일 경로 생성
+    if (this.config.logDirectory) {
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD 형식
+      return path.join(this.config.logDirectory, `${today}.log`);
+    }
+    // 기존 filePath 방식 (하위 호환성)
+    return this.config.filePath;
+  }
+
   private async ensureLogDirectory(): Promise<void> {
-    if (!this.config.filePath) return;
+    const logFilePath = this.getCurrentLogFilePath();
+    if (!logFilePath) return;
 
     try {
-      const logDir = path.dirname(this.config.filePath);
+      const logDir = path.dirname(logFilePath);
       await fs.mkdir(logDir, { recursive: true });
     } catch (error) {
       // 디렉토리 생성 실패 시 콘솔에만 경고 출력
@@ -105,12 +118,13 @@ export class Logger {
   }
 
   private async writeToFile(message: string): Promise<void> {
-    if (!this.config.filePath) return;
+    const logFilePath = this.getCurrentLogFilePath();
+    if (!logFilePath) return;
 
     try {
       // 디렉토리가 없으면 생성
       await this.ensureLogDirectory();
-      await fs.appendFile(this.config.filePath, `${message}\n`);
+      await fs.appendFile(logFilePath, `${message}\n`);
     } catch (error) {
       // 파일 쓰기 실패 시 콘솔에만 경고 출력 (순환 참조 방지)
       if (this.config.enableConsole) {
@@ -139,6 +153,22 @@ export class Logger {
     return new Logger({
       level,
       filePath,
+      enableConsole: true
+    });
+  }
+
+  static createDailyLogger(logDirectory: string, level: LogLevel = LogLevel.INFO): Logger {
+    return new Logger({
+      level,
+      logDirectory,
+      enableConsole: false
+    });
+  }
+
+  static createDailyCombinedLogger(logDirectory: string, level: LogLevel = LogLevel.INFO): Logger {
+    return new Logger({
+      level,
+      logDirectory,
       enableConsole: true
     });
   }

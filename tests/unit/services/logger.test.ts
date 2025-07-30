@@ -7,6 +7,12 @@ describe('Logger', () => {
   const testLogFile = path.join(testLogDir, 'test.log');
   let logger: Logger;
 
+  // 현재 날짜를 YYYY-MM-DD 형식으로 가져오는 헬퍼 함수
+  const getCurrentDateString = () => {
+    const now = new Date();
+    return now.toISOString().split('T')[0];
+  };
+
   beforeEach(async () => {
     // Given: 테스트용 로그 디렉토리 생성
     await fs.mkdir(testLogDir, { recursive: true });
@@ -260,6 +266,107 @@ describe('Logger', () => {
 
       // Then: 콘솔에 출력되지 않아야 함
       expect(consoleSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('일자별 로그 파일', () => {
+    it('should create daily log files with date pattern', async () => {
+      // Given: 로그 디렉토리만 지정하고 Logger를 생성할 때
+      logger = new Logger({
+        level: LogLevel.INFO,
+        logDirectory: testLogDir,
+        enableConsole: false
+      });
+
+      // When: 로그를 기록하면
+      logger.info('Daily log test');
+
+      // 파일 쓰기 완료 대기
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Then: 현재 날짜로 된 로그 파일이 생성되어야 함
+      const currentDate = getCurrentDateString();
+      const expectedLogFile = path.join(testLogDir, `${currentDate}.log`);
+      
+      const fileExists = await fs.access(expectedLogFile).then(() => true).catch(() => false);
+      expect(fileExists).toBe(true);
+
+      const logContent = await fs.readFile(expectedLogFile, 'utf-8');
+      expect(logContent).toContain('Daily log test');
+    });
+
+    it('should append to existing daily log file', async () => {
+      // Given: 이미 오늘 날짜의 로그 파일이 있을 때
+      const currentDate = getCurrentDateString();
+      const dailyLogFile = path.join(testLogDir, `${currentDate}.log`);
+      await fs.writeFile(dailyLogFile, 'Existing daily log\n');
+
+      logger = new Logger({
+        level: LogLevel.INFO,
+        logDirectory: testLogDir,
+        enableConsole: false
+      });
+
+      // When: 새로운 로그를 기록하면
+      logger.info('New daily log entry');
+
+      // 파일 쓰기 완료 대기
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Then: 기존 내용에 추가되어야 함
+      const logContent = await fs.readFile(dailyLogFile, 'utf-8');
+      expect(logContent).toContain('Existing daily log');
+      expect(logContent).toContain('New daily log entry');
+    });
+
+    it('should support both logDirectory and filePath for backward compatibility', async () => {
+      // Given: 기존 filePath 방식으로 Logger를 생성할 때
+      logger = new Logger({
+        level: LogLevel.INFO,
+        filePath: testLogFile,
+        enableConsole: false
+      });
+
+      // When: 로그를 기록하면
+      logger.info('Backward compatibility test');
+
+      // 파일 쓰기 완료 대기
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Then: 기존 방식대로 파일이 생성되어야 함
+      const fileExists = await fs.access(testLogFile).then(() => true).catch(() => false);
+      expect(fileExists).toBe(true);
+
+      const logContent = await fs.readFile(testLogFile, 'utf-8');
+      expect(logContent).toContain('Backward compatibility test');
+    });
+  });
+
+  describe('정적 팩토리 메서드', () => {
+    it('should create daily logger with createDailyLogger', async () => {
+      // Given: createDailyLogger로 Logger를 생성할 때
+      logger = Logger.createDailyLogger(testLogDir, LogLevel.INFO);
+
+      // When: 로그를 기록하면
+      logger.info('Factory method test');
+
+      // 파일 쓰기 완료 대기
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Then: 일자별 로그 파일이 생성되어야 함
+      const currentDate = getCurrentDateString();
+      const expectedLogFile = path.join(testLogDir, `${currentDate}.log`);
+      
+      const fileExists = await fs.access(expectedLogFile).then(() => true).catch(() => false);
+      expect(fileExists).toBe(true);
+    });
+
+    it('should create daily combined logger with createDailyCombinedLogger', () => {
+      // Given & When: createDailyCombinedLogger로 Logger를 생성하면
+      logger = Logger.createDailyCombinedLogger(testLogDir, LogLevel.DEBUG);
+
+      // Then: Logger가 올바르게 생성되어야 함
+      expect(logger).toBeDefined();
     });
   });
 
