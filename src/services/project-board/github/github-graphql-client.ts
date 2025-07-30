@@ -126,8 +126,23 @@ export class GitHubGraphQLClient {
       // dataPath를 사용하여 중첩된 객체에서 데이터 추출
       const data = this.getNestedValue(response, dataPath);
       
-      if (!data || !data.nodes) {
-        break;
+      // 디버깅을 위한 응답 구조 로깅
+      if (!data) {
+        console.error('Failed to extract data from GraphQL response', {
+          dataPath,
+          responseKeys: Object.keys(response),
+          responseStructure: JSON.stringify(response, null, 2).substring(0, 1000)
+        });
+        throw new Error(`Invalid response structure: expected data at path '${dataPath}'`);
+      }
+      
+      if (!data.nodes) {
+        console.error('Data found but missing nodes array', {
+          dataPath,
+          dataKeys: Object.keys(data),
+          dataStructure: JSON.stringify(data, null, 2).substring(0, 500)
+        });
+        throw new Error(`Invalid response structure: expected 'nodes' array at '${dataPath}'`);
       }
 
       allNodes.push(...data.nodes);

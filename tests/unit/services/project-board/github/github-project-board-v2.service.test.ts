@@ -92,6 +92,9 @@ describe('GitHubProjectBoardV2Service', () => {
 
       mockGraphQLClient.query
         .mockResolvedValueOnce({
+          viewer: { login: 'test-user', name: 'Test User' }
+        })
+        .mockResolvedValueOnce({
           organization: { projectV2: mockProject }
         })
         .mockResolvedValueOnce(mockFields);
@@ -100,7 +103,7 @@ describe('GitHubProjectBoardV2Service', () => {
       await service.initialize();
 
       // Then: 올바른 쿼리가 호출되어야 함
-      expect(mockGraphQLClient.query).toHaveBeenCalledTimes(2);
+      expect(mockGraphQLClient.query).toHaveBeenCalledTimes(3);
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Initializing GitHub Projects v2 Service',
         expect.objectContaining({
@@ -113,6 +116,9 @@ describe('GitHubProjectBoardV2Service', () => {
     it('프로젝트를 찾을 수 없으면 오류를 발생시켜야 한다', async () => {
       // Given: 프로젝트가 없는 응답
       mockGraphQLClient.query
+        .mockResolvedValueOnce({
+          viewer: { login: 'test-user', name: 'Test User' }
+        })
         .mockResolvedValueOnce({ organization: { projectV2: null } })
         .mockResolvedValueOnce({ user: { projectV2: null } });
 
@@ -146,6 +152,9 @@ describe('GitHubProjectBoardV2Service', () => {
       };
 
       mockGraphQLClient.query
+        .mockResolvedValueOnce({
+          viewer: { login: 'test-user', name: 'Test User' }
+        })
         .mockResolvedValueOnce({
           organization: { projectV2: mockProject }
         })
@@ -720,6 +729,9 @@ describe('GitHubProjectBoardV2Service', () => {
 
       mockGraphQLClient.query
         .mockResolvedValueOnce({
+          viewer: { login: 'test-user', name: 'Test User' }
+        })
+        .mockResolvedValueOnce({
           organization: { projectV2: mockProject }
         })
         .mockResolvedValueOnce(mockFields);
@@ -760,6 +772,9 @@ describe('GitHubProjectBoardV2Service', () => {
       };
 
       mockGraphQLClient.query
+        .mockResolvedValueOnce({
+          viewer: { login: 'test-user', name: 'Test User' }
+        })
         .mockResolvedValueOnce({
           organization: { projectV2: mockProject }
         })

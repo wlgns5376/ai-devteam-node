@@ -167,7 +167,7 @@ classDiagram
         +handleReviewTasks(): Promise~void~
         +getStatus(): PlannerStatus
         +forceSync(): Promise~void~
-        -parsePullRequestUrl(url): {repoId, prNumber}
+        -parsePullRequestUrl(url): Object
         -addError(code, message, context): void
     }
     
@@ -467,28 +467,30 @@ sequenceDiagram
 - **CLI Interface**: 기본 CLI 명령어 구조 완료
 - **Demo Scripts**: 전체 워크플로우 테스트용 데모 완료
 
-### 🔄 부분 구현됨 (Mock 우선, 실제 구현 필요)
-- **Developer Services**:
+### 🔄 부분 구현됨
+- **Developer Services**: ✅ **완전 구현됨**
   - ✅ mock-developer.ts: 완전한 Mock 구현체
   - ✅ developer-factory.ts: 구현체 선택 로직
   - ✅ response-parser.ts: AI 응답 파싱 로직
-  - 🔄 claude-developer.ts: 기본 구조만 있음, 실제 Claude Code 통합 필요
+  - ✅ claude-developer.ts: Claude Code 통합 완료
 
-- **Workspace Management**:
-  - ✅ workspace-setup.ts: 기본 인터페이스 정의
-  - ✅ workspace-manager.ts: 기본 구조
-  - ✅ repository-manager.ts: 기본 구조
-  - 🔄 실제 Git worktree 관리 로직 구현 필요
+- **Workspace Management**: ✅ **완전 구현됨**
+  - ✅ workspace-setup.ts: 워크스페이스 준비 및 검증 로직 완료
+  - ✅ workspace-manager.ts: 워크스페이스 생성, Git worktree 관리, CLAUDE.local.md 생성 완료
+  - ✅ repository-manager.ts: 저장소 관리 및 worktree 추적 완료
 
-- **Worker Components**:
-  - ✅ prompt-generator.ts: 기본 인터페이스 정의
-  - ✅ result-processor.ts: 기본 인터페이스 정의
-  - 🔄 실제 프롬프트 템플릿 및 결과 처리 로직 필요
+- **Worker Components**: ✅ **완전 구현됨**
+  - ✅ prompt-generator.ts: 상황별 프롬프트 템플릿 완료
+  - ✅ result-processor.ts: AI 응답 결과 처리 로직 완료
 
-- **Git Services**:
-  - ✅ git.service.ts: 기본 Git 작업 인터페이스
-  - ✅ git-lock.service.ts: Git 잠금 관리
-  - 🔄 실제 Git 명령 실행 로직 구현 필요
+- **Git Services**: ✅ **완전 구현됨**
+  - ✅ git.service.ts: Git 명령 실행 및 worktree 관리 완료
+  - ✅ git-lock.service.ts: Git 동시성 제어 완료
+
+- **환경변수 관리**: 🚧 **미구현 - 향후 구현 필요**
+  - ❌ 언어별 환경변수 파일 감지 시스템
+  - ❌ Worker별 독립 환경변수 설정
+  - ❌ 환경변수 파일 자동 복사 메커니즘
 
 ### ✅ 모든 핵심 기능 구현 완료
 
@@ -517,11 +519,12 @@ sequenceDiagram
 - `result-processor.ts:205-225`: 성공/실패 판단 로직
 - `result-processor.ts:227-250`: 결과 세부 정보 추출
 
-#### 5. 환경 설정 지원 ✅ **구현됨**
+#### 5. 환경 설정 지원 ✅ **기본 구현됨**
 - `.env` 파일 기반 API 키 관리
 - `app-config.ts`: 모든 설정 옵션 정의
 - GitHub API 토큰, Claude API 키 자동 로드
 - 워크스페이스 디렉토리 자동 생성
+- ❌ **언어별 환경변수 파일 관리 미구현**
 
 ### 🧪 현재 테스트 가능한 시나리오
 
@@ -568,6 +571,83 @@ return {
 - **claude-developer.ts**: 기본 구조 있음, 실제 명령 실행 로직 필요
 - **mock-developer.ts**: 시뮬레이션용 Mock 구현 완료
 - **developer-factory.ts**: 구현체 선택 로직 완료
+
+## 🚧 향후 구현 필요: 환경변수 관리 시스템
+
+### 환경변수 설정의 필요성
+
+현재 각 Worker가 독립적인 작업 디렉토리(Git worktree)에서 작업을 수행하는데, 각 저장소별로 다른 환경변수 설정이 필요합니다.
+
+### 제안된 구현 방안
+
+#### 1. 언어별 환경파일 자동 감지
+```typescript
+// src/services/environment/environment-detector.ts
+class EnvironmentDetector {
+  async detectProjectType(projectPath: string): Promise<string> {
+    // package.json -> Node.js
+    // pom.xml, build.gradle -> Java  
+    // requirements.txt -> Python
+    // go.mod -> Go
+    // *.csproj -> .NET
+  }
+}
+```
+
+#### 2. 설정 기반 환경파일 관리
+```typescript
+// src/config/default.json에 추가
+{
+  "manager": {
+    "environmentFiles": {
+      "node": [".env", ".env.local", ".env.development"],
+      "java": [
+        "src/main/resources/application.properties",
+        "src/main/resources/application-local.yml"
+      ],
+      "python": [".env", "config.ini", ".python-version"],
+      "dotnet": ["appsettings.json", "appsettings.Development.json"],
+      "default": [".env", ".env.local"]
+    }
+  }
+}
+```
+
+#### 3. 워크스페이스 설정 시 환경파일 복사
+```typescript
+// workspace-manager.ts의 setupWorktree 메서드에 추가
+async setupEnvironmentFiles(workspaceInfo: WorkspaceInfo): Promise<void> {
+  const detector = new EnvironmentDetector();
+  const envManager = new EnvironmentFileManager();
+  
+  // 1. 프로젝트 타입 감지
+  const projectType = await detector.detectProjectType(repositoryPath);
+  
+  // 2. 환경파일 목록 가져오기
+  const envFiles = await envManager.getEnvironmentFiles(repositoryPath, projectType);
+  
+  // 3. 워크스페이스에 환경파일 복사
+  await envManager.copyEnvironmentFiles(repositoryPath, workspaceInfo.workspaceDir, envFiles);
+}
+```
+
+#### 4. 구현 우선순위
+1. **단순 복사 방식**: 원본 저장소의 환경파일들을 워크스페이스로 복사
+2. **프로젝트 타입 감지**: package.json, pom.xml 등으로 언어 자동 감지  
+3. **설정 기반 관리**: default.json에 언어별 환경파일 패턴 정의
+4. **캐시 시스템**: 스캔 결과를 캐시하여 성능 최적화
+
+### 현재 상태
+- ✅ **워크스페이스 관리**: 완전 구현됨
+- ✅ **Git worktree 관리**: 완전 구현됨  
+- ✅ **CLAUDE.local.md 생성**: TDD/SOLID 지침 포함
+- ❌ **환경변수 파일 관리**: 미구현
+
+### 환경변수 관리 구현 후 기대효과
+- 각 Worker가 저장소별 환경설정을 자동으로 가짐
+- 언어별 차이를 자동으로 처리 (Node.js .env, Java application.yml 등)
+- 개발자가 수동으로 환경설정할 필요 없음
+- 격리된 환경에서 안전한 병렬 작업 가능
 
 ## 🚀 실제 운영 환경 배포 준비 완료
 

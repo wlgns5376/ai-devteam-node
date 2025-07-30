@@ -27,7 +27,8 @@ import {
   GET_PROJECT_V2_ITEMS,
   GET_PROJECT_V2_FIELDS,
   GET_PROJECT_V2_ITEM,
-  UPDATE_PROJECT_V2_ITEM_FIELD_VALUE
+  UPDATE_PROJECT_V2_ITEM_FIELD_VALUE,
+  GET_VIEWER
 } from './graphql-queries';
 
 export class GitHubProjectBoardV2Service implements ProjectBoardService {
@@ -50,6 +51,9 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
         owner: this.config.owner,
         projectNumber: this.config.projectNumber
       });
+
+      // 먼저 권한 확인
+      await this.verifyPermissions();
 
       // 프로젝트 조회 시도 (조직 -> 사용자 순서)
       const project = await this.findProject();
@@ -79,6 +83,34 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
       }
       throw new GitHubProjectV2Error(
         'Initialization failed',
+        this.config.projectNumber,
+        this.config.owner,
+        error as Error
+      );
+    }
+  }
+
+  private async verifyPermissions(): Promise<void> {
+    try {
+      // Viewer 쿼리로 인증 및 기본 권한 확인
+      const viewerResponse = await this.graphqlClient.query<{ viewer: { login: string; name?: string } }>(
+        GET_VIEWER,
+        {}
+      );
+      
+      this.logger.info('GitHub API access verified', {
+        user: viewerResponse.viewer.login
+      });
+    } catch (error) {
+      this.logger.error('Failed to verify GitHub API permissions', {
+        error: error instanceof Error ? {
+          message: error.message,
+          name: error.name
+        } : error
+      });
+      
+      throw new GitHubProjectV2Error(
+        'Failed to verify GitHub API permissions. Please check your token has the required scopes: repo, project',
         this.config.projectNumber,
         this.config.owner,
         error as Error
@@ -275,6 +307,18 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
 
       return allItems;
     } catch (error) {
+      // 상세한 에러 로깅
+      this.logger.error('GraphQL query failed in getAllProjectItems', {
+        query: 'GET_PROJECT_V2_ITEMS',
+        projectId: this.projectId,
+        dataPath: 'node.items',
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        } : error
+      });
+      
       throw new GitHubProjectV2Error(
         'Failed to retrieve all project items',
         this.config.projectNumber,

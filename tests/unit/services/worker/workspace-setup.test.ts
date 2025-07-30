@@ -111,6 +111,9 @@ describe('WorkspaceSetup', () => {
       };
 
       mockWorkspaceManager.getWorkspaceInfo.mockResolvedValue(existingWorkspaceInfo);
+      
+      // validateEnvironment를 spy하여 true를 반환하도록 설정
+      jest.spyOn(workspaceSetup, 'validateEnvironment').mockResolvedValue(true);
 
       // When: 워크스페이스 준비
       const result = await workspaceSetup.prepareWorkspace(task);
@@ -121,7 +124,11 @@ describe('WorkspaceSetup', () => {
       expect(result).toEqual(existingWorkspaceInfo);
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Reusing existing workspace',
-        { taskId: task.taskId, workspaceDir: existingWorkspaceInfo.workspaceDir }
+        { 
+          taskId: task.taskId, 
+          workspaceDir: existingWorkspaceInfo.workspaceDir,
+          action: task.action
+        }
       );
     });
 

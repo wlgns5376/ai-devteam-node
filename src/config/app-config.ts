@@ -29,6 +29,7 @@ export interface AppEnvironment {
   readonly GITHUB_REPO?: string;
   readonly GITHUB_REPOS?: string;
   readonly GITHUB_REPO_FILTER_MODE?: string;
+  readonly MONITORING_INTERVAL_MS?: string;
 }
 
 export class AppConfigLoader {
@@ -46,7 +47,9 @@ export class AppConfigLoader {
       planner: {
         boardId: env.GITHUB_PROJECT_NUMBER ? `PVT_kwHOAJ39a84A91F1` : 'default-board', // GitHub Project ID
         repoId: `${env.GITHUB_OWNER || env.REPOSITORY_OWNER || 'example'}/${env.GITHUB_REPO || env.REPOSITORY_NAME || 'repo'}`,
-        monitoringIntervalMs: nodeEnv === 'development' ? 15000 : 30000, // 15초 vs 30초
+        monitoringIntervalMs: env.MONITORING_INTERVAL_MS 
+          ? parseInt(env.MONITORING_INTERVAL_MS, 10) 
+          : (nodeEnv === 'development' ? 15000 : 30000), // 15초 vs 30초
         maxRetryAttempts: 3,
         timeoutMs: 60000,
         repositoryFilter
