@@ -289,23 +289,61 @@ export class AIDevTeamApp {
                       pullRequestUrl: result.pullRequestUrl
                     });
                     
+                    // 상태 업데이트와 PR 연결을 분리하여 처리
+                    let statusUpdateSuccess = false;
+                    let prLinkSuccess = false;
+
+                    // 1단계: 상태를 IN_REVIEW로 변경
                     try {
-                      // 상태를 IN_REVIEW로 변경
                       await this.projectBoardService?.updateItemStatus(request.taskId, 'IN_REVIEW');
-                      
-                      // PR URL 연결
+                      statusUpdateSuccess = true;
+                      this.logger?.info('Task status updated to IN_REVIEW successfully', {
+                        taskId: request.taskId,
+                        newStatus: 'IN_REVIEW'
+                      });
+                    } catch (statusError) {
+                      this.logger?.error('Failed to update task status', {
+                        taskId: request.taskId,
+                        error: statusError instanceof Error ? statusError.message : String(statusError),
+                        stack: statusError instanceof Error ? statusError.stack : undefined
+                      });
+                    }
+
+                    // 2단계: PR URL 연결 (상태 업데이트 실패해도 시도)
+                    try {
                       await this.projectBoardService?.addPullRequestToItem(request.taskId, result.pullRequestUrl);
-                      
+                      prLinkSuccess = true;
+                      this.logger?.info('PR linked to task successfully', {
+                        taskId: request.taskId,
+                        pullRequestUrl: result.pullRequestUrl
+                      });
+                    } catch (prError) {
+                      this.logger?.error('Failed to link PR to task', {
+                        taskId: request.taskId,
+                        pullRequestUrl: result.pullRequestUrl,
+                        error: prError instanceof Error ? prError.message : String(prError),
+                        stack: prError instanceof Error ? prError.stack : undefined
+                      });
+                    }
+
+                    // 결과 로깅
+                    if (statusUpdateSuccess && prLinkSuccess) {
                       this.logger?.info('Task status updated and PR linked successfully', {
                         taskId: request.taskId,
                         newStatus: 'IN_REVIEW',
                         pullRequestUrl: result.pullRequestUrl
                       });
-                    } catch (error) {
-                      this.logger?.error('Failed to update task status or link PR', {
+                    } else if (statusUpdateSuccess || prLinkSuccess) {
+                      this.logger?.warn('Partial success in task update', {
                         taskId: request.taskId,
-                        error: error instanceof Error ? error.message : String(error),
-                        stack: error instanceof Error ? error.stack : undefined
+                        statusUpdateSuccess,
+                        prLinkSuccess,
+                        pullRequestUrl: result.pullRequestUrl
+                      });
+                    } else {
+                      this.logger?.error('Both task status update and PR linking failed', {
+                        taskId: request.taskId,
+                        pullRequestUrl: result.pullRequestUrl
                       });
                     }
                   }

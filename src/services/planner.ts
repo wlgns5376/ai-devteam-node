@@ -201,13 +201,14 @@ export class Planner implements PlannerService {
       });
 
       for (const item of todoItems) {
-        // 이미 처리된 작업인지 확인
+        // TODO로 돌아온 작업은 다시 처리할 수 있도록 processedTasks에서 제거
         if (this.workflowState.processedTasks.has(item.id)) {
-          this.dependencies.logger.debug('Skipping already processed task', {
+          this.dependencies.logger.info('Removing previously processed task from processed list for reprocessing', {
             taskId: item.id,
             title: item.title
           });
-          continue;
+          this.workflowState.processedTasks.delete(item.id);
+          this.workflowState.activeTasks.delete(item.id);
         }
 
         // 현재 활성 작업인지 확인
