@@ -407,41 +407,69 @@ export class AIDevTeamApp {
 
             } else if (request.action === 'process_feedback') {
               // 피드백 처리
-              const worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+              let worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+              let workerId: string;
+              
               if (!worker) {
-                return {
+                // 기존 워커가 없으면 새 워커 할당
+                this.logger?.info('No existing worker found for task, allocating new worker', {
+                  taskId: request.taskId
+                });
+                
+                const availableWorker = await this.workerPoolManager.getAvailableWorker();
+                if (!availableWorker) {
+                  return {
+                    taskId: request.taskId,
+                    status: ResponseStatus.REJECTED,
+                    message: 'No available workers for feedback processing',
+                    workerStatus: 'unavailable'
+                  };
+                }
+                
+                workerId = availableWorker.id;
+                
+                // 새 워커에 피드백 작업 할당
+                const feedbackTask = {
                   taskId: request.taskId,
-                  status: ResponseStatus.ERROR,
-                  message: 'Worker not found for feedback processing',
-                  workerStatus: 'not_found'
+                  action: 'process_feedback' as any,
+                  boardItem: request.boardItem,
+                  pullRequestUrl: request.pullRequestUrl,
+                  comments: request.comments,
+                  repositoryId: request.boardItem ? this.extractRepositoryFromBoardItem(request.boardItem, request.pullRequestUrl) : undefined,
+                  assignedAt: new Date()
                 };
+                
+                await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
+              } else {
+                // 기존 워커가 있으면 재사용
+                workerId = worker.id;
+                
+                // 기존 작업에 피드백 정보 추가
+                const feedbackTask = {
+                  ...worker.currentTask,
+                  action: 'process_feedback' as any,
+                  comments: request.comments,
+                  assignedAt: new Date()
+                };
+
+                // Worker에 피드백 작업 재할당
+                await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
               }
 
-              // 기존 작업에 피드백 정보 추가
-              const feedbackTask = {
-                ...worker.currentTask,
-                action: 'process_feedback' as any,
-                comments: request.comments,
-                assignedAt: new Date()
-              };
-
-              // Worker에 피드백 작업 재할당
-              await this.workerPoolManager.assignWorkerTask(worker.id, feedbackTask);
-
               // 작업 즉시 실행
-              const workerInstance = await this.workerPoolManager.getWorkerInstance(worker.id, this.pullRequestService);
+              const workerInstance = await this.workerPoolManager.getWorkerInstance(workerId, this.pullRequestService);
               if (workerInstance) {
                 // 비동기로 작업 실행 (완료를 기다리지 않음)
                 workerInstance.startExecution().then((result) => {
                   this.logger?.info('Feedback processing completed', {
                     taskId: request.taskId,
-                    workerId: worker.id,
+                    workerId: workerId,
                     success: result.success
                   });
                 }).catch((error) => {
                   this.logger?.error('Feedback processing failed', {
                     taskId: request.taskId,
-                    workerId: worker.id,
+                    workerId: workerId,
                     error: error instanceof Error ? error.message : String(error)
                   });
                 });
@@ -449,8 +477,9 @@ export class AIDevTeamApp {
 
               this.logger?.info('Feedback task assigned to worker and started', {
                 taskId: request.taskId,
-                workerId: worker.id,
-                commentCount: request.comments?.length || 0
+                workerId: workerId,
+                commentCount: request.comments?.length || 0,
+                isNewWorker: !worker
               });
 
               return {
@@ -820,6 +849,89 @@ export class AIDevTeamApp {
           status: ResponseStatus.ACCEPTED,
           message: 'Merge request processing started',
           workerStatus: 'processing_merge'
+        };
+      } else if (request.action === 'process_feedback') {
+        // 피드백 처리
+        let worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+        let workerId: string;
+        
+        if (!worker) {
+          // 기존 워커가 없으면 새 워커 할당
+          this.logger?.info('No existing worker found for task, allocating new worker', {
+            taskId: request.taskId
+          });
+          
+          const availableWorker = await this.workerPoolManager.getAvailableWorker();
+          if (!availableWorker) {
+            return {
+              taskId: request.taskId,
+              status: ResponseStatus.REJECTED,
+              message: 'No available workers for feedback processing',
+              workerStatus: 'unavailable'
+            };
+          }
+          
+          workerId = availableWorker.id;
+          
+          // 새 워커에 피드백 작업 할당
+          const feedbackTask = {
+            taskId: request.taskId,
+            action: 'process_feedback' as any,
+            boardItem: request.boardItem,
+            pullRequestUrl: request.pullRequestUrl,
+            comments: request.comments,
+            repositoryId: request.boardItem ? this.extractRepositoryFromBoardItem(request.boardItem, request.pullRequestUrl) : undefined,
+            assignedAt: new Date()
+          };
+          
+          await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
+        } else {
+          // 기존 워커가 있으면 재사용
+          workerId = worker.id;
+          
+          // 기존 작업에 피드백 정보 추가
+          const feedbackTask = {
+            ...worker.currentTask,
+            action: 'process_feedback' as any,
+            comments: request.comments,
+            assignedAt: new Date()
+          };
+
+          // Worker에 피드백 작업 재할당
+          await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
+        }
+
+        // 작업 즉시 실행
+        const workerInstance = await this.workerPoolManager.getWorkerInstance(workerId, this.pullRequestService);
+        if (workerInstance) {
+          // 비동기로 작업 실행 (완료를 기다리지 않음)
+          workerInstance.startExecution().then((result) => {
+            this.logger?.info('Feedback processing completed', {
+              taskId: request.taskId,
+              workerId: workerId,
+              success: result.success
+            });
+          }).catch((error) => {
+            this.logger?.error('Feedback processing failed', {
+              taskId: request.taskId,
+              workerId: workerId,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          });
+        }
+
+        this.logger?.info('Feedback task assigned to worker and started', {
+          taskId: request.taskId,
+          workerId: workerId,
+          commentCount: request.comments?.length || 0,
+          isNewWorker: !worker
+        });
+
+        return {
+          taskId: request.taskId,
+          status: ResponseStatus.ACCEPTED,
+          message: 'Feedback processing started and execution started',
+          workerStatus: 'processing_feedback'
         };
       }
 

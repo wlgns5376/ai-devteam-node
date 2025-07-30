@@ -127,6 +127,9 @@ describe('AIDevTeamApp - Worker execution fixes', () => {
     (app as any).workerPoolManager = mockWorkerPoolManager;
     (app as any).planner = mockPlanner;
     (app as any).isInitialized = true;
+    
+    // public handleTaskRequest를 위해 workerPoolManager를 직접 설정
+    app['workerPoolManager'] = mockWorkerPoolManager;
     // extractRepositoryFromBoardItem을 실제 구현으로 유지
   });
 
@@ -298,6 +301,138 @@ describe('AIDevTeamApp - Worker execution fixes', () => {
 
       // Then
       expect(result).toBe('fallback/repo');
+    });
+  });
+
+  describe('handleTaskRequest - process_feedback with existing worker', () => {
+    it('기존 worker가 있을 때 feedback 요청을 성공적으로 처리해야 한다', async () => {
+      // Given
+      const taskId = 'PVTI_existing_task';
+      const comments = [{ id: '1', author: 'bot', content: 'test feedback', createdAt: new Date() }];
+      const existingWorker = {
+        id: 'worker-1',
+        status: WorkerStatus.IDLE,
+        currentTask: {
+          taskId,
+          action: 'start_new_task',
+          assignedAt: new Date()
+        }
+      };
+      const mockWorkerInstance = {
+        startExecution: jest.fn().mockResolvedValue({ success: true })
+      };
+
+      mockWorkerPoolManager.getWorkerByTaskId.mockResolvedValue(existingWorker as any);
+      mockWorkerPoolManager.assignWorkerTask.mockResolvedValue(undefined);
+      mockWorkerPoolManager.getWorkerInstance.mockResolvedValue(mockWorkerInstance as any);
+
+      // When
+      try {
+        const result = await app.handleTaskRequest({
+          taskId,
+          action: 'process_feedback' as any,
+          comments
+        });
+        console.log('Test result 1:', result);
+        
+        // Then
+        expect(result.status).toBe(ResponseStatus.ACCEPTED);
+        expect(result.message).toBe('Feedback processing started and execution started');
+        expect(result.workerStatus).toBe('processing_feedback');
+        expect(mockWorkerPoolManager.getWorkerByTaskId).toHaveBeenCalledWith(taskId);
+        expect(mockWorkerPoolManager.assignWorkerTask).toHaveBeenCalledWith('worker-1', {
+          ...existingWorker.currentTask,
+          action: 'process_feedback' as any,
+          comments,
+          assignedAt: expect.any(Date)
+        });
+        expect(mockWorkerInstance.startExecution).toHaveBeenCalled();
+      } catch (error) {
+        console.error('Test error:', error);
+        throw error;
+      }
+    });
+  });
+
+  describe('handleTaskRequest - process_feedback without existing worker', () => {
+    it('기존 worker가 없을 때 새로운 worker를 할당해서 feedback 요청을 처리해야 한다', async () => {
+      // Given
+      const taskId = 'PVTI_no_existing_worker';
+      const comments = [{ id: '1', author: 'bot', content: 'test feedback', createdAt: new Date() }];
+      const boardItem = { 
+        id: taskId, 
+        title: 'Test task',
+        status: 'TODO',
+        assignee: null,
+        labels: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        pullRequestUrls: []
+      } as any;
+      const pullRequestUrl = 'https://github.com/owner/repo/pull/1';
+      const availableWorker = {
+        id: 'worker-2',
+        status: WorkerStatus.IDLE,
+        currentTask: null
+      };
+      const mockWorkerInstance = {
+        startExecution: jest.fn().mockResolvedValue({ success: true })
+      };
+
+      mockWorkerPoolManager.getWorkerByTaskId.mockResolvedValue(null);
+      mockWorkerPoolManager.getAvailableWorker.mockResolvedValue(availableWorker as any);
+      mockWorkerPoolManager.assignWorkerTask.mockResolvedValue(undefined);
+      mockWorkerPoolManager.getWorkerInstance.mockResolvedValue(mockWorkerInstance as any);
+
+      // When
+      const result = await app.handleTaskRequest({
+        taskId,
+        action: 'process_feedback' as any,
+        comments,
+        boardItem,
+        pullRequestUrl
+      });
+
+      // Then
+      expect(result.status).toBe(ResponseStatus.ACCEPTED);
+      expect(result.message).toBe('Feedback processing started and execution started');
+      expect(result.workerStatus).toBe('processing_feedback');
+      expect(mockWorkerPoolManager.getWorkerByTaskId).toHaveBeenCalledWith(taskId);
+      expect(mockWorkerPoolManager.getAvailableWorker).toHaveBeenCalled();
+      expect(mockWorkerPoolManager.assignWorkerTask).toHaveBeenCalledWith('worker-2', {
+        taskId,
+        action: 'process_feedback' as any,
+        boardItem,
+        pullRequestUrl,
+        comments,
+        repositoryId: 'owner/repo',
+        assignedAt: expect.any(Date)
+      });
+      expect(mockWorkerInstance.startExecution).toHaveBeenCalled();
+    });
+
+    it('기존 worker가 없고 사용 가능한 worker도 없을 때 REJECTED를 반환해야 한다', async () => {
+      // Given
+      const taskId = 'PVTI_no_workers';
+      const comments = [{ id: '1', author: 'bot', content: 'test feedback', createdAt: new Date() }];
+
+      mockWorkerPoolManager.getWorkerByTaskId.mockResolvedValue(null);
+      mockWorkerPoolManager.getAvailableWorker.mockResolvedValue(null);
+
+      // When
+      const result = await app.handleTaskRequest({
+        taskId,
+        action: 'process_feedback' as any,
+        comments
+      });
+
+      // Then
+      expect(result.status).toBe(ResponseStatus.REJECTED);
+      expect(result.message).toBe('No available workers for feedback processing');
+      expect(result.workerStatus).toBe('unavailable');
+      expect(mockWorkerPoolManager.getWorkerByTaskId).toHaveBeenCalledWith(taskId);
+      expect(mockWorkerPoolManager.getAvailableWorker).toHaveBeenCalled();
+      expect(mockWorkerPoolManager.assignWorkerTask).not.toHaveBeenCalled();
     });
   });
 });

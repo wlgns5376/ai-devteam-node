@@ -3,18 +3,25 @@ import path from 'path';
 import { Task, TaskStatus, Worker, WorkerStatus, WorkspaceInfo } from '@/types';
 import { RepositoryState } from '@/types/manager.types';
 
+export interface PlannerState {
+  lastSyncTime?: Date;
+  processedComments: string[];
+}
+
 export class StateManager {
   private readonly dataDir: string;
   private readonly tasksFile: string;
   private readonly workersFile: string;
   private readonly workspacesFile: string;
   private readonly repositoriesFile: string;
+  private readonly plannerStateFile: string;
   private readonly lockFile: string;
 
   private tasks: Map<string, Task> = new Map();
   private workers: Map<string, Worker> = new Map();
   private workspaces: Map<string, WorkspaceInfo> = new Map();
   private repositories: Map<string, RepositoryState> = new Map();
+  private plannerState: PlannerState = { processedComments: [] };
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -22,6 +29,7 @@ export class StateManager {
     this.workersFile = path.join(dataDir, 'workers.json');
     this.workspacesFile = path.join(dataDir, 'workspaces.json');
     this.repositoriesFile = path.join(dataDir, 'repositories.json');
+    this.plannerStateFile = path.join(dataDir, 'planner-state.json');
     this.lockFile = path.join(dataDir, '.lock');
   }
 
@@ -35,6 +43,7 @@ export class StateManager {
       await this.loadWorkers();
       await this.loadWorkspaces();
       await this.loadRepositories();
+      await this.loadPlannerState();
     } catch (error) {
       throw new Error(`Failed to initialize StateManager: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -171,6 +180,35 @@ export class StateManager {
     return Array.from(this.repositories.values());
   }
 
+  // 플래너 상태 관리 메서드들
+  async savePlannerState(state: Partial<PlannerState>): Promise<void> {
+    await this.withLock(async () => {
+      this.plannerState = { ...this.plannerState, ...state };
+      await this.persistPlannerState();
+    });
+  }
+
+  async getPlannerState(): Promise<PlannerState> {
+    return { ...this.plannerState };
+  }
+
+  async updateLastSyncTime(time: Date): Promise<void> {
+    await this.savePlannerState({ lastSyncTime: time });
+  }
+
+  async addProcessedComment(commentId: string): Promise<void> {
+    await this.withLock(async () => {
+      if (!this.plannerState.processedComments.includes(commentId)) {
+        this.plannerState.processedComments.push(commentId);
+        await this.persistPlannerState();
+      }
+    });
+  }
+
+  async isCommentProcessed(commentId: string): Promise<boolean> {
+    return this.plannerState.processedComments.includes(commentId);
+  }
+
   // 프라이빗 메서드들
   private async loadTasks(): Promise<void> {
     try {
@@ -274,6 +312,26 @@ export class StateManager {
     const repositoriesArray = Array.from(this.repositories.values());
     const repositoriesContent = JSON.stringify(repositoriesArray, null, 2);
     await fs.writeFile(this.repositoriesFile, repositoriesContent, 'utf-8');
+  }
+
+  private async loadPlannerState(): Promise<void> {
+    try {
+      const plannerStateContent = await fs.readFile(this.plannerStateFile, 'utf-8');
+      this.plannerState = JSON.parse(plannerStateContent, this.dateReviver);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        // 파일이 없으면 기본값으로 초기화
+        this.plannerState = { processedComments: [] };
+        await this.persistPlannerState();
+      } else {
+        throw new Error(`Failed to load planner state: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }
+
+  private async persistPlannerState(): Promise<void> {
+    const plannerStateContent = JSON.stringify(this.plannerState, null, 2);
+    await fs.writeFile(this.plannerStateFile, plannerStateContent, 'utf-8');
   }
 
   private async withLock<T>(operation: () => Promise<T>): Promise<T> {

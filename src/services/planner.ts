@@ -163,10 +163,13 @@ export class Planner implements PlannerService {
       await this.handleInProgressTasks();  
       await this.handleReviewTasks();
 
-      this.workflowState.lastSyncTime = new Date();
+      // StateManager에 lastSyncTime 저장
+      const now = new Date();
+      await this.dependencies.stateManager.updateLastSyncTime(now);
+      this.workflowState.lastSyncTime = now;
       
       this.dependencies.logger.debug('Workflow cycle completed', {
-        lastSyncTime: this.workflowState.lastSyncTime,
+        lastSyncTime: now,
         activeTasks: this.workflowState.activeTasks.size
       });
 
@@ -423,7 +426,9 @@ export class Planner implements PlannerService {
               });
             } else {
               // 3. PR 승인 상태 확인
+              this.dependencies.logger.debug('Checking PR approval status', { taskId: item.id, repoId, prNumber });
               const isApproved = await this.dependencies.pullRequestService.isApproved(repoId, prNumber);
+              this.dependencies.logger.debug('PR approval status checked', { taskId: item.id, isApproved });
               
               if (isApproved) {
                 // 승인됨 -> Manager에게 병합 요청
@@ -448,8 +453,41 @@ export class Planner implements PlannerService {
                 }
               } else {
                 // 4. 미승인 - 신규 코멘트 확인
-                const since = this.workflowState.lastSyncTime || new Date(Date.now() - 24 * 60 * 60 * 1000);
+                // StateManager에서 lastSyncTime 가져오기 (없으면 7일 전부터 확인)
+                const plannerState = await this.dependencies.stateManager.getPlannerState();
+                const since = plannerState.lastSyncTime || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                this.dependencies.logger.debug('Checking for new comments', { 
+                  taskId: item.id, 
+                  since, 
+                  lastSyncTime: plannerState.lastSyncTime,
+                  repoId, 
+                  prNumber 
+                });
+                
+                // 모든 코멘트 확인 (디버깅용)
+                const allComments = await this.dependencies.pullRequestService.getComments(repoId, prNumber);
+                this.dependencies.logger.debug('All comments retrieved for debugging', {
+                  taskId: item.id,
+                  allCommentsCount: allComments.length,
+                  allCommentDetails: allComments.map((c: any) => ({
+                    id: c.id,
+                    author: c.author,
+                    createdAt: c.createdAt,
+                    content: c.content.substring(0, 50) + (c.content.length > 50 ? '...' : '')
+                  }))
+                });
+                
                 const newComments = await this.dependencies.pullRequestService.getNewComments(repoId, prNumber, since);
+                this.dependencies.logger.debug('New comments checked', { 
+                  taskId: item.id, 
+                  newCommentsCount: newComments.length,
+                  commentDetails: newComments.map((c: any) => ({
+                    id: c.id,
+                    author: c.author,
+                    createdAt: c.createdAt,
+                    content: c.content.substring(0, 100) + (c.content.length > 100 ? '...' : '')
+                  }))
+                });
 
                 if (newComments.length > 0) {
                   // 5. Manager에게 피드백 전달
@@ -457,15 +495,18 @@ export class Planner implements PlannerService {
                     taskId: item.id,
                     action: TaskAction.PROCESS_FEEDBACK,
                     pullRequestUrl: prUrl,
+                    boardItem: item,
                     comments: newComments
                   };
 
                   const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
 
                   if (response.status === ResponseStatus.ACCEPTED) {
-                    // 처리된 코멘트로 기록
+                    // 처리된 코멘트로 기록 (StateManager 사용)
                     const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
-                    commentIds.forEach((id: string) => this.workflowState.processedComments.add(id));
+                    for (const id of commentIds) {
+                      await this.dependencies.stateManager.addProcessedComment(id);
+                    }
                     
                     this.dependencies.logger.info('Feedback processed', {
                       taskId: item.id,

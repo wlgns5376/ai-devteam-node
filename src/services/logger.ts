@@ -27,7 +27,7 @@ export class Logger {
     this.config = {
       level: config.level,
       filePath: config.filePath || '',
-      logDirectory: config.logDirectory || '',
+      logDirectory: config.logDirectory || process.env.LOG_DIRECTORY || '',
       enableConsole: config.enableConsole ?? true
     };
   }
