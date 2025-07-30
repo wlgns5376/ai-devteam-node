@@ -221,12 +221,15 @@ export class ClaudeDeveloper implements DeveloperInterface {
 
   private async checkClaudeCLI(): Promise<void> {
     try {
-      // claude --version 또는 claude --help 명령어로 설치 확인
-      await execAsync('claude --version', { timeout: 5000 });
-    } catch (error) {
-      // claude --version이 실패하면 claude --help 시도
+      // which 명령으로 claude 실행파일 존재 확인 (가장 안전한 방법)
+      await execAsync('which claude', { timeout: 2000 });
+    } catch (whichError) {
       try {
-        await execAsync('claude --help', { timeout: 5000 });
+        // which가 실패하면 --help로 실제 실행 가능성 확인 (--version은 디버거 모드 회피)
+        const result = await execAsync('claude --help', { timeout: 3000 });
+        if (!result.stdout && !result.stderr) {
+          throw new Error('Claude CLI not responding properly');
+        }
       } catch (helpError) {
         throw new Error('Claude CLI not found. Please install Claude CLI first.');
       }
@@ -439,7 +442,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
     try {
       const tmpDir = os.tmpdir();
       const timestamp = Date.now();
-      const filename = `claude-prompt-${timestamp}-${Math.random().toString(36).substr(2, 9)}.txt`;
+      const filename = `claude-prompt-${timestamp}-${Math.random().toString(36).substring(2, 11)}.txt`;
       const filePath = path.join(tmpDir, filename);
 
       await fs.writeFile(filePath, prompt, 'utf-8');

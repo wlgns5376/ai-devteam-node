@@ -85,21 +85,47 @@ export class Worker implements WorkerInterface {
         taskId: task.taskId
       });
 
-      // 0. Developer 초기화 확인 및 수행
+      // 0. Developer 초기화 확인 및 수행 (재시도 로직 포함)
       if (this.dependencies.developer && typeof this.dependencies.developer.initialize === 'function') {
-        try {
-          await this.dependencies.developer.initialize();
-          this.dependencies.logger.debug('Developer initialized successfully', {
-            workerId: this.id,
-            developerType: this.developerType
-          });
-        } catch (error) {
-          this.dependencies.logger.error('Developer initialization failed', {
+        const maxRetries = 3;
+        let lastError: Error | null = null;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            await this.dependencies.developer.initialize();
+            this.dependencies.logger.debug('Developer initialized successfully', {
+              workerId: this.id,
+              developerType: this.developerType,
+              attempt
+            });
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error));
+            this.dependencies.logger.warn('Developer initialization failed', {
+              workerId: this.id,
+              developerType: this.developerType,
+              attempt,
+              maxRetries,
+              error: lastError
+            });
+            
+            // 마지막 시도가 아니면 잠시 대기 후 재시도
+            if (attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            }
+          }
+        }
+        
+        // 모든 재시도가 실패한 경우
+        if (lastError) {
+          this.dependencies.logger.error('Developer initialization failed after all retries', {
             workerId: this.id,
             developerType: this.developerType,
-            error
+            maxRetries,
+            error: lastError
           });
-          throw error;
+          throw lastError;
         }
       }
 
