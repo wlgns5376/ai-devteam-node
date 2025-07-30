@@ -216,6 +216,13 @@ export class GitHubPullRequestService implements PullRequestService {
         pull_number: prNumber
       });
 
+      // PR Reviews (리뷰 전체 코멘트)
+      const { data: reviews } = await this.octokit.rest.pulls.listReviews({
+        owner,
+        repo,
+        pull_number: prNumber
+      });
+
       const comments: PullRequestComment[] = [];
 
       // Issue comments 추가
@@ -250,6 +257,26 @@ export class GitHubPullRequestService implements PullRequestService {
             url: comment.html_url
           }
         });
+      }
+
+      // PR Review body comments 추가
+      for (const review of reviews) {
+        // 리뷰에 body가 있는 경우에만 추가
+        if (review.body && review.body.trim()) {
+          comments.push({
+            id: `review-${review.id}`,
+            content: review.body,
+            author: review.user?.login || 'unknown',
+            createdAt: new Date(review.submitted_at || new Date().toISOString()),
+            updatedAt: undefined, // 리뷰는 수정되지 않음
+            isProcessed: false, // 기본값
+            metadata: {
+              type: 'review_body',
+              reviewState: review.state,
+              url: review.html_url
+            }
+          });
+        }
       }
 
       // 시간순 정렬

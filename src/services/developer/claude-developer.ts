@@ -107,7 +107,8 @@ export class ClaudeDeveloper implements DeveloperInterface {
       const { stdout, stderr } = await execAsync(command, {
         cwd: workspaceDir,
         timeout: this.timeoutMs,
-        env
+        env,
+        shell: '/bin/bash' // shell 명시적 사용으로 파이프 처리 안정화
       });
 
       const rawOutput = stdout.trim();
@@ -255,8 +256,8 @@ export class ClaudeDeveloper implements DeveloperInterface {
 
   private buildClaudeCommand(promptFilePath: string): string {
     const claudePath = this.config.claudeCodePath || 'claude';
-    // 파일을 cat으로 읽어서 파이프로 전달하는 방식
-    return `cat "${promptFilePath}" | "${claudePath}" --dangerously-skip-permissions -p`;
+    // shell을 명시적으로 사용하여 파이프 처리를 안전하게 함
+    return `bash -c 'cat "${promptFilePath}" | "${claudePath}" --dangerously-skip-permissions -p'`;
   }
 
   /**
