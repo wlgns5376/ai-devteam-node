@@ -274,7 +274,7 @@ export class AIDevTeamApp {
               const workerInstance = await this.workerPoolManager.getWorkerInstance(availableWorker.id, this.pullRequestService);
               if (workerInstance) {
                 // 비동기로 작업 실행 (완료를 기다리지 않음)
-                workerInstance.startExecution().then((result) => {
+                workerInstance.startExecution().then(async (result) => {
                   this.logger?.info('New task execution completed', {
                     taskId: request.taskId,
                     workerId: availableWorker.id,
@@ -282,9 +282,32 @@ export class AIDevTeamApp {
                     pullRequestUrl: result.pullRequestUrl
                   });
                   
-                  // PR이 생성된 경우 상태 업데이트 고려
+                  // PR이 생성된 경우 상태를 IN_REVIEW로 업데이트하고 PR 링크 연결
                   if (result.success && result.pullRequestUrl) {
-                    // 추후 Board Item 상태 업데이트 로직 추가 가능
+                    this.logger?.info('Updating task status to IN_REVIEW and linking PR', {
+                      taskId: request.taskId,
+                      pullRequestUrl: result.pullRequestUrl
+                    });
+                    
+                    try {
+                      // 상태를 IN_REVIEW로 변경
+                      await this.projectBoardService?.updateItemStatus(request.taskId, 'IN_REVIEW');
+                      
+                      // PR URL 연결
+                      await this.projectBoardService?.addPullRequestToItem(request.taskId, result.pullRequestUrl);
+                      
+                      this.logger?.info('Task status updated and PR linked successfully', {
+                        taskId: request.taskId,
+                        newStatus: 'IN_REVIEW',
+                        pullRequestUrl: result.pullRequestUrl
+                      });
+                    } catch (error) {
+                      this.logger?.error('Failed to update task status or link PR', {
+                        taskId: request.taskId,
+                        error: error instanceof Error ? error.message : String(error),
+                        stack: error instanceof Error ? error.stack : undefined
+                      });
+                    }
                   }
                 }).catch((error) => {
                   this.logger?.error('New task execution failed', {

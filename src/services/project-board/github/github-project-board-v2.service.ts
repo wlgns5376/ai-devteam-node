@@ -534,6 +534,35 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
       throw new GitHubProjectV2Error('Project not initialized');
     }
 
+    // 업데이트 전 현재 상태 조회
+    let beforeItem: ProjectBoardItem | null = null;
+    try {
+      const currentItem = await this.getProjectItem(itemId);
+      beforeItem = this.mapProjectV2ItemToProjectBoardItem(currentItem);
+      
+      this.logger.debug('Status update requested', {
+        itemId,
+        currentStatus: beforeItem.status,
+        requestedStatus: status,
+        title: beforeItem.title
+      });
+
+      // 이미 요청된 상태와 같다면 업데이트 생략
+      if (beforeItem.status === status) {
+        this.logger.info('Status already matches requested status, skipping update', {
+          itemId,
+          status,
+          title: beforeItem.title
+        });
+        return beforeItem;
+      }
+    } catch (error) {
+      this.logger.warn('Failed to get current item status for comparison', {
+        itemId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+
     // 상태 값 매핑
     const statusValue = this.statusMapping.statusValues[status as keyof typeof this.statusMapping.statusValues];
     if (!statusValue) {
@@ -555,8 +584,16 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
     }
 
     try {
+      this.logger.debug('Executing status update mutation', {
+        itemId,
+        projectId: this.projectId,
+        fieldId: statusFieldId,
+        statusValue,
+        requestedStatus: status
+      });
+
       // GraphQL mutation 실행
-      await this.graphqlClient.query(
+      const mutationResponse = await this.graphqlClient.query(
         UPDATE_PROJECT_V2_ITEM_FIELD_VALUE,
         {
           projectId: this.projectId,
@@ -568,11 +605,50 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
         }
       );
 
-      // 업데이트된 아이템 정보 조회
+      this.logger.debug('Status update mutation response', {
+        itemId,
+        response: mutationResponse
+      });
+
+      // 업데이트된 아이템 정보 조회 및 검증
       const updatedItem = await this.getProjectItem(itemId);
-      return this.mapProjectV2ItemToProjectBoardItem(updatedItem);
+      const mappedItem = this.mapProjectV2ItemToProjectBoardItem(updatedItem);
+
+      // 상태 변경 검증
+      if (mappedItem.status !== status) {
+        this.logger.error('Status update verification failed', {
+          itemId,
+          requestedStatus: status,
+          actualStatus: mappedItem.status,
+          beforeStatus: beforeItem?.status,
+          title: mappedItem.title
+        });
+        
+        throw new GitHubProjectV2Error(
+          `Status update failed: requested ${status} but got ${mappedItem.status}`,
+          this.config.projectNumber,
+          this.config.owner
+        );
+      }
+
+      this.logger.info('Status updated successfully', {
+        itemId,
+        beforeStatus: beforeItem?.status,
+        afterStatus: mappedItem.status,
+        title: mappedItem.title
+      });
+
+      return mappedItem;
 
     } catch (error) {
+      this.logger.error('Failed to update item status', {
+        itemId,
+        requestedStatus: status,
+        beforeStatus: beforeItem?.status,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+
       throw new GitHubProjectV2Error(
         `Failed to update item status: ${error instanceof Error ? error.message : 'Unknown error'}`,
         this.config.projectNumber,
@@ -592,6 +668,12 @@ export class GitHubProjectBoardV2Service implements ProjectBoardService {
     }
 
     try {
+      this.logger.debug('Adding PR URL to project item', {
+        itemId,
+        prUrl,
+        availableFields: Array.from(this.fieldMappings.keys())
+      });
+
       // 기존 아이템 정보 조회
       const existingItem = await this.getProjectItem(itemId);
       

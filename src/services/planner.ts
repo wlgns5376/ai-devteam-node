@@ -34,9 +34,14 @@ export class Planner implements PlannerService {
       return; // 이미 모니터링 중
     }
 
+    // 모니터링 시작 전 기존 작업 상태 복원
+    await this.initializeWorkflowState();
+
     this.dependencies.logger.info('Planner monitoring started', {
       boardId: this.config.boardId,
-      interval: this.config.monitoringIntervalMs
+      interval: this.config.monitoringIntervalMs,
+      restoredProcessedTasks: this.workflowState.processedTasks.size,
+      restoredActiveTasks: this.workflowState.activeTasks.size
     });
 
     this.monitoringTimer = setInterval(
@@ -70,6 +75,84 @@ export class Planner implements PlannerService {
 
   async forceSync(): Promise<void> {
     await this.processWorkflowCycle();
+  }
+
+  /**
+   * 시작 시 기존 프로젝트 보드 상태를 기반으로 워크플로우 상태를 초기화
+   */
+  private async initializeWorkflowState(): Promise<void> {
+    try {
+      this.dependencies.logger.debug('Initializing workflow state from project board');
+
+      // 모든 상태의 작업 조회
+      const [todoItems, inProgressItems, inReviewItems, doneItems] = await Promise.all([
+        this.dependencies.projectBoardService.getItems(this.config.boardId, 'TODO'),
+        this.dependencies.projectBoardService.getItems(this.config.boardId, 'IN_PROGRESS'),
+        this.dependencies.projectBoardService.getItems(this.config.boardId, 'IN_REVIEW'),
+        this.dependencies.projectBoardService.getItems(this.config.boardId, 'DONE')
+      ]);
+
+      const now = new Date();
+
+      // DONE 상태 작업들을 처리된 작업으로 기록
+      for (const item of doneItems) {
+        this.workflowState.processedTasks.add(item.id);
+        this.dependencies.logger.debug('Restored completed task', {
+          taskId: item.id,
+          title: item.title,
+          status: 'DONE'
+        });
+      }
+
+      // IN_PROGRESS 상태 작업들을 활성 작업으로 기록
+      for (const item of inProgressItems) {
+        this.workflowState.processedTasks.add(item.id);
+        this.workflowState.activeTasks.set(item.id, {
+          taskId: item.id,
+          status: 'IN_PROGRESS',
+          startedAt: now, // 정확한 시작 시간은 알 수 없으므로 현재 시간 사용
+          lastUpdatedAt: now
+        });
+        this.dependencies.logger.debug('Restored active task', {
+          taskId: item.id,
+          title: item.title,
+          status: 'IN_PROGRESS'
+        });
+      }
+
+      // IN_REVIEW 상태 작업들을 활성 작업으로 기록
+      for (const item of inReviewItems) {
+        this.workflowState.processedTasks.add(item.id);
+        this.workflowState.activeTasks.set(item.id, {
+          taskId: item.id,
+          status: 'IN_REVIEW',
+          startedAt: now,
+          lastUpdatedAt: now
+        });
+        this.dependencies.logger.debug('Restored review task', {
+          taskId: item.id,
+          title: item.title,
+          status: 'IN_REVIEW'
+        });
+      }
+
+      this.dependencies.logger.info('Workflow state initialized successfully', {
+        totalProcessedTasks: this.workflowState.processedTasks.size,
+        totalActiveTasks: this.workflowState.activeTasks.size,
+        todoItemsCount: todoItems.length,
+        inProgressItemsCount: inProgressItems.length,
+        inReviewItemsCount: inReviewItems.length,
+        doneItemsCount: doneItems.length
+      });
+
+    } catch (error) {
+      this.dependencies.logger.error('Failed to initialize workflow state', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      this.addError('WORKFLOW_INIT_ERROR', 'Failed to initialize workflow state', { error });
+    }
   }
 
   async processWorkflowCycle(): Promise<void> {
@@ -111,49 +194,118 @@ export class Planner implements PlannerService {
         'TODO'
       );
 
+      this.dependencies.logger.debug('Retrieved TODO items for processing', {
+        totalTodoItems: todoItems.length,
+        processedTasksCount: this.workflowState.processedTasks.size,
+        activeTasksCount: this.workflowState.activeTasks.size
+      });
+
       for (const item of todoItems) {
-        if (!this.workflowState.processedTasks.has(item.id)) {
-          try {
-            // 2. Manager에게 작업 전달
-            const request: TaskRequest = {
+        // 이미 처리된 작업인지 확인
+        if (this.workflowState.processedTasks.has(item.id)) {
+          this.dependencies.logger.debug('Skipping already processed task', {
+            taskId: item.id,
+            title: item.title
+          });
+          continue;
+        }
+
+        // 현재 활성 작업인지 확인
+        if (this.workflowState.activeTasks.has(item.id)) {
+          this.dependencies.logger.debug('Skipping currently active task', {
+            taskId: item.id,
+            title: item.title,
+            activeStatus: this.workflowState.activeTasks.get(item.id)?.status
+          });
+          continue;
+        }
+
+        try {
+          this.dependencies.logger.info('Processing new task', {
+            taskId: item.id,
+            title: item.title,
+            status: item.status
+          });
+
+          // 2. Manager에게 작업 전달
+          const request: TaskRequest = {
+            taskId: item.id,
+            action: TaskAction.START_NEW_TASK,
+            boardItem: item
+          };
+
+          const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
+
+          if (response.status === ResponseStatus.ACCEPTED) {
+            this.dependencies.logger.info('Task accepted by manager, updating status to IN_PROGRESS', {
               taskId: item.id,
-              action: TaskAction.START_NEW_TASK,
-              boardItem: item
-            };
+              title: item.title
+            });
 
-            const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
-
-            if (response.status === ResponseStatus.ACCEPTED) {
-              // 3. 작업 상태를 IN_PROGRESS로 변경
-              await this.dependencies.projectBoardService.updateItemStatus(item.id, 'IN_PROGRESS');
-              
-              // 처리된 작업으로 기록
-              this.workflowState.processedTasks.add(item.id);
-              this.workflowState.activeTasks.set(item.id, {
+            // 3. 작업 상태를 IN_PROGRESS로 변경
+            const updatedItem = await this.dependencies.projectBoardService.updateItemStatus(item.id, 'IN_PROGRESS');
+            
+            // 상태 변경 검증
+            if (updatedItem.status !== 'IN_PROGRESS') {
+              this.dependencies.logger.error('Status update failed - item status mismatch', {
                 taskId: item.id,
-                status: 'IN_PROGRESS',
-                startedAt: new Date(),
-                lastUpdatedAt: new Date()
-              });
-              
-              this.totalTasksProcessed++;
-              
-              this.dependencies.logger.info('New task started', {
-                taskId: item.id,
+                expectedStatus: 'IN_PROGRESS',
+                actualStatus: updatedItem.status,
                 title: item.title
               });
-            } else {
-              this.dependencies.logger.warn('Task rejected by manager', {
-                taskId: item.id,
-                reason: response.message
+              
+              this.addError('STATUS_UPDATE_FAILED', `Failed to update task ${item.id} status to IN_PROGRESS`, { 
+                taskId: item.id, 
+                expectedStatus: 'IN_PROGRESS',
+                actualStatus: updatedItem.status
               });
+              continue;
             }
-          } catch (error) {
-            this.addError('TASK_START_ERROR', `Failed to start task ${item.id}`, { error, taskId: item.id });
+            
+            // 처리된 작업으로 기록
+            this.workflowState.processedTasks.add(item.id);
+            this.workflowState.activeTasks.set(item.id, {
+              taskId: item.id,
+              status: 'IN_PROGRESS',
+              startedAt: new Date(),
+              lastUpdatedAt: new Date()
+            });
+            
+            this.totalTasksProcessed++;
+            
+            this.dependencies.logger.info('New task started successfully', {
+              taskId: item.id,
+              title: item.title,
+              verifiedStatus: updatedItem.status
+            });
+          } else {
+            this.dependencies.logger.warn('Task rejected by manager', {
+              taskId: item.id,
+              title: item.title,
+              reason: response.message,
+              responseStatus: response.status
+            });
+            
+            // 거부된 작업도 처리된 것으로 기록하여 재시도 방지
+            this.workflowState.processedTasks.add(item.id);
           }
+        } catch (error) {
+          this.dependencies.logger.error('Failed to process new task', {
+            taskId: item.id,
+            title: item.title,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined
+          });
+          
+          this.addError('TASK_START_ERROR', `Failed to start task ${item.id}`, { error, taskId: item.id });
         }
       }
     } catch (error) {
+      this.dependencies.logger.error('Failed to handle new tasks', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
       this.addError('NEW_TASKS_ERROR', 'Failed to handle new tasks', { error });
     }
   }
