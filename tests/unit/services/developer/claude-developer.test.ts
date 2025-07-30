@@ -94,16 +94,17 @@ describe('ClaudeDeveloper', () => {
     }, 10000);
 
     it('API 키가 없어도 시스템 인증으로 초기화될 수 있어야 한다', async () => {
-      // Given: API 키 없는 설정
+      // Given: API 키 없는 설정 (claudeCodePath 포함)
       const configWithoutApiKey: DeveloperConfig = {
         timeoutMs: 30000,
         maxRetries: 3,
-        retryDelayMs: 1000
+        retryDelayMs: 1000,
+        claudeCodePath: '/fake/claude/path'  // 테스트용 가짜 경로
       };
       
-      // Mock으로 CLI 확인 성공 (claude --version)
+      // Mock으로 CLI 확인 성공 (claude --help)
       mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, 'claude version 1.0.0'));
+        process.nextTick(() => callback(null, { stdout: 'claude help output', stderr: '' }));
         return {} as any;
       });
       
@@ -182,7 +183,7 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
         
         // Claude CLI 명령어 실행 확인 (파일을 통한 파이프 방식)
         expect(mockedExec).toHaveBeenCalledWith(
-          expect.stringMatching(/^cat ".*claude-prompt-.*\.txt" \| claude --dangerously-skip-permissions -p$/),
+          expect.stringMatching(/^cat ".*claude-prompt-.*\.txt" \| "claude" --dangerously-skip-permissions -p$/),
           expect.objectContaining({
             cwd: workspaceDir,
             timeout: 30000,
@@ -364,9 +365,9 @@ $ git commit -m "Refactor code structure"
       const prompt = '테스트 프롬프트';
       await claudeDeveloper.executePrompt(prompt, '/tmp/workspace');
 
-      // Then: cat 파이프 명령어 패턴 확인
+      // Then: cat 파이프 명령어 패턴 확인 (quoted claude path)
       expect(mockedExec).toHaveBeenCalledWith(
-        expect.stringMatching(/^cat ".*\.txt" \| claude --dangerously-skip-permissions -p$/),
+        expect.stringMatching(/^cat ".*\.txt" \| "claude" --dangerously-skip-permissions -p$/),
         expect.objectContaining({
           cwd: '/tmp/workspace',
           timeout: 30000

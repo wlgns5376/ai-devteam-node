@@ -44,6 +44,10 @@ export interface DeveloperConfig {
   maxRetries: number;
   retryDelayMs: number;
   
+  // CLI 실행 파일 경로
+  claudeCodePath?: string;
+  geminiCliPath?: string;
+  
   claude?: ClaudeConfig;
   gemini?: GeminiConfig;
   mock?: MockConfig;

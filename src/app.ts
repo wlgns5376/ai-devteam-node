@@ -44,6 +44,11 @@ export class AIDevTeamApp {
       timeoutMs: systemConfig.claudeCodeTimeoutMs,
       maxRetries: 3,
       retryDelayMs: 1000,
+      
+      // CLI 실행 파일 경로
+      claudeCodePath: systemConfig.claudeCodePath,
+      geminiCliPath: systemConfig.geminiCliPath,
+      
       claude: {
         apiKey: process.env.ANTHROPIC_API_KEY || '',
         model: 'claude-3-5-sonnet-20241022'

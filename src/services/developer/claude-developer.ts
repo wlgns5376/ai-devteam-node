@@ -22,7 +22,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
   private isInitialized = false;
   private timeoutMs: number;
   private responseParser: ResponseParser;
-  private contextFileManager: ContextFileManager;
+  private contextFileManager: ContextFileManager | null = null;
 
   constructor(
     private readonly config: DeveloperConfig,
@@ -31,23 +31,11 @@ export class ClaudeDeveloper implements DeveloperInterface {
     this.timeoutMs = config.timeoutMs;
     this.responseParser = new ResponseParser();
     
-    // Context File Manager 초기화
-    const contextConfig: ContextFileConfig = {
-      maxContextLength: 8000, // Claude CLI에 적합한 크기
-      contextDirectory: path.join(process.cwd(), '.ai-devteam', 'context'),
-      enableMarkdownImports: true
-    };
-    
-    this.contextFileManager = new ContextFileManager(contextConfig, {
-      logger: dependencies.logger
-    });
+    // Context File Manager는 executePrompt에서 workspace별로 초기화
   }
 
   async initialize(): Promise<void> {
     try {
-      // Context File Manager 초기화
-      await this.contextFileManager.initialize();
-      
       // Claude CLI 설치 확인
       await this.checkClaudeCLI();
       
@@ -93,6 +81,9 @@ export class ClaudeDeveloper implements DeveloperInterface {
         promptLength: prompt.length,
         workspaceDir 
       });
+
+      // workspace별 Context File Manager 초기화
+      await this.initializeContextFileManager(workspaceDir);
 
       // 긴 컨텍스트 처리 및 최적화된 프롬프트 생성
       const optimizedPrompt = await this.processLongContext(prompt, workspaceDir);
@@ -202,8 +193,10 @@ export class ClaudeDeveloper implements DeveloperInterface {
   }
 
   async cleanup(): Promise<void> {
-    // 컨텍스트 파일 정리
-    await this.contextFileManager.cleanupContextFiles();
+    // 컨텍스트 파일 정리 (contextFileManager가 초기화된 경우에만)
+    if (this.contextFileManager) {
+      await this.contextFileManager.cleanupContextFiles();
+    }
     
     this.isInitialized = false;
     this.dependencies.logger.info('Claude Developer cleaned up');
@@ -218,34 +211,63 @@ export class ClaudeDeveloper implements DeveloperInterface {
     this.dependencies.logger.debug('Claude Developer timeout set', { timeoutMs });
   }
 
+  /**
+   * workspace별 Context File Manager 초기화
+   */
+  private async initializeContextFileManager(workspaceDir: string): Promise<void> {
+    const contextConfig: ContextFileConfig = {
+      maxContextLength: 8000, // Claude CLI에 적합한 크기
+      contextDirectory: path.join(workspaceDir, '.ai-devteam', 'context'),
+      enableMarkdownImports: true
+    };
+    
+    this.contextFileManager = new ContextFileManager(contextConfig, {
+      logger: this.dependencies.logger
+    });
+    
+    await this.contextFileManager.initialize();
+    
+    this.dependencies.logger.debug('Context File Manager initialized for workspace', {
+      workspaceDir,
+      contextDirectory: contextConfig.contextDirectory
+    });
+  }
 
   private async checkClaudeCLI(): Promise<void> {
+    const claudePath = this.config.claudeCodePath || 'claude';
+    
     try {
-      // which 명령으로 claude 실행파일 존재 확인 (가장 안전한 방법)
-      await execAsync('which claude', { timeout: 2000 });
-    } catch (whichError) {
+      // 설정된 경로로 직접 실행 테스트 (--help로 실제 실행 가능성 확인)
+      const result = await execAsync(`"${claudePath}" --help`, { timeout: 3000 });
+      if (!result.stdout && !result.stderr) {
+        throw new Error('Claude CLI not responding properly');
+      }
+    } catch (helpError) {
+      // 직접 실행이 실패하면 which로 PATH에서 찾기
       try {
-        // which가 실패하면 --help로 실제 실행 가능성 확인 (--version은 디버거 모드 회피)
-        const result = await execAsync('claude --help', { timeout: 3000 });
-        if (!result.stdout && !result.stderr) {
-          throw new Error('Claude CLI not responding properly');
-        }
-      } catch (helpError) {
-        throw new Error('Claude CLI not found. Please install Claude CLI first.');
+        await execAsync(`which "${claudePath}"`, { timeout: 2000 });
+      } catch (whichError) {
+        throw new Error(`Claude CLI not found at path: ${claudePath}. Please check CLAUDE_CODE_PATH setting or install Claude CLI.`);
       }
     }
   }
 
 
   private buildClaudeCommand(promptFilePath: string): string {
+    const claudePath = this.config.claudeCodePath || 'claude';
     // 파일을 cat으로 읽어서 파이프로 전달하는 방식
-    return `cat "${promptFilePath}" | claude --dangerously-skip-permissions -p`;
+    return `cat "${promptFilePath}" | "${claudePath}" --dangerously-skip-permissions -p`;
   }
 
   /**
    * 긴 컨텍스트를 파일로 분리하고 최적화된 프롬프트 생성
    */
   private async processLongContext(prompt: string, workspaceDir: string): Promise<string> {
+    // ContextFileManager가 초기화되지 않은 경우 원본 프롬프트 반환
+    if (!this.contextFileManager) {
+      return prompt;
+    }
+
     // 컨텍스트 길이 확인
     if (!this.contextFileManager.shouldSplitContext(prompt)) {
       return prompt;
@@ -268,7 +290,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
 
       // 워크스페이스별 컨텍스트 파일 생성
       let workspaceContextPath = '';
-      if (taskInfo) {
+      if (taskInfo && this.contextFileManager) {
         workspaceContextPath = await this.contextFileManager.createWorkspaceContext(
           workspaceDir,
           taskInfo
@@ -405,17 +427,17 @@ export class ClaudeDeveloper implements DeveloperInterface {
     }
 
     // 워크스페이스 컨텍스트 참조
-    if (workspaceContextPath) {
+    if (workspaceContextPath && this.contextFileManager) {
       sections.push(`\n# Task Context\n${this.contextFileManager.generateFileReference(workspaceContextPath, 'Task-specific context and requirements')}`);
     }
 
     // 컨텍스트 파일 참조
-    if (contextFiles.length > 0) {
+    if (contextFiles.length > 0 && this.contextFileManager) {
       sections.push('\n# Additional Context');
       sections.push('Please refer to the following context files:');
       
       contextFiles.forEach((file, index) => {
-        const reference = this.contextFileManager.generateFileReference(
+        const reference = this.contextFileManager!.generateFileReference(
           file.filePath,
           `Context part ${index + 1}`
         );
