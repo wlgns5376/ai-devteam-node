@@ -210,7 +210,7 @@ export class RepositoryManager implements RepositoryManagerInterface {
   private generateLocalPath(repositoryId: string): string {
     // repositoryId가 'owner/repo' 형식이라고 가정
     const safeRepositoryId = repositoryId.replace('/', '_');
-    return path.join(this.config.workspaceBasePath, '..', 'repositories', safeRepositoryId);
+    return path.join(this.config.workspaceBasePath, 'repositories', safeRepositoryId);
   }
 
   private getCachedState(repositoryId: string): RepositoryState | null {
