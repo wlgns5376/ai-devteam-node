@@ -45,6 +45,7 @@ coverage/
 .env.test
 .env.production
 .env.local
+.env.docker
 
 # AI DevTeam specific
 workspaces/
