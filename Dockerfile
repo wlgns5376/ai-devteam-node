@@ -104,8 +104,15 @@ if command -v gh &> /dev/null; then
     # Configure GitHub CLI authentication using token
     if [ ! -z "$GITHUB_TOKEN" ]; then
         echo "Configuring GitHub CLI authentication..."
-        echo "$GITHUB_TOKEN" | gh auth login --with-token
-        echo "GitHub CLI authentication configured successfully"
+        # Set the token as environment variable for gh CLI
+        export GH_TOKEN="$GITHUB_TOKEN"
+        
+        # Test authentication without interactive login
+        if gh auth status >/dev/null 2>&1; then
+            echo "GitHub CLI authentication configured successfully"
+        else
+            echo "Warning: GitHub CLI authentication test failed, but token is set"
+        fi
     else
         echo "Warning: GITHUB_TOKEN not provided - GitHub CLI will not be authenticated"
     fi
