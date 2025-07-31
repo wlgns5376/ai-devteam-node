@@ -191,7 +191,9 @@ describe('AppConfigLoader', () => {
         GITHUB_REPO: 'test-repo',
         WORKSPACE_ROOT: '/custom/workspace',
         LOG_LEVEL: 'debug',
-        LOG_FILE: '/custom/app.log'
+        LOG_FILE: '/custom/app.log',
+        CLAUDE_CODE_TIMEOUT: '600000',  // 10분
+        GEMINI_CLI_TIMEOUT: '900000'    // 15분
       };
 
       // When: 설정을 로드하면
@@ -202,6 +204,38 @@ describe('AppConfigLoader', () => {
       expect(config.manager.workspaceRoot).toBe('/custom/workspace');
       expect(config.logger.level).toBe('debug');
       expect(config.logger.filePath).toBe('/custom/app.log');
+      expect(config.developer.claudeCodeTimeoutMs).toBe(600000);
+      expect(config.developer.geminiCliTimeoutMs).toBe(900000);
+    });
+
+    it('should use default timeout values when environment variables are not provided', () => {
+      // Given: 타임아웃 환경변수가 설정되지 않은 경우
+      const env: AppEnvironment = {
+        NODE_ENV: 'development'
+      };
+
+      // When: 설정을 로드하면
+      const config = AppConfigLoader.loadFromEnvironment(env);
+
+      // Then: 기본 타임아웃 값이 사용되어야 함 (5분 = 300000ms)
+      expect(config.developer.claudeCodeTimeoutMs).toBe(300000);
+      expect(config.developer.geminiCliTimeoutMs).toBe(300000);
+    });
+
+    it('should handle invalid timeout values gracefully', () => {
+      // Given: 잘못된 타임아웃 값이 설정된 경우
+      const env: AppEnvironment = {
+        NODE_ENV: 'development',
+        CLAUDE_CODE_TIMEOUT: 'invalid-number',
+        GEMINI_CLI_TIMEOUT: 'also-invalid'
+      };
+
+      // When: 설정을 로드하면
+      const config = AppConfigLoader.loadFromEnvironment(env);
+
+      // Then: NaN이 되므로 기본값으로 fallback되어야 함
+      expect(config.developer.claudeCodeTimeoutMs).toBe(300000); // parseInt('invalid-number') -> NaN, fallback to default
+      expect(config.developer.geminiCliTimeoutMs).toBe(300000);
     });
   });
 

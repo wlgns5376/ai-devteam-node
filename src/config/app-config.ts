@@ -23,7 +23,9 @@ export interface AppEnvironment {
   readonly NODE_ENV: string;
   readonly GITHUB_TOKEN?: string;
   readonly CLAUDE_CODE_PATH?: string;
+  readonly CLAUDE_CODE_TIMEOUT?: string;
   readonly GEMINI_CLI_PATH?: string;
+  readonly GEMINI_CLI_TIMEOUT?: string;
   readonly LOG_LEVEL?: string;
   readonly LOG_FILE?: string;
   readonly WORKSPACE_ROOT?: string;
@@ -90,9 +92,13 @@ export class AppConfigLoader {
       },
       developer: {
         claudeCodePath: env.CLAUDE_CODE_PATH || 'claude',
-        claudeCodeTimeoutMs: 300000, // 5분
+        claudeCodeTimeoutMs: env.CLAUDE_CODE_TIMEOUT 
+          ? (parseInt(env.CLAUDE_CODE_TIMEOUT, 10) || 300000)
+          : 300000, // 5분 (기본값)
         geminiCliPath: env.GEMINI_CLI_PATH || 'gemini',
-        geminiCliTimeoutMs: 300000 // 5분
+        geminiCliTimeoutMs: env.GEMINI_CLI_TIMEOUT
+          ? (parseInt(env.GEMINI_CLI_TIMEOUT, 10) || 300000)
+          : 300000 // 5분 (기본값)
       },
       logger: {
         level: logLevel as any,
