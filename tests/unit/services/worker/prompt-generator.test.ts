@@ -154,6 +154,7 @@ describe('PromptGenerator', () => {
         action: WorkerAction.PROCESS_FEEDBACK,
         repositoryId: 'owner/repo',
         assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/123',
         boardItem: {
           id: 'task-feedback',
           title: 'Fix issues based on review'
@@ -217,7 +218,13 @@ describe('PromptGenerator', () => {
         taskId: 'task-no-feedback',
         action: WorkerAction.PROCESS_FEEDBACK,
         repositoryId: 'owner/repo',
-        assignedAt: new Date()
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/456',
+        boardItem: {
+          id: 'task-no-feedback',
+          title: 'No feedback task',
+          contentNumber: 456
+        }
       };
 
       // When: 빈 코멘트로 프롬프트 생성
@@ -236,7 +243,13 @@ describe('PromptGenerator', () => {
         taskId: 'task-no-url',
         action: WorkerAction.PROCESS_FEEDBACK,
         repositoryId: 'owner/repo',
-        assignedAt: new Date()
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/789',
+        boardItem: {
+          id: 'task-no-url',
+          title: 'No URL task',
+          contentNumber: 789
+        }
       };
 
       const comments = [

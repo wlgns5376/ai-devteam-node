@@ -70,7 +70,13 @@ describe('WorkerPoolManager', () => {
       expect(poolStatus.maxWorkers).toBe(config.maxWorkers);
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Worker pool initialized', 
-        { minWorkers: config.minWorkers, maxWorkers: config.maxWorkers }
+        expect.objectContaining({
+          minWorkers: config.minWorkers, 
+          maxWorkers: config.maxWorkers,
+          restoredWorkers: expect.any(Number),
+          newWorkers: expect.any(Number),
+          totalWorkers: expect.any(Number)
+        })
       );
     });
 

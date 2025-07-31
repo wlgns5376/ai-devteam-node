@@ -25,7 +25,8 @@ export class PromptGenerator implements PromptGeneratorInterface {
 - **작업 제목**: ${task.boardItem?.title || '제목 없음'}
 - **작업 디렉토리**: ${workspaceInfo.workspaceDir}
 - **브랜치**: ${workspaceInfo.branchName}
-${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? `- **이슈 번호**: #${task.boardItem.contentNumber}\n` : ''}
+- **이슈 번호**: #${task.boardItem.contentNumber}
+
 ### 작업 설명
 ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현을 진행해주세요'}
 
@@ -34,7 +35,7 @@ ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현
 
 ## GitHub 워크플로
 작업 완료 후 다음 단계를 수행해주세요:
-1. **커밋**: \`git add .\` && \`git commit -m "feat(${task.taskId}): [작업 설명]"\`
+1. **커밋**: \`git add .\` && \`git commit -m "feat(이슈 번호): [작업 설명]"\`
 2. **푸시**: \`git push origin ${workspaceInfo.branchName}\`
 3. **PR 생성**: \`gh pr create --title "${task.boardItem?.title || task.taskId}" --body "작업 완료 요약${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? '\n\nCloses #' + task.boardItem.contentNumber : ''}"\`
 4. **PR 링크 제공**: 생성된 PR 링크를 응답에 포함
@@ -67,7 +68,8 @@ ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현
 - **작업 제목**: ${task.boardItem?.title || '제목 없음'}
 - **작업 디렉토리**: ${workspaceInfo.workspaceDir}
 - **브랜치**: ${workspaceInfo.branchName}
-${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? `- **이슈 번호**: #${task.boardItem.contentNumber}\n` : ''}
+- **이슈 번호**: #${task.boardItem.contentNumber}
+
 ## 재개 지침
 1. **이전 진행 상황을 확인해주세요**:
    \`\`\`bash
@@ -87,7 +89,7 @@ ${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? `- 
 
 ## GitHub 워크플로
 작업 완료 후 다음 단계를 수행해주세요:
-1. **커밋**: \`git add .\` && \`git commit -m "feat(${task.taskId}): [추가 작업 설명]"\`
+1. **커밋**: \`git add .\` && \`git commit -m "feat(이슈 번호): [추가 작업 설명]"\`
 2. **푸시**: \`git push origin ${workspaceInfo.branchName}\`
 3. **PR 업데이트**: 기존 PR이 있다면 자동 업데이트, 없다면 새로 생성
    - 새 PR 생성 시: \`gh pr create --title "${task.boardItem?.title || task.taskId}" --body "작업 완료 요약${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? '\n\nCloses #' + task.boardItem.contentNumber : ''}"\`
@@ -113,18 +115,25 @@ ${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? `- 
   async generateFeedbackPrompt(task: WorkerTask, comments: ReadonlyArray<any>): Promise<string> {
     this.validateTaskInput(task);
 
+    if (!task.pullRequestUrl) {
+      throw new Error('Pull request URL is required for merge request');
+    }
+    
+    const prNumber = task.pullRequestUrl.split('/').pop();
+
     if (!comments || comments.length === 0) {
       const prompt = `# PR 리뷰 피드백을 처리합니다
 
 ## 작업 정보
 - **작업 ID**: ${task.taskId}
 - **저장소**: ${task.repositoryId}
+- **이슈 번호**: #${task.boardItem.contentNumber}
 
 ## 상황
 새로운 피드백이 없습니다. 현재 상태를 확인하고 필요한 경우 추가 작업을 진행해주세요.
 
 ## GitHub 워크플로
-1. **PR 상태 확인**: \`gh pr view ${task.taskId} --json state,mergeable,reviewDecision\`
+1. **PR 상태 확인**: \`gh pr view ${prNumber} --json state,mergeable,reviewDecision\`
 2. **병합 준비 점검**: 모든 체크가 통과되었는지 확인
 3. **필요시 응답**: 현재 PR 상태를 응답에 포함
 
@@ -152,6 +161,7 @@ ${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? `- 
 ## 작업 정보
 - **작업 ID**: ${task.taskId}
 - **저장소**: ${task.repositoryId}
+- **이슈 번호**: #${task.boardItem.contentNumber}
 - **피드백 수**: 총 ${comments.length}개의 코멘트
 
 ## 받은 피드백
@@ -164,9 +174,9 @@ ${commentsSection}
 
 ## GitHub 워크플로
 피드백 처리 완료 후 다음 단계를 수행해주세요:
-1. **커밋**: \`git add .\` && \`git commit -m "fix(${task.taskId}): 리뷰 피드백 반영"\`
+1. **커밋**: \`git add .\` && \`git commit -m "fix(이슈 번호): 리뷰 피드백 반영"\`
 2. **푸시**: \`git push origin ${task.taskId}\`
-3. **댓글 작성**: \`gh pr comment ${task.taskId} --body "리뷰 피드백이 반영되었습니다. 재검토 부탁드립니다."\`
+3. **댓글 작성**: \`gh pr comment ${prNumber} --body "리뷰 피드백이 반영되었습니다. 재검토 부탁드립니다."\`
 
 ## 완료 요청
 모든 피드백을 처리한 후 다음을 포함하여 응답해주세요:
