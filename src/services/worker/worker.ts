@@ -147,6 +147,25 @@ export class Worker implements WorkerInterface {
 
       // 5. 작업 완료
       this.updateProgress(WorkerStage.COMPLETING_TASK, '작업 완료 중');
+      
+      // 병합 작업이 성공한 경우 워크스페이스 정리
+      if (task.action === WorkerAction.MERGE_REQUEST && result.success) {
+        this.dependencies.logger.info('Cleaning up workspace after successful merge', {
+          workerId: this.id,
+          taskId: task.taskId
+        });
+        
+        try {
+          await this.dependencies.workspaceSetup.cleanupWorkspace(task.taskId);
+        } catch (cleanupError) {
+          this.dependencies.logger.warn('Failed to cleanup workspace after merge', {
+            workerId: this.id,
+            taskId: task.taskId,
+            error: cleanupError
+          });
+        }
+      }
+      
       this.completeTask();
 
       this.dependencies.logger.info('Task execution completed successfully', {

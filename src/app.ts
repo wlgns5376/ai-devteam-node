@@ -537,12 +537,30 @@ export class AIDevTeamApp {
               const workerInstance = await this.workerPoolManager.getWorkerInstance(worker.id, this.pullRequestService);
               if (workerInstance) {
                 // 비동기로 작업 실행 (완료를 기다리지 않음)
-                workerInstance.startExecution().then((result) => {
+                workerInstance.startExecution().then(async (result) => {
                   this.logger?.info('Merge request execution completed', {
                     taskId: request.taskId,
                     workerId: worker.id,
                     success: result.success
                   });
+                  
+                  // 병합이 성공한 경우 작업을 Done 상태로 변경
+                  if (result.success && this.projectBoardService) {
+                    try {
+                      this.logger?.info('Updating task status to DONE after successful merge', {
+                        taskId: request.taskId
+                      });
+                      await this.projectBoardService.updateItemStatus(request.taskId, 'DONE');
+                      this.logger?.info('Task status updated to DONE', {
+                        taskId: request.taskId
+                      });
+                    } catch (updateError) {
+                      this.logger?.error('Failed to update task status to DONE', {
+                        taskId: request.taskId,
+                        error: updateError instanceof Error ? updateError.message : String(updateError)
+                      });
+                    }
+                  }
                   
                   // 작업 완료 후 Worker 해제
                   if (this.workerPoolManager && worker?.id) {

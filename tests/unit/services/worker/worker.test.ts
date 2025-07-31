@@ -388,6 +388,182 @@ describe('Worker', () => {
         feedbackTask.comments
       );
     });
+
+    it('병합 작업 성공 시 워크스페이스를 정리해야 한다', async () => {
+      // Given: 병합 작업
+      const mergeTask: WorkerTask = {
+        taskId: 'task-merge',
+        action: WorkerAction.MERGE_REQUEST,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/123'
+      };
+
+      const workspaceInfo: WorkspaceInfo = {
+        taskId: 'task-merge',
+        repositoryId: 'owner/repo',
+        workspaceDir: '/workspace/owner_repo_task-merge',
+        branchName: 'task-merge',
+        worktreeCreated: true,
+        claudeLocalPath: '/workspace/owner_repo_task-merge/CLAUDE.local.md',
+        createdAt: new Date()
+      };
+
+      await worker.assignTask(mergeTask);
+      
+      mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
+      mockPromptGenerator.generateMergePrompt.mockResolvedValue('Merge prompt');
+      mockDeveloper.executePrompt.mockResolvedValue({
+        rawOutput: 'Merge completed successfully',
+        result: { success: true },
+        executedCommands: [],
+        modifiedFiles: [],
+        metadata: {
+          startTime: new Date(),
+          endTime: new Date(),
+          duration: 1000,
+          developerType: 'mock' as const
+        }
+      });
+      
+      const expectedResult: WorkerResult = {
+        taskId: mergeTask.taskId,
+        success: true,
+        completedAt: new Date()
+      };
+      
+      mockResultProcessor.processOutput.mockResolvedValue(expectedResult);
+      mockWorkspaceSetup.cleanupWorkspace.mockResolvedValue(undefined);
+
+      // When: 병합 작업 실행
+      const result = await worker.startExecution();
+
+      // Then: 병합 성공 후 워크스페이스 정리 실행
+      expect(result).toEqual(expectedResult);
+      expect(mockPromptGenerator.generateMergePrompt).toHaveBeenCalledWith(mergeTask);
+      expect(mockWorkspaceSetup.cleanupWorkspace).toHaveBeenCalledWith(mergeTask.taskId);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Cleaning up workspace after successful merge',
+        { workerId: worker.id, taskId: mergeTask.taskId }
+      );
+    });
+
+    it('병합 작업 실패 시 워크스페이스 정리를 하지 않아야 한다', async () => {
+      // Given: 병합 작업이 실패하는 경우
+      const mergeTask: WorkerTask = {
+        taskId: 'task-merge-fail',
+        action: WorkerAction.MERGE_REQUEST,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/124'
+      };
+
+      const workspaceInfo: WorkspaceInfo = {
+        taskId: 'task-merge-fail',
+        repositoryId: 'owner/repo',
+        workspaceDir: '/workspace/owner_repo_task-merge-fail',
+        branchName: 'task-merge-fail',
+        worktreeCreated: true,
+        claudeLocalPath: '/workspace/owner_repo_task-merge-fail/CLAUDE.local.md',
+        createdAt: new Date()
+      };
+
+      await worker.assignTask(mergeTask);
+      
+      mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
+      mockPromptGenerator.generateMergePrompt.mockResolvedValue('Merge prompt');
+      mockDeveloper.executePrompt.mockResolvedValue({
+        rawOutput: 'Merge failed',
+        result: { success: false },
+        executedCommands: [],
+        modifiedFiles: [],
+        metadata: {
+          startTime: new Date(),
+          endTime: new Date(),
+          duration: 1000,
+          developerType: 'mock' as const
+        }
+      });
+      
+      const expectedResult: WorkerResult = {
+        taskId: mergeTask.taskId,
+        success: false,
+        completedAt: new Date()
+      };
+      
+      mockResultProcessor.processOutput.mockResolvedValue(expectedResult);
+
+      // When: 병합 작업 실행 (실패)
+      const result = await worker.startExecution();
+
+      // Then: 병합 실패 시 워크스페이스 정리를 하지 않음
+      expect(result).toEqual(expectedResult);
+      expect(mockWorkspaceSetup.cleanupWorkspace).not.toHaveBeenCalled();
+    });
+
+    it('병합 작업 성공 후 워크스페이스 정리 실패 시 경고 로그를 남겨야 한다', async () => {
+      // Given: 병합 성공 후 워크스페이스 정리 실패
+      const mergeTask: WorkerTask = {
+        taskId: 'task-merge-cleanup-fail',
+        action: WorkerAction.MERGE_REQUEST,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/125'
+      };
+
+      const workspaceInfo: WorkspaceInfo = {
+        taskId: 'task-merge-cleanup-fail',
+        repositoryId: 'owner/repo',
+        workspaceDir: '/workspace/owner_repo_task-merge-cleanup-fail',
+        branchName: 'task-merge-cleanup-fail',
+        worktreeCreated: true,
+        claudeLocalPath: '/workspace/owner_repo_task-merge-cleanup-fail/CLAUDE.local.md',
+        createdAt: new Date()
+      };
+
+      await worker.assignTask(mergeTask);
+      
+      mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
+      mockPromptGenerator.generateMergePrompt.mockResolvedValue('Merge prompt');
+      mockDeveloper.executePrompt.mockResolvedValue({
+        rawOutput: 'Merge completed successfully',
+        result: { success: true },
+        executedCommands: [],
+        modifiedFiles: [],
+        metadata: {
+          startTime: new Date(),
+          endTime: new Date(),
+          duration: 1000,
+          developerType: 'mock' as const
+        }
+      });
+      
+      const expectedResult: WorkerResult = {
+        taskId: mergeTask.taskId,
+        success: true,
+        completedAt: new Date()
+      };
+      
+      mockResultProcessor.processOutput.mockResolvedValue(expectedResult);
+      
+      const cleanupError = new Error('Cleanup failed');
+      mockWorkspaceSetup.cleanupWorkspace.mockRejectedValue(cleanupError);
+
+      // When: 병합 작업 실행 (정리 실패)
+      const result = await worker.startExecution();
+
+      // Then: 병합은 성공하고 정리 실패는 경고 로그로 처리
+      expect(result).toEqual(expectedResult);
+      expect(mockWorkspaceSetup.cleanupWorkspace).toHaveBeenCalledWith(mergeTask.taskId);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Failed to cleanup workspace after merge',
+        { 
+          workerId: worker.id, 
+          taskId: mergeTask.taskId, 
+          error: cleanupError 
+        }
+      );
+    });
   });
 
   describe('실행 제어', () => {
