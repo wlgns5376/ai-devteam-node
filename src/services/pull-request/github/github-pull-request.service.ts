@@ -5,7 +5,9 @@ import {
   PullRequestState, 
   PullRequestReview, 
   PullRequestComment, 
-  ReviewState 
+  ReviewState,
+  CommentFilterOptions,
+  DEFAULT_ALLOWED_BOTS
 } from '../../../types';
 import { Logger } from '../../logger';
 
@@ -299,19 +301,25 @@ export class GitHubPullRequestService implements PullRequestService {
     }
   }
 
-  async getNewComments(repoId: string, prNumber: number, since: Date): Promise<ReadonlyArray<PullRequestComment>> {
+  async getNewComments(repoId: string, prNumber: number, since: Date, filterOptions?: CommentFilterOptions): Promise<ReadonlyArray<PullRequestComment>> {
     try {
       const allComments = await this.getComments(repoId, prNumber);
+      const pullRequest = await this.getPullRequest(repoId, prNumber);
       
-      return allComments.filter(comment => 
+      // 시간 필터링
+      const newComments = allComments.filter(comment => 
         comment.createdAt > since || 
         (comment.updatedAt && comment.updatedAt > since)
       );
+
+      // 코멘트 필터링 적용
+      return this.applyCommentFilters(newComments, pullRequest.author, filterOptions);
     } catch (error) {
       this.logger.error('Failed to get new comments', {
         repoId,
         prNumber,
         since,
+        filterOptions,
         error: error instanceof Error ? error.message : String(error)
       });
       
@@ -415,5 +423,60 @@ export class GitHubPullRequestService implements PullRequestService {
     }
     
     return ReviewState.COMMENTED;
+  }
+
+  private applyCommentFilters(
+    comments: ReadonlyArray<PullRequestComment>, 
+    prAuthor: string, 
+    filterOptions?: CommentFilterOptions
+  ): ReadonlyArray<PullRequestComment> {
+    const options = this.mergeFilterOptions(filterOptions);
+    
+    return comments.filter(comment => {
+      // PR 작성자 필터링
+      if (options.excludeAuthor && comment.author === prAuthor) {
+        this.logger.debug('Filtering out PR author comment', { 
+          commentId: comment.id, 
+          author: comment.author 
+        });
+        return false;
+      }
+
+      // Bot 필터링
+      if (this.isBotComment(comment.author)) {
+        // 허용 목록 확인 (허용목록에 있으면 포함)
+        if (options.allowedBots.includes(comment.author)) {
+          this.logger.debug('Allowing bot comment due to whitelist', { 
+            commentId: comment.id, 
+            author: comment.author 
+          });
+          return true;
+        }
+
+        // Bot이지만 허용목록에 없으면 기본적으로 제외
+        this.logger.debug('Filtering out bot comment (not in whitelist)', { 
+          commentId: comment.id, 
+          author: comment.author 
+        });
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  private mergeFilterOptions(filterOptions?: CommentFilterOptions): Required<CommentFilterOptions> {
+    return {
+      excludeAuthor: filterOptions?.excludeAuthor ?? true,
+      allowedBots: filterOptions?.allowedBots ?? DEFAULT_ALLOWED_BOTS
+    };
+  }
+
+  private isBotComment(author: string): boolean {
+    // Bot 계정 패턴 감지
+    return author.endsWith('[bot]') || 
+           author.includes('bot') ||
+           author === 'github-actions' ||
+           author === 'dependabot';
   }
 }

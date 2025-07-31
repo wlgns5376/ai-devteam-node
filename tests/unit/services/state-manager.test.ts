@@ -303,6 +303,149 @@ describe('StateManager', () => {
     });
   });
 
+  describe('Task별 코멘트 관리', () => {
+    beforeEach(async () => {
+      await stateManager.initialize();
+    });
+
+    it('should add processed comment to task', async () => {
+      // Given: Task가 있을 때
+      const task: Task = {
+        id: 'task-with-comments',
+        title: 'Task with Comments',
+        description: 'Test task for comment processing',
+        status: TaskStatus.IN_REVIEW,
+        priority: TaskPriority.HIGH,
+        projectId: 'project-1',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      await stateManager.saveTask(task);
+
+      // When: 처리된 코멘트를 추가하면
+      await stateManager.addProcessedCommentToTask('task-with-comments', 'comment-1');
+
+      // Then: Task에 처리된 코멘트 ID가 추가되어야 함
+      const updatedTask = await stateManager.getTask('task-with-comments');
+      expect(updatedTask?.processedCommentIds).toContain('comment-1');
+    });
+
+    it('should add multiple processed comments to task', async () => {
+      // Given: Task가 있을 때
+      const task: Task = {
+        id: 'task-multi-comments',
+        title: 'Task with Multiple Comments',
+        description: 'Test task for multiple comment processing',
+        status: TaskStatus.IN_REVIEW,
+        priority: TaskPriority.HIGH,
+        projectId: 'project-1',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      await stateManager.saveTask(task);
+
+      // When: 여러 처리된 코멘트를 추가하면
+      const commentIds = ['comment-1', 'comment-2', 'comment-3'];
+      await stateManager.addProcessedCommentsToTask('task-multi-comments', commentIds);
+
+      // Then: Task에 모든 처리된 코멘트 ID가 추가되어야 함
+      const updatedTask = await stateManager.getTask('task-multi-comments');
+      expect(updatedTask?.processedCommentIds).toEqual(expect.arrayContaining(commentIds));
+    });
+
+    it('should not add duplicate comment IDs', async () => {
+      // Given: Task에 이미 처리된 코멘트가 있을 때
+      const task: Task = {
+        id: 'task-duplicate-comments',
+        title: 'Task with Duplicate Comments',
+        description: 'Test task for duplicate comment handling',
+        status: TaskStatus.IN_REVIEW,
+        priority: TaskPriority.HIGH,
+        projectId: 'project-1',
+        processedCommentIds: ['comment-1'],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      await stateManager.saveTask(task);
+
+      // When: 중복된 코멘트 ID를 추가하면
+      await stateManager.addProcessedCommentToTask('task-duplicate-comments', 'comment-1');
+
+      // Then: 중복 추가되지 않아야 함
+      const updatedTask = await stateManager.getTask('task-duplicate-comments');
+      const commentCount = updatedTask?.processedCommentIds?.filter(id => id === 'comment-1').length;
+      expect(commentCount).toBe(1);
+    });
+
+    it('should check if comment is processed for task', async () => {
+      // Given: Task에 처리된 코멘트가 있을 때
+      const task: Task = {
+        id: 'task-check-processed',
+        title: 'Task for Checking Processed Comments',
+        description: 'Test task for checking processed comments',
+        status: TaskStatus.IN_REVIEW,
+        priority: TaskPriority.HIGH,
+        projectId: 'project-1',
+        processedCommentIds: ['processed-comment'],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      await stateManager.saveTask(task);
+
+      // When: 코멘트 처리 상태를 확인하면
+      const isProcessed = await stateManager.isCommentProcessedForTask('task-check-processed', 'processed-comment');
+      const isNotProcessed = await stateManager.isCommentProcessedForTask('task-check-processed', 'unprocessed-comment');
+
+      // Then: 올바른 상태를 반환해야 함
+      expect(isProcessed).toBe(true);
+      expect(isNotProcessed).toBe(false);
+    });
+
+    it('should get processed comments for task', async () => {
+      // Given: Task에 여러 처리된 코멘트가 있을 때
+      const processedComments = ['comment-1', 'comment-2', 'comment-3'];
+      const task: Task = {
+        id: 'task-get-processed',
+        title: 'Task for Getting Processed Comments',
+        description: 'Test task for getting processed comments',
+        status: TaskStatus.IN_REVIEW,
+        priority: TaskPriority.HIGH,
+        projectId: 'project-1',
+        processedCommentIds: processedComments,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      await stateManager.saveTask(task);
+
+      // When: 처리된 코멘트들을 조회하면
+      const retrievedComments = await stateManager.getProcessedCommentsForTask('task-get-processed');
+
+      // Then: 모든 처리된 코멘트들이 반환되어야 함
+      expect(retrievedComments).toEqual(processedComments);
+    });
+
+    it('should return empty array for task with no processed comments', async () => {
+      // Given: 처리된 코멘트가 없는 Task가 있을 때
+      const task: Task = {
+        id: 'task-no-comments',
+        title: 'Task with No Comments',
+        description: 'Test task with no processed comments',
+        status: TaskStatus.TODO,
+        priority: TaskPriority.LOW,
+        projectId: 'project-1',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      await stateManager.saveTask(task);
+
+      // When: 처리된 코멘트들을 조회하면
+      const retrievedComments = await stateManager.getProcessedCommentsForTask('task-no-comments');
+
+      // Then: 빈 배열이 반환되어야 함
+      expect(retrievedComments).toEqual([]);
+    });
+  });
+
   describe('파일 시스템 오류 처리', () => {
     it('should handle file read errors gracefully', async () => {
       // Given: 존재하지 않는 디렉토리로 StateManager를 생성할 때

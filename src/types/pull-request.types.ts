@@ -44,6 +44,20 @@ export interface PullRequestComment {
   readonly metadata?: Record<string, unknown> | undefined;
 }
 
+export interface CommentFilterOptions {
+  readonly excludeAuthor?: boolean;
+  readonly allowedBots?: ReadonlyArray<string>;
+}
+
+export const DEFAULT_ALLOWED_BOTS: ReadonlyArray<string> = [
+  'sonarcloud[bot]',
+  'deepsource[bot]',
+  'codeclimate[bot]',
+  'coderabbit[bot]',
+  'copilot[bot]',
+  'sourcery-ai[bot]'
+] as const;
+
 export interface PullRequestService {
   // 조회 기능
   getPullRequest(repoId: string, prNumber: number): Promise<PullRequest>;
@@ -55,6 +69,6 @@ export interface PullRequestService {
   
   // 코멘트 조회 (Planner가 사용)
   getComments(repoId: string, prNumber: number): Promise<ReadonlyArray<PullRequestComment>>;
-  getNewComments(repoId: string, prNumber: number, since: Date): Promise<ReadonlyArray<PullRequestComment>>;
+  getNewComments(repoId: string, prNumber: number, since: Date, filterOptions?: CommentFilterOptions): Promise<ReadonlyArray<PullRequestComment>>;
   markCommentsAsProcessed(commentIds: string[]): Promise<void>;
 }

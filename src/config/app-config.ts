@@ -4,12 +4,18 @@ import {
   SystemDeveloperConfig, 
   LoggerConfig 
 } from '@/types';
+import { CommentFilterOptions, DEFAULT_ALLOWED_BOTS } from '@/types/pull-request.types';
+
+export interface PullRequestFilterConfig extends CommentFilterOptions {
+  // CommentFilterOptions를 확장하여 추가 설정이 필요한 경우 여기에 추가
+}
 
 export interface AppConfig {
   readonly planner: PlannerServiceConfig;
   readonly manager: ManagerConfig;
   readonly developer: SystemDeveloperConfig;
   readonly logger: LoggerConfig;
+  readonly pullRequestFilter: PullRequestFilterConfig;
   readonly nodeEnv: 'development' | 'production' | 'test';
 }
 
@@ -30,6 +36,8 @@ export interface AppEnvironment {
   readonly GITHUB_REPOS?: string;
   readonly GITHUB_REPO_FILTER_MODE?: string;
   readonly MONITORING_INTERVAL_MS?: string;
+  readonly ALLOWED_PR_BOTS?: string;
+  readonly EXCLUDE_PR_AUTHOR?: string;
 }
 
 export class AppConfigLoader {
@@ -41,6 +49,9 @@ export class AppConfigLoader {
 
     // 레포지토리 필터 설정 처리
     const repositoryFilter = this.buildRepositoryFilter(env);
+    
+    // PR 코멘트 필터 설정 처리
+    const pullRequestFilter = this.buildPullRequestFilter(env);
 
     return {
       nodeEnv,
@@ -52,7 +63,8 @@ export class AppConfigLoader {
           : (nodeEnv === 'development' ? 15000 : 30000), // 15초 vs 30초
         maxRetryAttempts: 3,
         timeoutMs: 60000,
-        repositoryFilter
+        repositoryFilter,
+        pullRequestFilter
       },
       manager: {
         workspaceRoot,
@@ -86,7 +98,8 @@ export class AppConfigLoader {
         level: logLevel as any,
         filePath: logFile,
         enableConsole: nodeEnv === 'development'
-      }
+      },
+      pullRequestFilter
     };
   }
 
@@ -109,7 +122,8 @@ export class AppConfigLoader {
       planner: { ...defaultConfig.planner, ...partialConfig.planner },
       manager: { ...defaultConfig.manager, ...partialConfig.manager },
       developer: { ...defaultConfig.developer, ...partialConfig.developer },
-      logger: { ...defaultConfig.logger, ...partialConfig.logger }
+      logger: { ...defaultConfig.logger, ...partialConfig.logger },
+      pullRequestFilter: { ...defaultConfig.pullRequestFilter, ...partialConfig.pullRequestFilter }
     };
   }
 
@@ -135,6 +149,29 @@ export class AppConfigLoader {
     
     // 둘 다 없는 경우 필터 사용 안 함
     return undefined;
+  }
+
+  private static buildPullRequestFilter(env: AppEnvironment): PullRequestFilterConfig {
+    // 허용된 Bot 목록 파싱
+    let allowedBots = DEFAULT_ALLOWED_BOTS;
+    if (env.ALLOWED_PR_BOTS) {
+      const parsed = env.ALLOWED_PR_BOTS
+        .split(',')
+        .map(bot => bot.trim())
+        .filter(bot => bot.length > 0);
+      
+      if (parsed.length > 0) {
+        allowedBots = parsed;
+      }
+    }
+
+    // PR 생성자 제외 설정
+    const excludeAuthor = env.EXCLUDE_PR_AUTHOR !== 'false'; // 기본값: true
+
+    return {
+      allowedBots,
+      excludeAuthor
+    };
   }
 
   static validate(config: AppConfig): void {

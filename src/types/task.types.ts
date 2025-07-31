@@ -23,6 +23,7 @@ export interface Task {
   readonly updatedAt: Date;
   readonly prUrl?: string;
   readonly comments?: ReadonlyArray<string>;
+  readonly processedCommentIds?: ReadonlyArray<string>;
 }
 
 export interface TaskUpdate {
@@ -30,4 +31,5 @@ export interface TaskUpdate {
   readonly assignedWorker?: string;
   readonly prUrl?: string;
   readonly comments?: ReadonlyArray<string>;
+  readonly processedCommentIds?: ReadonlyArray<string>;
 }

@@ -5,7 +5,6 @@ import { RepositoryState } from '@/types/manager.types';
 
 export interface PlannerState {
   lastSyncTime?: Date;
-  processedComments: string[];
 }
 
 export class StateManager {
@@ -21,7 +20,7 @@ export class StateManager {
   private workers: Map<string, Worker> = new Map();
   private workspaces: Map<string, WorkspaceInfo> = new Map();
   private repositories: Map<string, RepositoryState> = new Map();
-  private plannerState: PlannerState = { processedComments: [] };
+  private plannerState: PlannerState = {};
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -196,17 +195,81 @@ export class StateManager {
     await this.savePlannerState({ lastSyncTime: time });
   }
 
-  async addProcessedComment(commentId: string): Promise<void> {
+  /**
+   * @deprecated Use addProcessedCommentsToTask() instead
+   */
+  async addProcessedComment(_commentId: string): Promise<void> {
+    // Legacy method - no longer functional after processedComments removal
+    console.warn('addProcessedComment is deprecated. Use addProcessedCommentsToTask() instead.');
+  }
+
+  /**
+   * @deprecated Use isCommentProcessedForTask() instead
+   */
+  async isCommentProcessed(_commentId: string): Promise<boolean> {
+    // Legacy method - no longer functional after processedComments removal
+    console.warn('isCommentProcessed is deprecated. Use isCommentProcessedForTask() instead.');
+    return false;
+  }
+
+  // Task별 코멘트 관리 메서드들
+  async addProcessedCommentToTask(taskId: string, commentId: string): Promise<void> {
     await this.withLock(async () => {
-      if (!this.plannerState.processedComments.includes(commentId)) {
-        this.plannerState.processedComments.push(commentId);
-        await this.persistPlannerState();
+      const task = this.tasks.get(taskId);
+      if (task) {
+        const processedCommentIds = task.processedCommentIds ? [...task.processedCommentIds] : [];
+        if (!processedCommentIds.includes(commentId)) {
+          processedCommentIds.push(commentId);
+          const updatedTask: Task = {
+            ...task,
+            processedCommentIds,
+            updatedAt: new Date()
+          };
+          this.tasks.set(taskId, updatedTask);
+          await this.persistTasks();
+        }
       }
     });
   }
 
-  async isCommentProcessed(commentId: string): Promise<boolean> {
-    return this.plannerState.processedComments.includes(commentId);
+  async addProcessedCommentsToTask(taskId: string, commentIds: string[]): Promise<void> {
+    await this.withLock(async () => {
+      const task = this.tasks.get(taskId);
+      if (task) {
+        const processedCommentIds = task.processedCommentIds ? [...task.processedCommentIds] : [];
+        let hasChanges = false;
+        
+        for (const commentId of commentIds) {
+          if (!processedCommentIds.includes(commentId)) {
+            processedCommentIds.push(commentId);
+            hasChanges = true;
+          }
+        }
+        
+        if (hasChanges) {
+          const updatedTask: Task = {
+            ...task,
+            processedCommentIds,
+            updatedAt: new Date()
+          };
+          this.tasks.set(taskId, updatedTask);
+          await this.persistTasks();
+        }
+      }
+    });
+  }
+
+  async isCommentProcessedForTask(taskId: string, commentId: string): Promise<boolean> {
+    const task = this.tasks.get(taskId);
+    if (!task || !task.processedCommentIds) {
+      return false;
+    }
+    return task.processedCommentIds.includes(commentId);
+  }
+
+  async getProcessedCommentsForTask(taskId: string): Promise<ReadonlyArray<string>> {
+    const task = this.tasks.get(taskId);
+    return task?.processedCommentIds || [];
   }
 
   // 프라이빗 메서드들
@@ -321,7 +384,7 @@ export class StateManager {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         // 파일이 없으면 기본값으로 초기화
-        this.plannerState = { processedComments: [] };
+        this.plannerState = {};
         await this.persistPlannerState();
       } else {
         throw new Error(`Failed to load planner state: ${error instanceof Error ? error.message : 'Unknown error'}`);

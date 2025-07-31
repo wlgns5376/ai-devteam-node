@@ -1,4 +1,13 @@
-import { PullRequest, PullRequestService, PullRequestComment, PullRequestReview, PullRequestState, ReviewState } from '../types';
+import { 
+  PullRequest, 
+  PullRequestService, 
+  PullRequestComment, 
+  PullRequestReview, 
+  PullRequestState, 
+  ReviewState,
+  CommentFilterOptions,
+  DEFAULT_ALLOWED_BOTS
+} from '../types';
 
 export class MockPullRequestService implements PullRequestService {
   private pullRequests: Map<string, Map<number, PullRequest>> = new Map();
@@ -99,13 +108,18 @@ export class MockPullRequestService implements PullRequestService {
     }));
   }
 
-  async getNewComments(repoId: string, prNumber: number, since: Date): Promise<ReadonlyArray<PullRequestComment>> {
+  async getNewComments(repoId: string, prNumber: number, since: Date, filterOptions?: CommentFilterOptions): Promise<ReadonlyArray<PullRequestComment>> {
     const allComments = await this.getComments(repoId, prNumber);
+    const pullRequest = await this.getPullRequest(repoId, prNumber);
     
-    return allComments.filter(comment => 
+    // 시간 필터링
+    const newComments = allComments.filter(comment => 
       comment.createdAt > since || 
       (comment.updatedAt && comment.updatedAt > since)
     );
+
+    // 코멘트 필터링 적용
+    return this.applyCommentFilters(newComments, pullRequest.author, filterOptions);
   }
 
   async markCommentsAsProcessed(commentIds: string[]): Promise<void> {
@@ -216,6 +230,22 @@ export class MockPullRequestService implements PullRequestService {
         createdAt: new Date('2024-01-02T15:00:00Z'),
         isProcessed: false,
         metadata: { type: 'developer_response' }
+      },
+      {
+        id: 'comment-1-3',
+        content: 'Build passed successfully! ✅',
+        author: 'github-actions[bot]',
+        createdAt: new Date('2024-01-02T16:00:00Z'),
+        isProcessed: false,
+        metadata: { type: 'ci_notification' }
+      },
+      {
+        id: 'comment-1-4',
+        content: 'Code quality issues found: 2 vulnerabilities, 3 code smells',
+        author: 'sonarcloud[bot]',
+        createdAt: new Date('2024-01-02T16:30:00Z'),
+        isProcessed: false,
+        metadata: { type: 'code_analysis' }
       }
     ]);
 
@@ -258,5 +288,48 @@ export class MockPullRequestService implements PullRequestService {
     }
     
     return ReviewState.COMMENTED;
+  }
+
+  private applyCommentFilters(
+    comments: ReadonlyArray<PullRequestComment>, 
+    prAuthor: string, 
+    filterOptions?: CommentFilterOptions
+  ): ReadonlyArray<PullRequestComment> {
+    const options = this.mergeFilterOptions(filterOptions);
+    
+    return comments.filter(comment => {
+      // PR 작성자 필터링
+      if (options.excludeAuthor && comment.author === prAuthor) {
+        return false;
+      }
+
+      // Bot 필터링
+      if (this.isBotComment(comment.author)) {
+        // 허용 목록 확인 (허용목록에 있으면 포함)
+        if (options.allowedBots.includes(comment.author)) {
+          return true;
+        }
+
+        // Bot이지만 허용목록에 없으면 기본적으로 제외
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  private mergeFilterOptions(filterOptions?: CommentFilterOptions): Required<CommentFilterOptions> {
+    return {
+      excludeAuthor: filterOptions?.excludeAuthor ?? true,
+      allowedBots: filterOptions?.allowedBots ?? DEFAULT_ALLOWED_BOTS
+    };
+  }
+
+  private isBotComment(author: string): boolean {
+    // Bot 계정 패턴 감지
+    return author.endsWith('[bot]') || 
+           author.includes('bot') ||
+           author === 'github-actions' ||
+           author === 'dependabot';
   }
 }

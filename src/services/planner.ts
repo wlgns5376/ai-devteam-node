@@ -476,10 +476,20 @@ export class Planner implements PlannerService {
                   }))
                 });
                 
-                const newComments = await this.dependencies.pullRequestService.getNewComments(repoId, prNumber, since);
-                this.dependencies.logger.debug('New comments checked', { 
+                // 설정에서 필터링 옵션 가져오기 (환경변수 우선)
+                const filterOptions = this.config.pullRequestFilter || {
+                  excludeAuthor: true, // 기본값
+                };
+                const newComments = await this.dependencies.pullRequestService.getNewComments(repoId, prNumber, since, filterOptions);
+                
+                // 필터링 전후 비교를 위해 전체 코멘트도 조회
+                const allNewCommentsUnfiltered = await this.dependencies.pullRequestService.getNewComments(repoId, prNumber, since, { excludeAuthor: false });
+                
+                this.dependencies.logger.debug('New comments checked with filtering', { 
                   taskId: item.id, 
-                  newCommentsCount: newComments.length,
+                  totalNewComments: allNewCommentsUnfiltered.length,
+                  filteredNewComments: newComments.length,
+                  filteredOut: allNewCommentsUnfiltered.length - newComments.length,
                   commentDetails: newComments.map((c: any) => ({
                     id: c.id,
                     author: c.author,
@@ -501,11 +511,9 @@ export class Planner implements PlannerService {
                   const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
 
                   if (response.status === ResponseStatus.ACCEPTED) {
-                    // 처리된 코멘트로 기록 (StateManager 사용)
+                    // 처리된 코멘트로 기록 (Task별 관리)
                     const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
-                    for (const id of commentIds) {
-                      await this.dependencies.stateManager.addProcessedComment(id);
-                    }
+                    await this.dependencies.stateManager.addProcessedCommentsToTask(item.id, commentIds);
                     
                     this.dependencies.logger.info('Feedback processed', {
                       taskId: item.id,
