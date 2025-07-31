@@ -13,17 +13,17 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package*.json pnpm-lock.yaml ./
 COPY tsconfig.json ./
 
-# Install all dependencies (including dev dependencies for build)
-RUN npm ci
+# Install pnpm and dependencies (including dev dependencies for build)
+RUN npm install -g pnpm && pnpm install --frozen-lockfile
 
 # Copy source code
 COPY src/ ./src/
 
 # Build the application
-RUN npm run build
+RUN pnpm run build
 
 # Stage 2: Production stage
 FROM node:20-alpine AS production
@@ -37,13 +37,17 @@ RUN apk add --no-cache \
     sudo
 
 # Install GitHub CLI (Alpine Linux compatible)
-RUN wget -O- https://github.com/cli/cli/releases/latest/download/gh_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/').tar.gz | tar -xz -C /tmp \
-    && mv /tmp/gh_*/bin/gh /usr/local/bin/ \
-    && chmod +x /usr/local/bin/gh
+RUN ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/') && \
+    GH_VERSION="2.76.2" && \
+    wget -O /tmp/gh.tar.gz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.tar.gz" && \
+    tar -xzf /tmp/gh.tar.gz -C /tmp && \
+    mv /tmp/gh_${GH_VERSION}_linux_${ARCH}/bin/gh /usr/local/bin/ && \
+    chmod +x /usr/local/bin/gh && \
+    rm -rf /tmp/gh*
 
 # Install Claude CLI
 # Install the official Claude CLI from npm
-RUN npm install -g @anthropic-ai/cli || \
+RUN npm install -g @anthropic-ai/claude-code || \
     echo "Warning: Claude CLI installation failed. Please install manually or ensure API access is configured."
 
 # Create app user and group
@@ -54,8 +58,8 @@ RUN addgroup -g 1001 -S appgroup && \
 WORKDIR /app
 
 # Copy package files and install production dependencies
-COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+COPY package*.json pnpm-lock.yaml ./
+RUN npm install -g pnpm && pnpm install --prod --frozen-lockfile && pnpm store prune
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
@@ -93,9 +97,18 @@ echo "Node.js version: $(node --version)"
 echo "npm version: $(npm --version)"
 echo "Git version: $(git --version)"
 
-# Check if GitHub CLI is available
+# Check if GitHub CLI is available and configure authentication
 if command -v gh &> /dev/null; then
     echo "GitHub CLI version: $(gh --version | head -n1)"
+    
+    # Configure GitHub CLI authentication using token
+    if [ ! -z "$GITHUB_TOKEN" ]; then
+        echo "Configuring GitHub CLI authentication..."
+        echo "$GITHUB_TOKEN" | gh auth login --with-token
+        echo "GitHub CLI authentication configured successfully"
+    else
+        echo "Warning: GITHUB_TOKEN not provided - GitHub CLI will not be authenticated"
+    fi
 else
     echo "Warning: GitHub CLI not found"
 fi
