@@ -26,30 +26,35 @@ AI DevTeam은 GitHub Projects와 연동하여 자동으로 개발 작업을 수�
 ### 주요 컴포넌트
 
 #### Planner
+
 - GitHub Projects V2 API를 통한 작업 조회 (주기적 폴링)
 - 작업 상태 변경 (Todo → In Progress → In Review → Done)
 - PR 승인 여부 및 피드백 모니터링
 - Manager와의 작업 통신
 
 #### Manager
+
 - **WorkerPoolManager**: 워커 생성, 할당, 상태 관리
 - **WorkspaceManager**: Git 레포지토리 클론 및 워크트리 관리
 - **RepositoryManager**: 다중 레포지토리 관리 및 캐싱
 - 워커 상태 추적 (IDLE, WAITING, WORKING, FAILED)
 
 #### Worker
+
 - 격리된 작업 환경 생성 (worktree)
 - 컨텍스트 파일 관리 (CLAUDE.local.md)
 - AI 개발자에게 프롬프트 전달
 - 작업 결과 수집 및 보고
 
 #### Developer
+
 - **ClaudeDeveloper**: Claude Code CLI 인터페이스
 - **MockDeveloper**: 테스트용 모의 개발자
 - 프롬프트 기반 코드 생성 및 수정
 - PR 생성 및 피드백 대응
 
 #### 지원 서비스
+
 - **GitService**: Git 작업 래퍼 (simple-git 기반)
 - **GitLockService**: 동시 Git 작업 충돌 방지
 - **StateManager**: 시스템 상태 영속화
@@ -143,11 +148,13 @@ ai-devteam-node/
 - pnpm 8.0.0 이상 (패키지 매니저)
 - Git 2.15+ (worktree 기능 필요)
 - GitHub Personal Access Token (repo, project 권한 필요)
-- Claude Code CLI (AI 개발자로 사용 시)
+- Claude CLI (AI 개발자로 사용 시) - [설치 가이드](https://docs.anthropic.com/claude/docs/claude-cli)
 - Gemini CLI (AI 개발자로 사용 시, 선택사항)
-- GitHub CLI (PR 작업 시 권장)
+- GitHub CLI (PR 작업 시 필수) - `gh` 명령어
 
-#### pnpm 설치
+#### 필수 도구 설치
+
+**pnpm 설치**
 
 ```bash
 # npm을 통한 설치
@@ -161,6 +168,41 @@ brew install pnpm
 
 # Windows (Chocolatey)
 choco install pnpm
+```
+
+**GitHub CLI 설치**
+
+```bash
+# macOS (Homebrew)
+brew install gh
+
+# Linux (apt)
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update
+sudo apt install gh
+
+# Windows (winget)
+winget install --id GitHub.cli
+
+# 설치 확인 및 인증
+gh --version
+gh auth login
+```
+
+**Claude Code 설치**
+
+```bash
+# npm을 통한 설치 (권장)
+npm install -g @anthropic-ai/claude-code
+
+# 설치 확인
+claude --version
+
+# Claude 인증 설정
+claude login  # 브라우저를 통한 인증
+# 또는
+export ANTHROPIC_API_KEY=your_api_key  # API 키 사용
 ```
 
 ### 설치
@@ -182,25 +224,43 @@ pnpm build
 `.env` 파일에서 다음 값들을 설정해야 합니다:
 
 ```bash
-# 필수 설정
-GITHUB_TOKEN=your_github_personal_access_token_here
-GITHUB_OWNER=your_github_username_or_organization
-GITHUB_PROJECT_NUMBER=your_github_project_number
+# ===== 필수 설정 =====
+GITHUB_TOKEN=your_github_personal_access_token_here      # GitHub 토큰 (repo, project, workflow 권한 필요)
+GITHUB_OWNER=your_github_username_or_organization        # GitHub 사용자명 또는 조직명
+GITHUB_PROJECT_NUMBER=your_github_project_number         # GitHub Project 번호 (URL에서 확인 가능)
 
-# 레포지토리 설정 (둘 중 하나 선택)
+# ===== 레포지토리 설정 (둘 중 하나 선택) =====
 # 방법 1: 다중 레포지토리 (권장)
 GITHUB_REPOS=owner1/repo1,owner2/repo2,owner3/repo3
-GITHUB_REPO_FILTER_MODE=whitelist  # 또는 blacklist
+GITHUB_REPO_FILTER_MODE=whitelist  # whitelist: 나열된 레포만 처리, blacklist: 나열된 레포 제외
 
-# 방법 2: 단일 레포지토리 (기존 방식)
+# 방법 2: 단일 레포지토리 (기존 방식, deprecated)
 GITHUB_REPO=your_repository_name
 
-# 선택 설정 (기본값 사용 가능)
-CLAUDE_CODE_PATH=claude-code
-GEMINI_CLI_PATH=gemini
-MIN_WORKERS=1
-MAX_WORKERS=5
-WORKSPACE_ROOT=./workspaces
+# ===== 개발 도구 설정 =====
+CLAUDE_CODE_PATH=claude                   # Claude CLI 실행 경로 (기본값: claude)
+CLAUDE_CODE_TIMEOUT=300000               # Claude 실행 타임아웃 (밀리초, 기본값: 5분)
+GEMINI_CLI_PATH=gemini                   # Gemini CLI 실행 경로 (선택사항)
+GEMINI_CLI_TIMEOUT=300000                # Gemini 실행 타임아웃 (밀리초)
+
+# ===== 워커 풀 설정 =====
+MIN_WORKERS=1                            # 최소 워커 수 (기본값: 1)
+MAX_WORKERS=5                            # 최대 워커 수 (기본값: 5)
+WORKER_TIMEOUT=600000                    # 워커 타임아웃 (밀리초, 기본값: 10분)
+
+# ===== 작업 공간 설정 =====
+WORKSPACE_ROOT=./workspace               # 워크스페이스 루트 디렉토리
+CLONE_DEPTH=1                           # Git clone depth (기본값: 1)
+
+# ===== 애플리케이션 설정 =====
+NODE_ENV=development                     # development 또는 production
+LOG_LEVEL=info                          # error, warn, info, debug
+LOG_FILE=./logs/ai-devteam.log          # 로그 파일 경로
+MONITORING_INTERVAL_MS=30000             # 모니터링 주기 (밀리초)
+
+# ===== PR 코멘트 필터링 설정 =====
+ALLOWED_PR_BOTS=sonarcloud[bot],deepsource[bot],codeclimate[bot]  # 허용할 봇 목록
+EXCLUDE_PR_AUTHOR=true                   # PR 작성자 코멘트 제외 여부
 ```
 
 #### 레포지토리 필터링 설정
@@ -208,6 +268,7 @@ WORKSPACE_ROOT=./workspaces
 AI DevTeam은 GitHub Projects에서 특정 레포지토리의 작업만 처리하도록 필터링할 수 있습니다:
 
 **다중 레포지토리 설정 (권장)**
+
 ```bash
 # 여러 레포지토리를 쉼표로 구분하여 설정
 GITHUB_REPOS=myorg/frontend,myorg/backend,myorg/mobile
@@ -219,29 +280,42 @@ GITHUB_REPO_FILTER_MODE=blacklist  # 지정된 레포지토리 제외하고 처�
 ```
 
 **단일 레포지토리 설정 (기존 방식)**
+
 ```bash
 # 하나의 레포지토리만 처리 (하위 호환성)
 GITHUB_REPO=my-repository
 ```
 
 **설정 우선순위**
+
 1. `GITHUB_REPOS` (새로운 방식) - 최우선
 2. `GITHUB_REPO` (기존 방식) - `GITHUB_REPOS`가 없을 때 사용
 3. 필터 없음 - 모든 레포지토리 처리
 
 **사용 예시**
+
 ```bash
 # 예시 1: 특정 프로젝트의 프론트엔드, 백엔드만 처리
 GITHUB_REPOS=mycompany/web-frontend,mycompany/api-backend
 GITHUB_REPO_FILTER_MODE=whitelist
 
-# 예시 2: 특정 레포지토리를 제외하고 모든 레포지토리 처리  
+# 예시 2: 특정 레포지토리를 제외하고 모든 레포지토리 처리
 GITHUB_REPOS=mycompany/archived-project,mycompany/experimental-repo
 GITHUB_REPO_FILTER_MODE=blacklist
 
 # 예시 3: 단일 레포지토리만 처리 (기존 방식)
 GITHUB_REPO=main-project
 ```
+
+#### GitHub Token 생성 가이드
+
+1. GitHub에서 Settings → Developer settings → Personal access tokens → Tokens (classic)
+2. "Generate new token" 클릭
+3. 필요한 권한 선택:
+   - `repo` (전체 선택) - 저장소 접근
+   - `project` (read:project, write:project) - GitHub Projects 접근
+   - `workflow` - GitHub Actions 워크플로우 실행 (선택사항)
+4. 토큰 생성 후 `.env` 파일에 복사
 
 ### 실행
 
@@ -263,6 +337,137 @@ pnpm test:watch
 pnpm test:coverage
 ```
 
+### Docker를 통한 실행
+
+Docker 이미지에는 Node.js, Git, GitHub CLI, Claude CLI가 모두 포함되어 있어 별도 설치 없이 사용할 수 있습니다.
+
+```bash
+# Docker 이미지 빌드
+docker build -t ai-devteam .
+
+# Docker 컨테이너 실행 (기본)
+docker run -d \
+  --name ai-devteam \
+  -v $(pwd)/.env:/app/.env:ro \
+  -v $(pwd)/workspace:/workspace \
+  -v $(pwd)/logs:/app/logs \
+  -e GIT_USER_NAME="AI DevTeam Bot" \
+  -e GIT_USER_EMAIL="bot@ai-devteam.com" \
+  -e GITHUB_TOKEN="your_github_token_here" \
+  ai-devteam
+
+# GitHub CLI 인증이 필요한 경우 (권장)
+docker run -d \
+  --name ai-devteam \
+  -v $(pwd)/.env:/app/.env:ro \
+  -v $(pwd)/workspace:/workspace \
+  -v $(pwd)/logs:/app/logs \
+  -e GIT_USER_NAME="AI DevTeam Bot" \
+  -e GIT_USER_EMAIL="bot@ai-devteam.com" \
+  -e GITHUB_TOKEN="your_github_token_here" \
+  -e ANTHROPIC_API_KEY="your_claude_api_key_here" \
+  ai-devteam
+
+# 로그 확인
+docker logs -f ai-devteam
+
+# 컨테이너 중지 및 정리
+docker stop ai-devteam
+docker rm ai-devteam
+```
+
+#### Docker Compose 사용 (권장)
+
+`docker-compose.yml` 파일을 생성하여 더 간편하게 관리할 수 있습니다:
+
+```yaml
+version: '3.8'
+
+services:
+  ai-devteam:
+    build: .
+    container_name: ai-devteam
+    environment:
+      - GIT_USER_NAME=AI DevTeam Bot
+      - GIT_USER_EMAIL=bot@ai-devteam.com
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./workspace:/workspace
+      - ./logs:/app/logs
+    restart: unless-stopped
+```
+
+```bash
+# Docker Compose로 실행
+docker-compose up -d
+
+# 로그 확인
+docker-compose logs -f
+
+# 중지
+docker-compose down
+```
+
+#### 환경 변수 설정
+
+Docker 실행 시 다음 환경 변수들을 설정해야 합니다:
+
+**필수 환경 변수:**
+- `GITHUB_TOKEN`: GitHub Personal Access Token
+- `GIT_USER_NAME`: Git commit에 사용할 사용자명
+- `GIT_USER_EMAIL`: Git commit에 사용할 이메일
+
+**선택적 환경 변수:**
+- `ANTHROPIC_API_KEY`: Claude API 키 (Claude Code 사용 시)
+- `GIT_ACCEPT_HOST_KEY=true`: Git SSH 호스트 키 자동 수락 (보안상 주의)
+
+#### 볼륨 마운트 설명
+
+- `./workspace:/workspace`: 작업 디렉토리 (Git 저장소들이 클론됨)
+- `./logs:/app/logs`: 로그 파일 저장소
+- `./.env:/app/.env:ro`: 환경 설정 파일 (읽기 전용)
+
+### 문제 해결
+
+**Claude CLI 실행 오류**
+
+```bash
+# Claude CLI 경로 확인
+which claude
+
+# 실행 권한 확인
+ls -la $(which claude)
+
+# 수동 실행 테스트
+echo "테스트 프롬프트" | claude -p
+
+# API 키 설정 확인 (API 키 사용 시)
+echo $ANTHROPIC_API_KEY
+```
+
+**GitHub API 권한 오류**
+
+```bash
+# GitHub CLI 인증 상태 확인
+gh auth status
+
+# 토큰 권한 확인
+gh api user -H "Authorization: token YOUR_GITHUB_TOKEN"
+```
+
+**Git worktree 오류**
+
+```bash
+# Git 버전 확인 (2.15+ 필요)
+git --version
+
+# 워크트리 목록 확인
+cd repositories/[repo-name]
+git worktree list
+```
+
 ## 개발 가이드
 
 ### 코드 스타일
@@ -274,6 +479,7 @@ pnpm test:coverage
 - **아키텍처**: SOLID 원칙 준수
 
 #### pnpm 사용 이유
+
 - **빠른 설치**: 심볼릭 링크를 사용하여 npm보다 3배 빠른 설치 속도
 - **디스크 효율성**: 글로벌 스토어를 통한 중복 제거로 디스크 공간 절약
 - **엄격한 의존성**: phantom dependencies 방지
@@ -303,6 +509,7 @@ pnpm format          # Prettier 실행
 ## 작업 시나리오
 
 ### 1. 신규 작업 처리
+
 1. **작업 감지**: Planner가 GitHub Projects에서 'Todo' 상태의 새 작업을 감지
 2. **워커 할당**: Manager가 유휴(IDLE) 상태의 Worker를 찾아 작업 할당
 3. **환경 준비**: Worker가 레포지토리를 클론하고 작업별 worktree 생성
@@ -311,12 +518,14 @@ pnpm format          # Prettier 실행
 6. **상태 업데이트**: Planner가 작업 상태를 'In Review'로 변경하고 PR 링크 등록
 
 ### 2. 진행 중 작업 재개
+
 1. **상태 확인**: Planner가 'In Progress' 상태의 작업들을 주기적으로 확인
 2. **워커 점검**: Manager가 해당 작업의 Worker 상태 확인
 3. **작업 재개**: Worker가 중단된 경우, AI Developer에게 재개 프롬프트 전달
 4. **진행 상황 추적**: 작업 완료까지 모니터링 지속
 
 ### 3. PR 리뷰 처리
+
 1. **승인 모니터링**: Planner가 'In Review' 상태 작업의 PR 승인 여부 확인
 2. **승인된 경우**:
    - Manager가 Worker에게 병합 지시
@@ -329,6 +538,7 @@ pnpm format          # Prettier 실행
    - 수정사항 반영 후 재검토 요청
 
 ### 4. 오류 처리
+
 - **타임아웃**: 설정된 시간 초과 시 Worker를 FAILED 상태로 변경
 - **Git 충돌**: GitLockService를 통해 동시 작업 충돌 방지
 - **재시도**: 실패한 작업은 최대 3회까지 재시도
@@ -336,6 +546,7 @@ pnpm format          # Prettier 실행
 ## 향후 계획
 
 ### 단기 계획 (v1.1)
+
 - Jira, Notion 프로젝트 보드 지원
 - 데이터베이스 기반 상태 관리 (PostgreSQL/MongoDB)
 - 웹 대시보드 UI 개발
@@ -343,6 +554,7 @@ pnpm format          # Prettier 실행
 - Docker 컨테이너화
 
 ### 중장기 계획
+
 - 분산 워커 시스템 (Kubernetes 기반)
 - 머신러닝 기반 작업 우선순위 최적화
 - 코드 리뷰 자동화 강화
@@ -364,6 +576,7 @@ ISC
 7. Submit a pull request
 
 ### 커밋 메시지 규칙
+
 - `feat:` 새로운 기능
 - `fix:` 버그 수정
 - `docs:` 문서 수정
