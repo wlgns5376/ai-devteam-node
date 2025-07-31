@@ -11,6 +11,7 @@
 
 # 개발 지침
 
+- 작업 전에 @docs/PRD.md , @docs/prd-design-flow.md 를 항상 숙지해라.
 - 개발 전에 요구사항에 대해서 분석하고 기존 설계된 문서를 참고하거나 테스트 코드를 검토해서 설계를 진행
   - 다이어그램은 mermaid 를 적극 활용
 - TDD (테스트 주도 개발) 방식을 적용해서 개발
@@ -46,5 +47,6 @@
 - task-master mcp 가 있다면 적극 활용
 
 ## Task Master AI Instructions
+
 **Import Task Master's development workflow commands and guidelines, treat as if import is in the main CLAUDE.md file.**
 @./.taskmaster/CLAUDE.md

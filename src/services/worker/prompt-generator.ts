@@ -25,7 +25,7 @@ export class PromptGenerator implements PromptGeneratorInterface {
 - **작업 제목**: ${task.boardItem?.title || '제목 없음'}
 - **작업 디렉토리**: ${workspaceInfo.workspaceDir}
 - **브랜치**: ${workspaceInfo.branchName}
-
+${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? `- **이슈 번호**: #${task.boardItem.contentNumber}\n` : ''}
 ### 작업 설명
 ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현을 진행해주세요'}
 
@@ -36,7 +36,7 @@ ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현
 작업 완료 후 다음 단계를 수행해주세요:
 1. **커밋**: \`git add .\` && \`git commit -m "feat(${task.taskId}): [작업 설명]"\`
 2. **푸시**: \`git push origin ${workspaceInfo.branchName}\`
-3. **PR 생성**: \`gh pr create --title "${task.boardItem?.title || task.taskId}" --body "작업 완료 요약"\`
+3. **PR 생성**: \`gh pr create --title "${task.boardItem?.title || task.taskId}" --body "작업 완료 요약${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? '\n\nCloses #' + task.boardItem.contentNumber : ''}"\`
 4. **PR 링크 제공**: 생성된 PR 링크를 응답에 포함
 
 ## 작업 요청
@@ -67,7 +67,7 @@ ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현
 - **작업 제목**: ${task.boardItem?.title || '제목 없음'}
 - **작업 디렉토리**: ${workspaceInfo.workspaceDir}
 - **브랜치**: ${workspaceInfo.branchName}
-
+${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? `- **이슈 번호**: #${task.boardItem.contentNumber}\n` : ''}
 ## 재개 지침
 1. **이전 진행 상황을 확인해주세요**:
    \`\`\`bash
@@ -90,6 +90,7 @@ ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현
 1. **커밋**: \`git add .\` && \`git commit -m "feat(${task.taskId}): [추가 작업 설명]"\`
 2. **푸시**: \`git push origin ${workspaceInfo.branchName}\`
 3. **PR 업데이트**: 기존 PR이 있다면 자동 업데이트, 없다면 새로 생성
+   - 새 PR 생성 시: \`gh pr create --title "${task.boardItem?.title || task.taskId}" --body "작업 완료 요약${task.boardItem?.contentNumber && task.boardItem?.contentType === 'issue' ? '\n\nCloses #' + task.boardItem.contentNumber : ''}"\`
 4. **PR 링크 제공**: PR 링크를 응답에 포함
 
 ## 완료 요청

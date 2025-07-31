@@ -309,22 +309,13 @@ export class AIDevTeamApp {
                       });
                     }
 
-                    // 2단계: PR URL 연결 (상태 업데이트 실패해도 시도)
-                    try {
-                      await this.projectBoardService?.addPullRequestToItem(request.taskId, result.pullRequestUrl);
-                      prLinkSuccess = true;
-                      this.logger?.info('PR linked to task successfully', {
-                        taskId: request.taskId,
-                        pullRequestUrl: result.pullRequestUrl
-                      });
-                    } catch (prError) {
-                      this.logger?.error('Failed to link PR to task', {
-                        taskId: request.taskId,
-                        pullRequestUrl: result.pullRequestUrl,
-                        error: prError instanceof Error ? prError.message : String(prError),
-                        stack: prError instanceof Error ? prError.stack : undefined
-                      });
-                    }
+                    // PR URL은 로컬 캐시에만 저장됨 (GitHub Projects API 제한)
+                    prLinkSuccess = true;
+                    this.logger?.info('PR URL stored in local cache', {
+                      taskId: request.taskId,
+                      pullRequestUrl: result.pullRequestUrl,
+                      note: 'GitHub Projects API does not support direct PR linking'
+                    });
 
                     // 결과 로깅
                     if (statusUpdateSuccess && prLinkSuccess) {

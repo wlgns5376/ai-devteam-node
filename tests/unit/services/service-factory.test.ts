@@ -74,7 +74,6 @@ describe('ServiceFactory', () => {
       expect(typeof boardService.getBoard).toBe('function');
       expect(typeof boardService.getItems).toBe('function');
       expect(typeof boardService.updateItemStatus).toBe('function');
-      expect(typeof boardService.addPullRequestToItem).toBe('function');
     });
 
     it('should throw error for GitHub provider without required options', () => {
@@ -544,7 +543,6 @@ describe('ServiceFactory', () => {
       expect(typeof projectBoardService.getBoard).toBe('function');
       expect(typeof projectBoardService.getItems).toBe('function');
       expect(typeof projectBoardService.updateItemStatus).toBe('function');
-      expect(typeof projectBoardService.addPullRequestToItem).toBe('function');
 
       // PullRequestService 인터페이스 확인
       expect(typeof pullRequestService.getPullRequest).toBe('function');
