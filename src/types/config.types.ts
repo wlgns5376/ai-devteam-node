@@ -30,6 +30,11 @@ export interface ManagerConfig {
     readonly maxWorkers: number;
     readonly workerTimeoutMs: number;
   };
+  readonly workerLifecycle?: {
+    readonly idleTimeoutMinutes: number;
+    readonly cleanupIntervalMinutes: number;
+    readonly minPersistentWorkers: number;
+  };
   readonly gitOperationTimeoutMs: number;
   readonly repositoryCacheTimeoutMs: number;
   readonly gitConfig: {

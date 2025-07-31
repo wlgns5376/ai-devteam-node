@@ -117,6 +117,52 @@ export class StateManager {
     });
   }
 
+  // Worker 생명주기 관리 메서드들
+  async getActiveWorkers(): Promise<Worker[]> {
+    return Array.from(this.workers.values()).filter(worker => 
+      worker.status === 'waiting' || worker.status === 'working'
+    );
+  }
+
+  async cleanupIdleWorkers(idleTimeoutMinutes: number = 30): Promise<string[]> {
+    const cleanedWorkerIds: string[] = [];
+    const cutoffTime = new Date(Date.now() - idleTimeoutMinutes * 60 * 1000);
+    
+    await this.withLock(async () => {
+      for (const [workerId, worker] of this.workers.entries()) {
+        if (worker.status === 'idle' && worker.lastActiveAt && worker.lastActiveAt < cutoffTime) {
+          this.workers.delete(workerId);
+          cleanedWorkerIds.push(workerId);
+        }
+      }
+      
+      if (cleanedWorkerIds.length > 0) {
+        await this.persistWorkers();
+      }
+    });
+    
+    return cleanedWorkerIds;
+  }
+
+  async removeCompletedWorkers(taskIds: string[]): Promise<string[]> {
+    const removedWorkerIds: string[] = [];
+    
+    await this.withLock(async () => {
+      for (const [workerId, worker] of this.workers.entries()) {
+        if (worker.currentTask && taskIds.includes(worker.currentTask.taskId)) {
+          this.workers.delete(workerId);
+          removedWorkerIds.push(workerId);
+        }
+      }
+      
+      if (removedWorkerIds.length > 0) {
+        await this.persistWorkers();
+      }
+    });
+    
+    return removedWorkerIds;
+  }
+
   async updateWorkerStatus(workerId: string, status: WorkerStatus, currentTaskId?: string | undefined): Promise<void> {
     await this.withLock(async () => {
       const worker = this.workers.get(workerId);

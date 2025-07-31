@@ -26,11 +26,26 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   private workerInstances: Map<string, Worker> = new Map();
   private isInitialized = false;
   private errors: ManagerError[] = [];
+  private cleanupTimer: NodeJS.Timeout | null = null;
+  
+  // Worker 생명주기 설정
+  private readonly lifecycleConfig: {
+    idleTimeoutMinutes: number;
+    cleanupIntervalMinutes: number;
+    minPersistentWorkers: number;
+  };
 
   constructor(
     private readonly config: ManagerServiceConfig,
     private readonly dependencies: WorkerPoolManagerDependencies
-  ) {}
+  ) {
+    // 설정에서 lifecycle 정책 읽어오기
+    this.lifecycleConfig = {
+      idleTimeoutMinutes: config.workerLifecycle?.idleTimeoutMinutes ?? 30,
+      cleanupIntervalMinutes: config.workerLifecycle?.cleanupIntervalMinutes ?? 60,
+      minPersistentWorkers: config.workerLifecycle?.minPersistentWorkers ?? 1
+    };
+  }
 
   async initializePool(): Promise<void> {
     if (this.isInitialized) {
@@ -43,8 +58,44 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
         maxWorkers: this.config.maxWorkers
       });
 
-      // 최소 Worker 수만큼 생성
-      for (let i = 0; i < this.config.minWorkers; i++) {
+      // 1. 기존 활성 Worker 복원 시도
+      let restoredWorkerCount = 0;
+      try {
+        const activeWorkers = await this.dependencies.stateManager.getActiveWorkers();
+        this.dependencies.logger.info('Found active workers to restore', {
+          count: activeWorkers.length
+        });
+
+        for (const savedWorker of activeWorkers) {
+          try {
+            // WorkerInstance 재생성 시도
+            const workerInstance = this.createWorkerInstance(savedWorker);
+            
+            this.workers.set(savedWorker.id, savedWorker);
+            this.workerInstances.set(savedWorker.id, workerInstance);
+            restoredWorkerCount++;
+            
+            this.dependencies.logger.debug('Worker restored successfully', {
+              workerId: savedWorker.id,
+              status: savedWorker.status,
+              taskId: savedWorker.currentTask?.taskId
+            });
+          } catch (error) {
+            // 복원 실패한 Worker는 상태에서 제거
+            this.dependencies.logger.warn('Failed to restore worker, removing from state', {
+              workerId: savedWorker.id,
+              error
+            });
+            await this.dependencies.stateManager.removeWorker(savedWorker.id);
+          }
+        }
+      } catch (error) {
+        this.dependencies.logger.warn('Failed to load active workers', { error });
+      }
+
+      // 2. 부족한 Worker 수만큼 새로 생성
+      const neededWorkers = Math.max(0, this.config.minWorkers - restoredWorkerCount);
+      for (let i = 0; i < neededWorkers; i++) {
         const worker = this.createWorker();
         const workerInstance = this.createWorkerInstance(worker);
         
@@ -53,11 +104,17 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
         await this.dependencies.stateManager.saveWorker(worker);
       }
 
+      // 3. 정리 타이머 시작
+      this.startCleanupTimer();
+
       this.isInitialized = true;
       
       this.dependencies.logger.info('Worker pool initialized', {
         minWorkers: this.config.minWorkers,
-        maxWorkers: this.config.maxWorkers
+        maxWorkers: this.config.maxWorkers,
+        restoredWorkers: restoredWorkerCount,
+        newWorkers: neededWorkers,
+        totalWorkers: this.workers.size
       });
 
     } catch (error) {
@@ -183,20 +240,49 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       throw new Error(`Worker not found: ${workerId}`);
     }
 
-    const { currentTask, ...workerWithoutTask } = worker;
-    const updatedWorker: WorkerType = {
-      ...workerWithoutTask,
-      status: WorkerStatus.IDLE,
-      lastActiveAt: new Date()
-    };
+    const workerType = worker.workerType || 'pool';
+    const { currentTask } = worker;
 
-    this.workers.set(workerId, updatedWorker);
-    await this.dependencies.stateManager.saveWorker(updatedWorker);
+    if (workerType === 'temporary') {
+      // 임시 Worker: 즉시 삭제
+      const workerInstance = this.workerInstances.get(workerId);
+      if (workerInstance) {
+        try {
+          await workerInstance.cleanup();
+        } catch (error) {
+          this.dependencies.logger.warn('Failed to cleanup temporary worker instance', {
+            workerId,
+            error
+          });
+        }
+      }
+      
+      this.workers.delete(workerId);
+      this.workerInstances.delete(workerId);
+      await this.dependencies.stateManager.removeWorker(workerId);
+      
+      this.dependencies.logger.info('Temporary worker removed', {
+        workerId,
+        previousTaskId: currentTask?.taskId
+      });
+    } else {
+      // 풀 Worker: IDLE 상태로 변경 (나중에 정리 타이머가 처리)
+      const { currentTask: _, ...workerWithoutTask } = worker;
+      const updatedWorker: WorkerType = {
+        ...workerWithoutTask,
+        status: WorkerStatus.IDLE,
+        lastActiveAt: new Date()
+      };
 
-    this.dependencies.logger.info('Worker released', {
-      workerId,
-      previousTaskId: currentTask?.taskId
-    });
+      this.workers.set(workerId, updatedWorker);
+      await this.dependencies.stateManager.saveWorker(updatedWorker);
+
+      this.dependencies.logger.info('Pool worker released to idle', {
+        workerId,
+        previousTaskId: currentTask?.taskId,
+        willCleanupAfter: `${this.lifecycleConfig.idleTimeoutMinutes} minutes`
+      });
+    }
   }
 
   async getWorkerByTaskId(taskId: string): Promise<WorkerType | null> {
@@ -285,8 +371,68 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     };
   }
 
+  // Worker 생명주기 관리 메서드들
+  private startCleanupTimer(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+    }
+    
+    const intervalMs = this.lifecycleConfig.cleanupIntervalMinutes * 60 * 1000;
+    this.cleanupTimer = setInterval(() => {
+      this.cleanupExpiredWorkers().catch(error => {
+        this.dependencies.logger.error('Failed to cleanup expired workers', { error });
+      });
+    }, intervalMs);
+    
+    this.dependencies.logger.debug('Cleanup timer started', {
+      intervalMinutes: this.lifecycleConfig.cleanupIntervalMinutes
+    });
+  }
+
+  private async cleanupExpiredWorkers(): Promise<void> {
+    try {
+      // StateManager를 통해 IDLE 상태의 오래된 Worker들 정리
+      const cleanedWorkerIds = await this.dependencies.stateManager.cleanupIdleWorkers(
+        this.lifecycleConfig.idleTimeoutMinutes
+      );
+      
+      // 로컬 맵에서도 제거
+      for (const workerId of cleanedWorkerIds) {
+        const workerInstance = this.workerInstances.get(workerId);
+        if (workerInstance) {
+          try {
+            await workerInstance.cleanup();
+          } catch (error) {
+            this.dependencies.logger.warn('Failed to cleanup worker instance', {
+              workerId,
+              error
+            });
+          }
+        }
+        
+        this.workers.delete(workerId);
+        this.workerInstances.delete(workerId);
+      }
+      
+      if (cleanedWorkerIds.length > 0) {
+        this.dependencies.logger.info('Cleaned up expired workers', {
+          count: cleanedWorkerIds.length,
+          workerIds: cleanedWorkerIds
+        });
+      }
+    } catch (error) {
+      this.dependencies.logger.error('Failed to cleanup expired workers', { error });
+    }
+  }
+
   async shutdown(): Promise<void> {
     this.dependencies.logger.info('Shutting down worker pool');
+    
+    // 정리 타이머 중지
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
     
     // 모든 Worker 인스턴스 정리
     for (const [workerId, workerInstance] of this.workerInstances) {
@@ -308,7 +454,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     this.dependencies.logger.info('Worker pool shutdown completed');
   }
 
-  private createWorker(): WorkerType {
+  private createWorker(workerType: 'pool' | 'temporary' = 'pool'): WorkerType {
     const workerId = this.generateWorkerId();
     
     return {
@@ -317,7 +463,8 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       workspaceDir: `${this.config.workspaceBasePath}/${workerId}`,
       developerType: 'claude', // 기본값, 향후 설정 가능하도록 확장
       createdAt: new Date(),
-      lastActiveAt: new Date()
+      lastActiveAt: new Date(),
+      workerType
     };
   }
 

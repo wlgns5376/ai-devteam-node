@@ -8,6 +8,11 @@ export interface ManagerServiceConfig {
   readonly workerRecoveryTimeoutMs: number;
   readonly gitOperationTimeoutMs: number;
   readonly repositoryCacheTimeoutMs: number;
+  readonly workerLifecycle?: {
+    readonly idleTimeoutMinutes: number;
+    readonly cleanupIntervalMinutes: number;
+    readonly minPersistentWorkers: number;
+  };
 }
 
 export interface ManagerStatus {

@@ -28,6 +28,7 @@ export interface Worker {
   readonly developerType: 'claude' | 'gemini';
   readonly createdAt: Date;
   readonly lastActiveAt: Date;
+  readonly workerType?: 'pool' | 'temporary'; // 풀 관리용 vs 임시 할당용
 }
 
 export interface WorkerPool {
