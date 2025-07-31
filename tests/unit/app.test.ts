@@ -29,6 +29,10 @@ describe('AIDevTeamApp - Worker execution fixes', () => {
       repositoryFilter: {
         allowedRepositories: ['test-owner/test-repo'],
         mode: 'whitelist'
+      },
+      pullRequestFilter: {
+        allowedBots: ['dependabot[bot]'],
+        excludeAuthor: true
       }
     },
     manager: {
@@ -63,6 +67,10 @@ describe('AIDevTeamApp - Worker execution fixes', () => {
       level: 'info',
       filePath: './logs/test.log',
       enableConsole: true
+    },
+    pullRequestFilter: {
+      allowedBots: ['dependabot[bot]'],
+      excludeAuthor: true
     }
   };
 

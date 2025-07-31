@@ -27,4 +27,5 @@ export interface ProjectBoardService {
   getBoard(boardId: string): Promise<ProjectBoard>;
   getItems(boardId: string, status?: string): Promise<ReadonlyArray<ProjectBoardItem>>;
   updateItemStatus(itemId: string, status: string): Promise<ProjectBoardItem>;
+  addPullRequestToItem(itemId: string, pullRequestUrl: string): Promise<ProjectBoardItem>;
 }

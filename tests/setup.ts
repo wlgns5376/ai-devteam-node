@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 
-// Load test environment variables
-config({ path: '.env.test' });
+// Load test environment variables with quiet option
+config({ path: '.env.test', debug: false });
 
 // Global test setup
 beforeAll(() => {

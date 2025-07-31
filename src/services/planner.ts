@@ -336,6 +336,9 @@ export class Planner implements PlannerService {
             // 3. 작업 완료 시 IN_REVIEW로 변경
             await this.dependencies.projectBoardService.updateItemStatus(item.id, 'IN_REVIEW');
             
+            // 4. PR URL을 아이템에 추가
+            await this.dependencies.projectBoardService.addPullRequestToItem(item.id, response.pullRequestUrl);
+            
             // 활성 작업 상태 업데이트
             const taskInfo = this.workflowState.activeTasks.get(item.id);
             if (taskInfo) {

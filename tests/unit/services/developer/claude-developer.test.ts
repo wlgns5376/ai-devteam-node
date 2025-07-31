@@ -181,9 +181,9 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
         expect(output.metadata.duration).toBeGreaterThan(0);
         expect(output.rawOutput).toBe(mockOutput);
         
-        // Claude CLI 명령어 실행 확인 (파일을 통한 파이프 방식)
+        // Claude CLI 명령어 실행 확인 (bash -c로 래핑된 파일을 통한 파이프 방식)
         expect(mockedExec).toHaveBeenCalledWith(
-          expect.stringMatching(/^cat ".*claude-prompt-.*\.txt" \| "claude" --dangerously-skip-permissions -p$/),
+          expect.stringMatching(/^bash -c 'cat ".*claude-prompt-.*\.txt" \| "claude" --dangerously-skip-permissions -p'$/),
           expect.objectContaining({
             cwd: workspaceDir,
             timeout: 30000,
@@ -365,9 +365,9 @@ $ git commit -m "Refactor code structure"
       const prompt = '테스트 프롬프트';
       await claudeDeveloper.executePrompt(prompt, '/tmp/workspace');
 
-      // Then: cat 파이프 명령어 패턴 확인 (quoted claude path)
+      // Then: bash -c로 래핑된 cat 파이프 명령어 패턴 확인 (quoted claude path)
       expect(mockedExec).toHaveBeenCalledWith(
-        expect.stringMatching(/^cat ".*\.txt" \| "claude" --dangerously-skip-permissions -p$/),
+        expect.stringMatching(/^bash -c 'cat ".*\.txt" \| "claude" --dangerously-skip-permissions -p'$/),
         expect.objectContaining({
           cwd: '/tmp/workspace',
           timeout: 30000

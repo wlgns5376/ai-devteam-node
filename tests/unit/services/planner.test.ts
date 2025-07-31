@@ -78,7 +78,13 @@ describe('Planner', () => {
       removeWorker: jest.fn().mockResolvedValue(undefined),
       saveWorkspace: jest.fn().mockResolvedValue(undefined),
       getWorkspace: jest.fn().mockResolvedValue(undefined),
-      removeWorkspace: jest.fn().mockResolvedValue(undefined)
+      removeWorkspace: jest.fn().mockResolvedValue(undefined),
+      updateLastSyncTime: jest.fn().mockResolvedValue(undefined),
+      getPlannerState: jest.fn().mockResolvedValue({
+        lastSyncTime: new Date(),
+        processedTasks: [],
+        activeTasks: []
+      })
     } as any;
     
     mockLogger = Logger.createConsoleLogger();

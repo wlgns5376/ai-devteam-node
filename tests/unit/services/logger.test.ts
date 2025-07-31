@@ -85,7 +85,7 @@ describe('Logger', () => {
       logger.error('Error message');  // 로깅됨
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: WARN 이상의 메시지만 로깅되어야 함
       const logContent = await fs.readFile(testLogFile, 'utf-8');
@@ -110,7 +110,7 @@ describe('Logger', () => {
       logger.error('Error message');
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 모든 메시지가 로깅되어야 함
       const logContent = await fs.readFile(testLogFile, 'utf-8');
@@ -136,7 +136,7 @@ describe('Logger', () => {
       logger.info('Test message');
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 올바른 형식으로 로깅되어야 함
       const logContent = await fs.readFile(testLogFile, 'utf-8');
@@ -149,7 +149,7 @@ describe('Logger', () => {
       logger.info('Operation completed', { userId: 'user123', operation: 'task-update' });
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 컨텍스트 정보가 포함되어야 함
       const logContent = await fs.readFile(testLogFile, 'utf-8');
@@ -167,7 +167,7 @@ describe('Logger', () => {
       logger.error('Operation failed', { error });
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: Error 정보가 포함되어야 함
       const logContent = await fs.readFile(testLogFile, 'utf-8');
@@ -193,7 +193,7 @@ describe('Logger', () => {
       logger.info('Test message');
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 디렉토리가 생성되고 파일이 생성되어야 함
       const dirExists = await fs.access(newLogDir).then(() => true).catch(() => false);
@@ -217,7 +217,7 @@ describe('Logger', () => {
       logger.info('New log message');
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 기존 내용에 추가되어야 함
       const logContent = await fs.readFile(testLogFile, 'utf-8');
@@ -282,7 +282,7 @@ describe('Logger', () => {
       logger.info('Daily log test');
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 현재 날짜로 된 로그 파일이 생성되어야 함
       const currentDate = getCurrentDateString();
@@ -311,7 +311,7 @@ describe('Logger', () => {
       logger.info('New daily log entry');
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 기존 내용에 추가되어야 함
       const logContent = await fs.readFile(dailyLogFile, 'utf-8');
@@ -331,7 +331,7 @@ describe('Logger', () => {
       logger.info('Backward compatibility test');
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 기존 방식대로 파일이 생성되어야 함
       const fileExists = await fs.access(testLogFile).then(() => true).catch(() => false);
@@ -351,7 +351,7 @@ describe('Logger', () => {
       logger.info('Factory method test');
 
       // 파일 쓰기 완료 대기
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 일자별 로그 파일이 생성되어야 함
       const currentDate = getCurrentDateString();

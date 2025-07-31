@@ -77,6 +77,42 @@ export class MockProjectBoardService implements ProjectBoardService {
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  async addPullRequestToItem(itemId: string, pullRequestUrl: string): Promise<ProjectBoardItem> {
+    // 모든 보드에서 아이템 찾기
+    for (const [boardId, boardItems] of this.items.entries()) {
+      const itemIndex = boardItems.findIndex(item => item.id === itemId);
+      if (itemIndex !== -1) {
+        const item = boardItems[itemIndex];
+        if (!item) {
+          throw new Error(`Item not found: ${itemId}`);
+        }
+        
+        const updatedPullRequestUrls = [...(item.pullRequestUrls || [])];
+        if (!updatedPullRequestUrls.includes(pullRequestUrl)) {
+          updatedPullRequestUrls.push(pullRequestUrl);
+        }
+
+        const updatedItem: ProjectBoardItem = {
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          status: item.status,
+          priority: item.priority,
+          assignee: item.assignee,
+          labels: item.labels,
+          createdAt: item.createdAt,
+          updatedAt: new Date(),
+          pullRequestUrls: updatedPullRequestUrls,
+          metadata: item.metadata
+        };
+        boardItems[itemIndex] = updatedItem;
+        return updatedItem;
+      }
+    }
+
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
   private initializeMockData(): void {
     // 기본 보드 생성
     const defaultBoard: ProjectBoard = {
