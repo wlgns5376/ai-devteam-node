@@ -6,11 +6,45 @@ import {
   DeveloperErrorCode,
   DeveloperError
 } from '@/types/developer.types';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 
 // child_process mock
 jest.mock('child_process');
 const mockedExec = jest.mocked(exec);
+const mockedSpawn = jest.mocked(spawn);
+
+// Mock spawn helper
+const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number = 0, signal?: string) => {
+  const mockChildProcess = {
+    stdout: {
+      on: jest.fn((event, callback) => {
+        if (event === 'data' && stdout) {
+          process.nextTick(() => callback(stdout));
+        }
+      })
+    },
+    stderr: {
+      on: jest.fn((event, callback) => {
+        if (event === 'data' && stderr) {
+          process.nextTick(() => callback(stderr));
+        }
+      })
+    },
+    stdin: {
+      end: jest.fn()
+    },
+    on: jest.fn((event, callback) => {
+      if (event === 'close') {
+        process.nextTick(() => callback(exitCode, signal));
+      }
+    }),
+    kill: jest.fn(),
+    killed: false,
+    pid: 12345
+  };
+  
+  return mockChildProcess as any;
+};
 
 describe('ClaudeDeveloper', () => {
   let claudeDeveloper: ClaudeDeveloper;
@@ -153,10 +187,9 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
 
 작업을 완료했습니다!`;
 
-        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-          setTimeout(() => callback(null, { stdout: mockOutput, stderr: '' }), 10);
-          return {} as any;
-        });
+        // spawn mock 설정
+        const mockChildProcess = createMockSpawn(mockOutput);
+        mockedSpawn.mockReturnValueOnce(mockChildProcess);
 
         const prompt = '사용자 인증 기능을 구현해주세요';
         const workspaceDir = '/tmp/test-workspace';
@@ -181,17 +214,17 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
         expect(output.metadata.duration).toBeGreaterThan(0);
         expect(output.rawOutput).toBe(mockOutput);
         
-        // Claude CLI 명령어 실행 확인 (bash -c로 래핑된 파일을 통한 파이프 방식)
-        expect(mockedExec).toHaveBeenCalledWith(
-          expect.stringMatching(/^bash -c 'cat ".*claude-prompt-.*\.txt" \| "claude" --dangerously-skip-permissions -p'$/),
+        // spawn 명령어 실행 확인
+        expect(mockedSpawn).toHaveBeenCalledWith(
+          'bash',
+          ['-c', expect.stringMatching(/cat ".*claude-prompt-.*\.txt" \| "claude" --dangerously-skip-permissions -p/)],
           expect.objectContaining({
             cwd: workspaceDir,
-            timeout: 30000,
             env: expect.objectContaining({
               ANTHROPIC_API_KEY: 'test-api-key'
-            })
-          }),
-          expect.any(Function)
+            }),
+            stdio: ['pipe', 'pipe', 'pipe']
+          })
         );
       });
 
@@ -207,10 +240,9 @@ $ git commit -m "Refactor code structure"
 
 작업을 완료했습니다!`;
 
-        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-          process.nextTick(() => callback(null, { stdout: mockOutput, stderr: '' }));
-          return {} as any;
-        });
+        // spawn mock 설정
+        const mockChildProcess = createMockSpawn(mockOutput);
+        mockedSpawn.mockReturnValueOnce(mockChildProcess);
 
         const prompt = '코드 리팩토링을 수행해주세요';
         const workspaceDir = '/tmp/test-workspace';
@@ -228,10 +260,20 @@ $ git commit -m "Refactor code structure"
     describe('실패 시나리오', () => {
       it('Claude CLI 실행 실패 시 에러가 발생해야 한다', async () => {
         // Given: Claude CLI 실행 실패
-        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-          process.nextTick(() => callback(new Error('Claude CLI execution failed'), null));
-          return {} as any;
-        });
+        const mockChildProcess = {
+          stdout: { on: jest.fn() },
+          stderr: { on: jest.fn() },
+          stdin: { end: jest.fn() },
+          on: jest.fn((event, callback) => {
+            if (event === 'error') {
+              process.nextTick(() => callback(new Error('Claude CLI execution failed')));
+            }
+          }),
+          kill: jest.fn(),
+          killed: false,
+          pid: 12345
+        };
+        mockedSpawn.mockReturnValueOnce(mockChildProcess as any);
 
         const prompt = '에러를 발생시켜주세요';
         const workspaceDir = '/tmp/test-workspace';
@@ -249,15 +291,19 @@ $ git commit -m "Refactor code structure"
 
       it('타임아웃 시 에러가 발생해야 한다', async () => {
         // Given: 타임아웃 설정
-        claudeDeveloper.setTimeout(1000);
+        claudeDeveloper.setTimeout(100); // 매우 짧은 타임아웃으로 설정
         
-        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-          // 타임아웃을 시뮬레이션하기 위해 콜백을 지연시킴
-          setTimeout(() => {
-            callback(new Error('timeout'), null);
-          }, 2000);
-          return {} as any;
-        });
+        // 타임아웃을 테스트하기 위해 응답하지 않는 프로세스 모킹
+        const mockChildProcess = {
+          stdout: { on: jest.fn() },
+          stderr: { on: jest.fn() },
+          stdin: { end: jest.fn() },
+          on: jest.fn(), // 'close' 이벤트를 발생시키지 않음
+          kill: jest.fn(),
+          killed: false,
+          pid: 12345
+        };
+        mockedSpawn.mockReturnValueOnce(mockChildProcess as any);
 
         const prompt = '오래 걸리는 작업';
         const workspaceDir = '/tmp/test-workspace';
@@ -286,23 +332,21 @@ $ git commit -m "Refactor code structure"
     describe('환경 변수 설정', () => {
       it('Claude API 키가 환경 변수로 전달되어야 한다', async () => {
         // Given: 프롬프트 준비
-        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-          process.nextTick(() => callback(null, { stdout: '작업 완료', stderr: '' }));
-          return {} as any;
-        });
+        const mockChildProcess = createMockSpawn('작업 완료');
+        mockedSpawn.mockReturnValueOnce(mockChildProcess);
 
         // When: 프롬프트 실행
         await claudeDeveloper.executePrompt('test prompt', '/tmp/workspace');
 
         // Then: 환경 변수 확인
-        expect(mockedExec).toHaveBeenCalledWith(
-          expect.any(String),
+        expect(mockedSpawn).toHaveBeenCalledWith(
+          'bash',
+          expect.any(Array),
           expect.objectContaining({
             env: expect.objectContaining({
               ANTHROPIC_API_KEY: 'test-api-key'
             })
-          }),
-          expect.any(Function)
+          })
         );
       });
     });
@@ -356,23 +400,21 @@ $ git commit -m "Refactor code structure"
       });
       await claudeDeveloper.initialize();
 
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: '작업 완료', stderr: '' }));
-        return {} as any;
-      });
+      const mockChildProcess = createMockSpawn('작업 완료');
+      mockedSpawn.mockReturnValueOnce(mockChildProcess);
 
       // When: 프롬프트 실행
       const prompt = '테스트 프롬프트';
       await claudeDeveloper.executePrompt(prompt, '/tmp/workspace');
 
-      // Then: bash -c로 래핑된 cat 파이프 명령어 패턴 확인 (quoted claude path)
-      expect(mockedExec).toHaveBeenCalledWith(
-        expect.stringMatching(/^bash -c 'cat ".*\.txt" \| "claude" --dangerously-skip-permissions -p'$/),
+      // Then: spawn으로 bash 명령어 패턴 확인
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'bash',
+        ['-c', expect.stringMatching(/cat ".*\.txt" \| "claude" --dangerously-skip-permissions -p/)],
         expect.objectContaining({
           cwd: '/tmp/workspace',
-          timeout: 30000
-        }),
-        expect.any(Function)
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
       );
     });
 
@@ -387,10 +429,8 @@ $ git commit -m "Refactor code structure"
       const mockWrite = jest.spyOn(require('fs/promises'), 'writeFile').mockResolvedValue(undefined);
       const mockUnlink = jest.spyOn(require('fs/promises'), 'unlink').mockResolvedValue(undefined);
 
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: '작업 완료', stderr: '' }));
-        return {} as any;
-      });
+      const mockChildProcess = createMockSpawn('작업 완료');
+      mockedSpawn.mockReturnValueOnce(mockChildProcess);
 
       // When: 프롬프트 실행
       const prompt = '이 "코드"를 분석해주세요';

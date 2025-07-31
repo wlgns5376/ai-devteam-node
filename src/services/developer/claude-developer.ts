@@ -9,7 +9,7 @@ import {
 } from '@/types/developer.types';
 import { ResponseParser } from './response-parser';
 import { ContextFileManager, ContextFileConfig } from './context-file-manager';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -103,19 +103,13 @@ export class ClaudeDeveloper implements DeveloperInterface {
         env.ANTHROPIC_API_KEY = this.config.claude.apiKey;
       }
 
-      // Claude CLI 실행
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: workspaceDir,
-        timeout: this.timeoutMs,
-        env,
-        shell: '/bin/bash' // shell 명시적 사용으로 파이프 처리 안정화
-      });
-
-      const rawOutput = stdout.trim();
+      // Claude CLI 실행 (spawn을 사용하여 스트림 기반 처리)
+      const executionResult = await this.executeClaude(command, workspaceDir, env);
+      const rawOutput = executionResult.stdout.trim();
       
       this.dependencies.logger.debug('Claude execution completed', { 
         outputLength: rawOutput.length,
-        hasError: !!stderr 
+        hasError: !!executionResult.stderr 
       });
 
       // 응답 파싱
@@ -134,8 +128,8 @@ export class ClaudeDeveloper implements DeveloperInterface {
         result.commitHash = parsedOutput.commitHash;
       }
       
-      if (stderr) {
-        result.error = stderr;
+      if (executionResult.stderr) {
+        result.error = executionResult.stderr;
       }
 
       const output: DeveloperOutput = {
@@ -151,8 +145,8 @@ export class ClaudeDeveloper implements DeveloperInterface {
         }
       };
 
-      if (!parsedOutput.success && stderr) {
-        this.dependencies.logger.warn('Claude execution completed with warnings', { stderr });
+      if (!parsedOutput.success && executionResult.stderr) {
+        this.dependencies.logger.warn('Claude execution completed with warnings', { stderr: executionResult.stderr });
       }
 
       // tmp 파일 정리
@@ -501,5 +495,101 @@ export class ClaudeDeveloper implements DeveloperInterface {
         error: error instanceof Error ? error.message : String(error)
       });
     }
+  }
+
+  /**
+   * Claude CLI를 spawn으로 실행하여 장시간 실행 지원
+   */
+  private async executeClaude(command: string, workspaceDir: string, env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      // bash -c 'cat "file" | "claude" --flags' 형태의 명령어를 파싱
+      const bashCommand = command.replace(/^bash -c '/, '').replace(/'$/, '');
+      
+      this.dependencies.logger.debug('Executing Claude command', { 
+        command: bashCommand,
+        workspaceDir,
+        timeoutMs: this.timeoutMs
+      });
+
+      // spawn으로 bash 실행
+      const child = spawn('bash', ['-c', bashCommand], {
+        cwd: workspaceDir,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      let stdout = '';
+      let stderr = '';
+      let isResolved = false;
+
+      // 타임아웃 설정
+      const timeout = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          this.dependencies.logger.warn('Claude execution timeout, terminating process', {
+            timeoutMs: this.timeoutMs,
+            pid: child.pid
+          });
+          
+          // SIGTERM으로 먼저 종료 시도
+          child.kill('SIGTERM');
+          
+          // 5초 후에도 종료되지 않으면 SIGKILL
+          setTimeout(() => {
+            if (!child.killed) {
+              child.kill('SIGKILL');
+            }
+          }, 5000);
+          
+          reject(new Error(`Claude execution timeout after ${this.timeoutMs}ms`));
+        }
+      }, this.timeoutMs);
+
+      // stdout 데이터 수집
+      child.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      // stderr 데이터 수집
+      child.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      // 프로세스 종료 처리
+      child.on('close', (code, signal) => {
+        clearTimeout(timeout);
+        
+        if (!isResolved) {
+          isResolved = true;
+          
+          this.dependencies.logger.debug('Claude process completed', {
+            code,
+            signal,
+            stdoutLength: stdout.length,
+            stderrLength: stderr.length
+          });
+
+          if (code === 0) {
+            resolve({ stdout, stderr });
+          } else {
+            reject(new Error(`Claude process exited with code ${code}${signal ? ` (${signal})` : ''}`));
+          }
+        }
+      });
+
+      // 에러 처리
+      child.on('error', (error) => {
+        clearTimeout(timeout);
+        
+        if (!isResolved) {
+          isResolved = true;
+          this.dependencies.logger.error('Claude process error', { error });
+          reject(error);
+        }
+      });
+
+      // 표준 입력이 필요한 경우를 대비해 stdin 닫기
+      child.stdin?.end();
+    });
   }
 }
