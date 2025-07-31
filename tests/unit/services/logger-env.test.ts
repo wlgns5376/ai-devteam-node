@@ -45,7 +45,7 @@ describe('Logger 환경변수 설정', () => {
     logger.info(testMessage);
 
     // 파일 쓰기 작업이 완료될 때까지 대기
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await logger.flush();
 
     // Then: 환경변수로 지정된 디렉토리에 로그 파일이 생성되어야 함
     const today = new Date().toISOString().split('T')[0];
@@ -70,7 +70,7 @@ describe('Logger 환경변수 설정', () => {
     logger.info(testMessage);
 
     // 파일 쓰기 작업이 완료될 때까지 대기
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await logger.flush();
 
     // Then: 명시적으로 지정된 디렉토리에 로그 파일이 생성되어야 함
     const today = new Date().toISOString().split('T')[0];
@@ -98,7 +98,7 @@ describe('Logger 환경변수 설정', () => {
     logger.info(testMessage);
 
     // 파일 쓰기 시도가 있을 수 있으므로 대기
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await logger.flush();
 
     // Then: 어떤 디렉토리에도 로그 파일이 생성되지 않아야 함
     const today = new Date().toISOString().split('T')[0];
@@ -124,7 +124,7 @@ describe('Logger 환경변수 설정', () => {
     logger.info(testMessage);
 
     // 파일 쓰기 작업이 완료될 때까지 대기
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await logger.flush();
 
     // Then: 환경변수로 지정된 디렉토리에 로그 파일이 생성되어야 함
     const today = new Date().toISOString().split('T')[0];

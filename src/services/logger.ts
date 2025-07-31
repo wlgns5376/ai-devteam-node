@@ -22,6 +22,7 @@ export interface LogContext {
 export class Logger {
   private readonly config: Required<LoggerConfig>;
   private readonly logLevelNames = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
+  private pendingWrites: Promise<void>[] = [];
 
   constructor(config: LoggerConfig) {
     this.config = {
@@ -64,9 +65,24 @@ export class Logger {
       console.log(logMessage);
     }
 
-    // 파일 출력
+    // 파일 출력 (비동기이지만 fire-and-forget 방식으로 처리)
     if (this.config.filePath || this.config.logDirectory) {
-      this.writeToFile(logMessage);
+      const writePromise = this.writeToFile(logMessage).catch(error => {
+        if (this.config.enableConsole) {
+          console.warn(`Logger file write failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      });
+      
+      // 테스트용으로 대기 가능한 Promise 저장
+      this.pendingWrites.push(writePromise);
+      
+      // 완료된 Promise는 배열에서 제거
+      writePromise.finally(() => {
+        const index = this.pendingWrites.indexOf(writePromise);
+        if (index > -1) {
+          this.pendingWrites.splice(index, 1);
+        }
+      });
     }
   }
 
@@ -121,16 +137,14 @@ export class Logger {
     const logFilePath = this.getCurrentLogFilePath();
     if (!logFilePath) return;
 
-    try {
-      // 디렉토리가 없으면 생성
-      await this.ensureLogDirectory();
-      await fs.appendFile(logFilePath, `${message}\n`);
-    } catch (error) {
-      // 파일 쓰기 실패 시 콘솔에만 경고 출력 (순환 참조 방지)
-      if (this.config.enableConsole) {
-        console.warn(`Failed to write to log file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
+    // 디렉토리가 없으면 생성
+    await this.ensureLogDirectory();
+    await fs.appendFile(logFilePath, `${message}\n`);
+  }
+
+  // 테스트용 메서드: 모든 대기 중인 파일 쓰기 작업 완료까지 대기
+  async flush(): Promise<void> {
+    await Promise.all(this.pendingWrites);
   }
 
   // 정적 팩토리 메서드들
