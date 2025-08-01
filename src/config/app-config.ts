@@ -40,6 +40,7 @@ export interface AppEnvironment {
   readonly MONITORING_INTERVAL_MS?: string;
   readonly ALLOWED_PR_BOTS?: string;
   readonly EXCLUDE_PR_AUTHOR?: string;
+  readonly ENABLE_CONSOLE_LOG?: string;
 }
 
 export class AppConfigLoader {
@@ -103,7 +104,9 @@ export class AppConfigLoader {
       logger: {
         level: logLevel as any,
         filePath: logFile,
-        enableConsole: nodeEnv === 'development'
+        enableConsole: env.ENABLE_CONSOLE_LOG 
+          ? env.ENABLE_CONSOLE_LOG.toLowerCase() === 'true'
+          : nodeEnv === 'development'
       },
       pullRequestFilter
     };

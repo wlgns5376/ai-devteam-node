@@ -17,7 +17,8 @@ describe('AppConfigLoader', () => {
       REPOSITORY_NAME: process.env.REPOSITORY_NAME,
       WORKSPACE_ROOT: process.env.WORKSPACE_ROOT,
       LOG_LEVEL: process.env.LOG_LEVEL,
-      LOG_FILE: process.env.LOG_FILE
+      LOG_FILE: process.env.LOG_FILE,
+      ENABLE_CONSOLE_LOG: process.env.ENABLE_CONSOLE_LOG
     };
   });
 
@@ -286,6 +287,88 @@ describe('AppConfigLoader', () => {
       // When & Then: 에러가 발생해야 함
       expect(() => AppConfigLoader.validate(config))
         .toThrow('manager.workerPool.maxWorkers must be >= minWorkers');
+    });
+  });
+
+  describe('ENABLE_CONSOLE_LOG environment variable', () => {
+    it('should enable console logging when ENABLE_CONSOLE_LOG is true', () => {
+      // Given: ENABLE_CONSOLE_LOG 환경변수가 'true'로 설정된 경우
+      const env: AppEnvironment = {
+        NODE_ENV: 'production',
+        ENABLE_CONSOLE_LOG: 'true'
+      };
+
+      // When: 설정을 로드하면
+      const config = AppConfigLoader.loadFromEnvironment(env);
+
+      // Then: 프로덕션 환경에서도 콘솔 로깅이 활성화되어야 함
+      expect(config.logger.enableConsole).toBe(true);
+    });
+
+    it('should disable console logging when ENABLE_CONSOLE_LOG is false', () => {
+      // Given: ENABLE_CONSOLE_LOG 환경변수가 'false'로 설정된 경우
+      const env: AppEnvironment = {
+        NODE_ENV: 'development',
+        ENABLE_CONSOLE_LOG: 'false'
+      };
+
+      // When: 설정을 로드하면
+      const config = AppConfigLoader.loadFromEnvironment(env);
+
+      // Then: 개발 환경에서도 콘솔 로깅이 비활성화되어야 함
+      expect(config.logger.enableConsole).toBe(false);
+    });
+
+    it('should handle case insensitive values for ENABLE_CONSOLE_LOG', () => {
+      // Given: 대소문자가 섞인 값들
+      const testCases = [
+        { value: 'TRUE', expected: true },
+        { value: 'True', expected: true },
+        { value: 'FALSE', expected: false },
+        { value: 'False', expected: false }
+      ];
+
+      testCases.forEach(({ value, expected }) => {
+        const env: AppEnvironment = {
+          NODE_ENV: 'production',
+          ENABLE_CONSOLE_LOG: value
+        };
+
+        const config = AppConfigLoader.loadFromEnvironment(env);
+        expect(config.logger.enableConsole).toBe(expected);
+      });
+    });
+
+    it('should use default behavior when ENABLE_CONSOLE_LOG is not set', () => {
+      // Given: ENABLE_CONSOLE_LOG가 설정되지 않은 경우
+      const envDev: AppEnvironment = {
+        NODE_ENV: 'development'
+      };
+      const envProd: AppEnvironment = {
+        NODE_ENV: 'production'
+      };
+
+      // When: 설정을 로드하면
+      const configDev = AppConfigLoader.loadFromEnvironment(envDev);
+      const configProd = AppConfigLoader.loadFromEnvironment(envProd);
+
+      // Then: 기본 동작대로 개발 환경에서만 콘솔 로깅이 활성화되어야 함
+      expect(configDev.logger.enableConsole).toBe(true);
+      expect(configProd.logger.enableConsole).toBe(false);
+    });
+
+    it('should treat invalid values as false', () => {
+      // Given: 잘못된 값이 설정된 경우
+      const env: AppEnvironment = {
+        NODE_ENV: 'development',
+        ENABLE_CONSOLE_LOG: 'invalid-value'
+      };
+
+      // When: 설정을 로드하면
+      const config = AppConfigLoader.loadFromEnvironment(env);
+
+      // Then: false로 처리되어야 함
+      expect(config.logger.enableConsole).toBe(false);
     });
   });
 });
