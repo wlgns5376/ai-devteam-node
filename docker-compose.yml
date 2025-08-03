@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  ai-devteam:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-devteam-node:latest
+    container_name: ai-devteam-node
+    environment:
+      # GitHub Configuration
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - GITHUB_OWNER=${GITHUB_OWNER}
+      - GITHUB_REPOS=${GITHUB_REPOS}
+      - GITHUB_PROJECT_NUMBER=${GITHUB_PROJECT_NUMBER}
+      - GITHUB_REPO_FILTER_MODE=${GITHUB_REPO_FILTER_MODE:-whitelist}
+      
+      # Git Configuration
+      - GIT_USER_NAME=${GIT_USER_NAME:-AI DevTeam}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-ai-devteam@example.com}
+      - GIT_ACCEPT_HOST_KEY=${GIT_ACCEPT_HOST_KEY:-true}
+      
+      # Developer Tools Configuration
+      - CLAUDE_CODE_PATH=${CLAUDE_CODE_PATH:-claude}
+      - CLAUDE_CODE_TIMEOUT=${CLAUDE_CODE_TIMEOUT:-300000}
+      - GEMINI_CLI_PATH=${GEMINI_CLI_PATH:-gemini}
+      - GEMINI_CLI_TIMEOUT=${GEMINI_CLI_TIMEOUT:-300000}
+      
+      # Worker Pool Configuration
+      - MIN_WORKERS=${MIN_WORKERS:-1}
+      - MAX_WORKERS=${MAX_WORKERS:-5}
+      - WORKER_TIMEOUT=${WORKER_TIMEOUT:-600000}
+      
+      # Application Configuration
+      - NODE_ENV=${NODE_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FILE=${LOG_FILE:-./logs/ai-devteam.log}
+      - MONITORING_INTERVAL_MS=${MONITORING_INTERVAL_MS:-30000}
+      - ENABLE_CONSOLE_LOG=${ENABLE_CONSOLE_LOG:-false}
+      
+      # PR Configuration
+      - ALLOWED_PR_BOTS=${ALLOWED_PR_BOTS:-sonarcloud[bot],deepsource[bot],codeclimate[bot],coderabbit[bot],copilot[bot],sourcery-ai[bot]}
+      - EXCLUDE_PR_AUTHOR=${EXCLUDE_PR_AUTHOR:-true}
+      
+      # Task Master AI MCP API Keys (at least one required)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - XAI_API_KEY=${XAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
+      
+    volumes:
+      - ./workspace:/workspace
+      - ./logs:/app/logs
+      - ./state:/app/state
+      - ./.mcp.json:/app/.mcp.json:ro
+      # Optional: Mount host's .claude directory for Claude Code settings
+      # - ~/.claude:/home/appuser/.claude
+      
+    restart: unless-stopped
+    
+    # Add tty for interactive Claude Code usage if needed
+    tty: true
+    stdin_open: true
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+# Optional: Add a separate service for running Claude Code interactively
+  claude-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-devteam-node:latest
+    container_name: claude-dev
+    command: /bin/bash
+    environment:
+      # Copy all environment variables from ai-devteam service
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - XAI_API_KEY=${XAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
+    volumes:
+      - ./workspace:/workspace
+      - ./.mcp.json:/app/.mcp.json:ro
+      - ~/.claude:/home/appuser/.claude
+    working_dir: /workspace
+    tty: true
+    stdin_open: true
+    profiles:
+      - dev
+
+volumes:
+  workspace:
+  logs:
+  state:

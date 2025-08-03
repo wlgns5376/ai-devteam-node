@@ -56,6 +56,10 @@ RUN ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/') && \
 RUN npm install -g @anthropic-ai/claude-code || \
     echo "Warning: Claude CLI installation failed. Please install manually or ensure API access is configured."
 
+# Install task-master-ai for MCP support
+RUN npm install -g task-master-ai || \
+    echo "Warning: task-master-ai installation failed. MCP features may not be available."
+
 # Create app user and group
 RUN addgroup -g 1001 -S appgroup && \
     adduser -S appuser -u 1001 -G appgroup && \
@@ -74,8 +78,13 @@ RUN npm install -g pnpm && pnpm install --prod --frozen-lockfile && pnpm store p
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy MCP configuration and initialization script
+COPY --chown=appuser:appgroup .mcp.json /app/.mcp.json
+COPY --chown=appuser:appgroup scripts/init-mcp.sh /app/scripts/init-mcp.sh
+RUN chmod +x /app/scripts/init-mcp.sh
+
 # Create necessary directories with proper permissions
-RUN mkdir -p /app/workspace /app/logs /app/config /app/state && \
+RUN mkdir -p /app/workspace /app/logs /app/config /app/state /app/scripts && \
     chown -R appuser:appgroup /app
 
 # Create workspace directory that can be mounted as volume
@@ -135,6 +144,12 @@ if command -v claude &> /dev/null; then
     echo "Claude CLI is available"
 else
     echo "Warning: Claude CLI not found - will need manual installation or API integration"
+fi
+
+# Initialize MCP configuration
+if [ -f /app/scripts/init-mcp.sh ]; then
+    echo "Initializing MCP configuration..."
+    /app/scripts/init-mcp.sh
 fi
 
 # Initialize git config if not set (using environment variables)
