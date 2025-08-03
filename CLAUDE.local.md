@@ -1,45 +1,31 @@
-# 작업 지침
+# Task Context: # PR 리뷰 피드백을 처리합니다
+
+## Task Description
+# PR 리뷰 피드백을 처리합니다
 
 ## 작업 정보
 - **작업 ID**: PVTI_lAHOAJ39a84A91F1zgdPRLc
 - **저장소**: wlgns5376/ai-devteam-node
-- **브랜치**: issue-3
-- **작업 디렉토리**: /workspace/wlgns5376_ai-devteam-node_PVTI_lAHOAJ39a84A91F1zgdPRLc
+- **이슈 번호**: #3
+- **피드백 수**: 총 9개의 코멘트
 
-## 개발 방침
+## 받은 피드백
 
-### TDD (테스트 주도 개발)
-1. 요구사항에 따른 모든 테스트 코드를 먼저 작성
-2. 테스트 실행하여 실패 확인 (Red)
-3. 테스트를 통과하는 최소한의 코드 작성 (Green)
-4. 코드 리팩토링 (Refactor)
+### 코멘트 1
+- **작성자**: gemini-code-assist[b
 
-### SOLID 원칙 준수
-- **단일 책임 원칙**: 각 클래스는 하나의 책임만
-- **개방-폐쇄 원칙**: 확장에는 열려있고 수정에는 닫혀있게
-- **리스코프 치환 원칙**: 하위 타입은 상위 타입을 대체 가능하게
-- **인터페이스 분리 원칙**: 필요한 인터페이스만 의존하게
-- **의존성 역전 원칙**: 구체적인 것이 추상적인 것에 의존하게
+## Requirements
 
-### Clean Code 원칙
-- 의미 있는 이름 사용
-- 함수는 한 가지 일만 하고 20줄 이내로 작성
-- 설명 변수 적극 활용
-- 일관성 있는 코드 스타일
 
-### 테스트 규칙
-- Given-When-Then 패턴 적용
-- 예외 상황 테스트 포함
-- **테스트 커버리지 80% 이상 유지**
+## Guidelines
+- Follow the project's coding standards and conventions
+- Ensure all code is properly tested
+- Include appropriate error handling
+- Document any complex logic
+- Create meaningful commit messages
 
-### 기타
-- 불변 객체로 값 객체 설계
-- TypeScript 엄격 모드 준수
-- 적절한 로깅 및 에러 처리
-
-## 작업 완료 기준
-1. 모든 테스트 통과
-2. 테스트 커버리지 80% 이상
-3. 린트 에러 없음
-4. 타입 에러 없음
-5. PR 작성 및 리뷰 준비 완료
+## AI Assistant Instructions
+- Focus on the specific requirements listed above
+- Ask for clarification if requirements are unclear
+- Suggest improvements where appropriate
+- Prioritize code quality and maintainability

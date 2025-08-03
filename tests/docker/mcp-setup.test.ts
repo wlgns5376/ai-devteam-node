@@ -222,7 +222,103 @@ echo "MCP initialization complete"
     });
   });
 
-  describe('Integration Tests', () => {
+  describe('Docker Integration Tests', () => {
+    const projectRoot = path.resolve(__dirname, '../..');
+    const dockerImageName = 'ai-devteam-test';
+    
+    // Docker 이미지 빌드 (실제 CI/CD 환경에서만 실행)
+    const isCI = process.env.CI === 'true';
+    
+    beforeAll(async () => {
+      if (isCI) {
+        // CI 환경에서만 Docker 이미지 빌드
+        try {
+          console.log('Building Docker image for integration tests...');
+          await execAsync(`docker build -t ${dockerImageName} .`, { cwd: projectRoot });
+        } catch (error) {
+          console.error('Failed to build Docker image:', error);
+          throw error;
+        }
+      }
+    }, 300000); // 5분 타임아웃
+
+    afterAll(async () => {
+      if (isCI) {
+        // 테스트 후 이미지 정리
+        try {
+          await execAsync(`docker rmi ${dockerImageName}`);
+        } catch (error) {
+          console.error('Failed to remove test image:', error);
+        }
+      }
+    });
+
+    it('should build Docker image with MCP support', async () => {
+      if (!isCI) {
+        console.log('Skipping Docker build test in non-CI environment');
+        return;
+      }
+
+      // Given: Docker 이미지가 빌드되었음
+      // When: 이미지 정보 확인
+      const { stdout } = await execAsync(`docker inspect ${dockerImageName} --format='{{.Config.Image}}'`);
+      
+      // Then: 이미지가 존재하는지 확인
+      expect(stdout.trim()).toBeTruthy();
+    });
+
+    it('should have task-master-ai installed in Docker container', async () => {
+      if (!isCI) {
+        console.log('Skipping Docker container test in non-CI environment');
+        return;
+      }
+
+      // Given: Docker 컨테이너 실행
+      // When: task-master-ai 명령 확인
+      const { stdout } = await execAsync(
+        `docker run --rm ${dockerImageName} which task-master-ai || echo "not found"`
+      );
+      
+      // Then: task-master-ai가 설치되어 있는지 확인
+      expect(stdout.trim()).not.toBe('not found');
+      expect(stdout.trim()).toContain('/usr/local/bin/task-master-ai');
+    });
+
+    it('should have .mcp.json file in Docker container', async () => {
+      if (!isCI) {
+        console.log('Skipping Docker container test in non-CI environment');
+        return;
+      }
+
+      // Given: Docker 컨테이너 실행
+      // When: .mcp.json 파일 확인
+      const { stdout } = await execAsync(
+        `docker run --rm ${dockerImageName} ls -la /app/.mcp.json`
+      );
+      
+      // Then: 파일이 존재하는지 확인
+      expect(stdout).toContain('.mcp.json');
+    });
+
+    it('should execute init-mcp.sh script successfully', async () => {
+      if (!isCI) {
+        console.log('Skipping Docker container test in non-CI environment');
+        return;
+      }
+
+      // Given: Docker 컨테이너에서 초기화 스크립트 실행
+      // When: 스크립트 실행
+      const { stdout, stderr } = await execAsync(
+        `docker run --rm ${dockerImageName} /app/scripts/init-mcp.sh`
+      );
+      
+      // Then: 초기화가 성공적으로 완료되었는지 확인
+      expect(stdout).toContain('MCP initialization complete');
+      expect(stderr).toBe('');
+    });
+  });
+
+  describe('Unit Tests for MCP Configuration', () => {
     it('should verify complete MCP setup workflow', async () => {
       // Given: 전체 설정 워크플로우
       const setupWorkflow = async () => {
@@ -241,13 +337,15 @@ echo "MCP initialization complete"
         // 2. 환경 변수 설정 확인
         const envVarsSet = process.env.ANTHROPIC_API_KEY !== undefined;
 
-        // 3. Claude Code 명령 실행 가능 여부 확인 (모의)
-        const claudeAvailable = false; // 테스트 환경에서는 false
+        // 3. 설정 파일 유효성 검사
+        const configContent = await fs.readFile(mcpConfigPath, 'utf-8');
+        const config = JSON.parse(configContent);
+        const isValidConfig = !!(config.mcpServers && config.mcpServers['task-master-ai']);
 
         return {
           configCreated: true,
           envVarsSet,
-          claudeAvailable
+          isValidConfig
         };
       };
 
@@ -256,7 +354,7 @@ echo "MCP initialization complete"
 
       // Then: 설정이 완료되었는지 확인
       expect(result.configCreated).toBe(true);
-      // 환경 변수와 Claude는 실제 환경에서만 사용 가능
+      expect(result.isValidConfig).toBe(true);
     });
   });
 });

@@ -84,7 +84,7 @@ COPY --chown=appuser:appgroup scripts/init-mcp.sh /app/scripts/init-mcp.sh
 RUN chmod +x /app/scripts/init-mcp.sh
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /app/workspace /app/logs /app/config /app/state /app/scripts && \
+RUN mkdir -p /app/workspace /app/logs /app/config /app/state && \
     chown -R appuser:appgroup /app
 
 # Create workspace directory that can be mounted as volume

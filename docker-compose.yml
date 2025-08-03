@@ -43,15 +43,16 @@ services:
       - EXCLUDE_PR_AUTHOR=${EXCLUDE_PR_AUTHOR:-true}
       
       # Task Master AI MCP API Keys (at least one required)
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
-      - XAI_API_KEY=${XAI_API_KEY:-}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
-      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
-      - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
+      &mcp-api-keys
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       
     volumes:
       - ./workspace:/workspace
@@ -90,16 +91,8 @@ services:
     container_name: claude-dev
     command: /bin/bash
     environment:
-      # Copy all environment variables from ai-devteam service
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - PERPLEXITY_API_KEY=${PERPLEXITY_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
-      - XAI_API_KEY=${XAI_API_KEY:-}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
-      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
-      - OLLAMA_API_KEY=${OLLAMA_API_KEY:-}
+      # Copy API keys from ai-devteam service
+      <<: *mcp-api-keys
     volumes:
       - ./workspace:/workspace
       - ./.mcp.json:/app/.mcp.json:ro
@@ -110,7 +103,3 @@ services:
     profiles:
       - dev
 
-volumes:
-  workspace:
-  logs:
-  state:
