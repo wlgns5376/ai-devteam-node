@@ -69,7 +69,7 @@ export interface WorkspaceManagerInterface {
 }
 
 export interface RepositoryManagerInterface {
-  ensureRepository(repositoryId: string): Promise<string>;
+  ensureRepository(repositoryId: string, forceUpdate?: boolean): Promise<string>;
   cloneRepository(repositoryId: string): Promise<string>;
   fetchRepository(repositoryId: string): Promise<void>;
   getRepositoryState(repositoryId: string): Promise<RepositoryState | null>;
@@ -86,7 +86,7 @@ export interface TaskRouterInterface {
 
 export interface GitOperationLock {
   readonly repositoryId: string;
-  readonly operation: 'clone' | 'fetch' | 'worktree';
+  readonly operation: 'clone' | 'fetch' | 'pull' | 'worktree';
   readonly acquiredAt: Date;
 }
 
@@ -100,6 +100,7 @@ export interface ManagerDependencies {
 export interface GitServiceInterface {
   clone(repositoryUrl: string, localPath: string): Promise<void>;
   fetch(localPath: string): Promise<void>;
+  pullMainBranch(localPath: string): Promise<void>;
   createWorktree(repoPath: string, branchName: string, worktreePath: string): Promise<void>;
   removeWorktree(repoPath: string, worktreePath: string): Promise<void>;
   isValidRepository(path: string): Promise<boolean>;

@@ -155,6 +155,11 @@ if [ ! -z "$GIT_USER_EMAIL" ]; then
     git config --global user.email "$GIT_USER_EMAIL"
 fi
 
+if [ ! -z "$GITHUB_TOKEN" ] && [ ! -z "$GIT_USER_NAME" ]; then
+    echo "https://$GIT_USER_NAME:$GITHUB_TOKEN@github.com" > ~/.git-credentials
+    git config --global credential.helper store
+fi
+
 # Set git to accept any host key (for automated cloning)
 if [ ! -z "$GIT_ACCEPT_HOST_KEY" ] && [ "$GIT_ACCEPT_HOST_KEY" = "true" ]; then
     git config --global core.sshCommand "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"

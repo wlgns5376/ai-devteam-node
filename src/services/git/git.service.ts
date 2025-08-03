@@ -107,6 +107,93 @@ export class GitService implements GitServiceInterface {
     });
   }
 
+  async pullMainBranch(localPath: string): Promise<void> {
+    // 경로에서 repository ID 추출
+    const repoId = path.basename(path.dirname(localPath));
+    
+    return this.dependencies.gitLockService.withLock(repoId, 'pull', async () => {
+      try {
+        this.dependencies.logger.info('Pulling main branch updates', { localPath });
+
+        // 유효한 저장소인지 먼저 확인
+        const isValid = await this.isValidRepository(localPath);
+        if (!isValid) {
+          throw new Error(`Invalid repository path: ${localPath}`);
+        }
+
+        // 현재 브랜치 확인
+        const { stdout: currentBranch } = await execAsync(
+          'git branch --show-current',
+          {
+            cwd: localPath,
+            timeout: 5000
+          }
+        );
+
+        const currentBranchName = currentBranch.trim();
+        this.dependencies.logger.debug('Current branch', { currentBranch: currentBranchName, localPath });
+
+        // main 브랜치로 체크아웃 (main 저장소인 경우)
+        if (currentBranchName !== 'main' && currentBranchName !== 'master') {
+          // 스테이징된 변경사항이 있는지 확인
+          const { stdout: statusOutput } = await execAsync(
+            'git status --porcelain',
+            {
+              cwd: localPath,
+              timeout: 5000
+            }
+          );
+
+          if (statusOutput.trim()) {
+            this.dependencies.logger.warn('Working directory has uncommitted changes, stashing before pull', { 
+              localPath,
+              changes: statusOutput.trim()
+            });
+            
+            // 변경사항 stash
+            await execAsync('git stash', {
+              cwd: localPath,
+              timeout: this.dependencies.gitOperationTimeoutMs
+            });
+          }
+
+          // main/master 브랜치로 체크아웃
+          const mainBranch = await this.getMainBranchName(localPath);
+          await execAsync(`git checkout ${mainBranch}`, {
+            cwd: localPath,
+            timeout: this.dependencies.gitOperationTimeoutMs
+          });
+        }
+
+        // git pull 실행
+        const { stdout, stderr } = await execAsync(
+          'git pull --ff-only',
+          {
+            cwd: localPath,
+            timeout: this.dependencies.gitOperationTimeoutMs
+          }
+        );
+
+        if (stderr && !stderr.includes('From ') && !stderr.includes('Already up to date')) {
+          this.dependencies.logger.warn('Git pull completed with warnings', { stderr });
+        }
+
+        this.dependencies.logger.info('Main branch pulled successfully', { 
+          localPath,
+          output: stdout || 'Already up to date'
+        });
+
+      } catch (error) {
+        const errorMessage = `Failed to pull main branch: ${error instanceof Error ? error.message : String(error)}`;
+        this.dependencies.logger.error('Git pull failed', { 
+          localPath, 
+          error 
+        });
+        throw new Error(errorMessage);
+      }
+    });
+  }
+
   async createWorktree(repoPath: string, branchName: string, worktreePath: string): Promise<void> {
     // 경로에서 repository ID 추출
     const repoId = path.basename(repoPath);
@@ -388,6 +475,26 @@ export class GitService implements GitServiceInterface {
         error: cleanupError
       });
       throw cleanupError;
+    }
+  }
+
+  private async getMainBranchName(repoPath: string): Promise<string> {
+    try {
+      // 원격 저장소의 기본 브랜치 확인
+      const { stdout } = await execAsync(
+        'git symbolic-ref refs/remotes/origin/HEAD',
+        {
+          cwd: repoPath,
+          timeout: 5000
+        }
+      );
+      
+      // refs/remotes/origin/main -> main 추출
+      const branchName = stdout.trim().split('/').pop();
+      return branchName || 'main';
+    } catch {
+      // 실패하면 main을 기본값으로 사용
+      return 'main';
     }
   }
 

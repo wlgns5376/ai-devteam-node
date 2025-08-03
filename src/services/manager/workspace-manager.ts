@@ -105,8 +105,10 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
 
     try {
       // RepositoryManager를 통해 저장소 확인 및 경로 가져오기
+      // 새 작업 시작 시에는 항상 최신 상태로 업데이트
       const repositoryPath = await this.dependencies.repositoryManager.ensureRepository(
-        workspaceInfo.repositoryId
+        workspaceInfo.repositoryId,
+        true // forceUpdate = true
       );
 
       // 워크스페이스 디렉토리가 이미 Git worktree인지 확인

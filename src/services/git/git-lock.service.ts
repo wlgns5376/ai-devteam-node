@@ -21,7 +21,7 @@ export class GitLockService {
 
   async acquireLock(
     repositoryId: string, 
-    operation: 'clone' | 'fetch' | 'worktree'
+    operation: 'clone' | 'fetch' | 'pull' | 'worktree'
   ): Promise<void> {
     const lockKey = this.getLockKey(repositoryId, operation);
     
@@ -70,7 +70,7 @@ export class GitLockService {
     );
   }
 
-  releaseLock(repositoryId: string, operation: 'clone' | 'fetch' | 'worktree'): void {
+  releaseLock(repositoryId: string, operation: 'clone' | 'fetch' | 'pull' | 'worktree'): void {
     const lockKey = this.getLockKey(repositoryId, operation);
     const lock = this.locks.get(lockKey);
     
@@ -88,7 +88,7 @@ export class GitLockService {
 
   async withLock<T>(
     repositoryId: string,
-    operation: 'clone' | 'fetch' | 'worktree',
+    operation: 'clone' | 'fetch' | 'pull' | 'worktree',
     fn: () => Promise<T>
   ): Promise<T> {
     await this.acquireLock(repositoryId, operation);
@@ -100,7 +100,7 @@ export class GitLockService {
     }
   }
 
-  isLocked(repositoryId: string, operation?: 'clone' | 'fetch' | 'worktree'): boolean {
+  isLocked(repositoryId: string, operation?: 'clone' | 'fetch' | 'pull' | 'worktree'): boolean {
     if (operation) {
       const lockKey = this.getLockKey(repositoryId, operation);
       const lock = this.locks.get(lockKey);
@@ -108,7 +108,7 @@ export class GitLockService {
     }
     
     // operation이 지정되지 않으면 모든 작업에 대해 확인
-    const operations: Array<'clone' | 'fetch' | 'worktree'> = ['clone', 'fetch', 'worktree'];
+    const operations: Array<'clone' | 'fetch' | 'pull' | 'worktree'> = ['clone', 'fetch', 'pull', 'worktree'];
     return operations.some(op => this.isLocked(repositoryId, op));
   }
 

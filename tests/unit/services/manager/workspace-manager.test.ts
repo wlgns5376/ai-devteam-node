@@ -255,7 +255,7 @@ describe('WorkspaceManager', () => {
       await workspaceManager.setupWorktree(workspaceInfo);
 
       // Then: Repository 확인 후 Git worktree 생성됨
-      expect(mockRepositoryManager.ensureRepository).toHaveBeenCalledWith(workspaceInfo.repositoryId);
+      expect(mockRepositoryManager.ensureRepository).toHaveBeenCalledWith(workspaceInfo.repositoryId, true);
       expect(mockGitService.createWorktree).toHaveBeenCalledWith(
         repositoryPath,
         workspaceInfo.branchName,

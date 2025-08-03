@@ -25,33 +25,28 @@ export class RepositoryManager implements RepositoryManagerInterface {
     private readonly dependencies: RepositoryManagerDependencies
   ) {}
 
-  async ensureRepository(repositoryId: string): Promise<string> {
+  async ensureRepository(repositoryId: string, forceUpdate: boolean = false): Promise<string> {
     try {
-      this.dependencies.logger.info('Ensuring repository', { repositoryId });
-
-      // 캐시 확인
-      const cachedState = this.getCachedState(repositoryId);
-      if (cachedState && cachedState.isCloned) {
-        // 캐시가 만료되지 않았다면 fetch만 수행
-        if (!this.isCacheExpired(repositoryId)) {
-          this.dependencies.logger.debug('Using cached repository state', { 
-            repositoryId,
-            localPath: cachedState.localPath 
-          });
-          return cachedState.localPath;
-        }
-
-        // 캐시가 만료되었으면 fetch 수행
-        await this.fetchRepository(repositoryId);
-        return cachedState.localPath;
-      }
+      this.dependencies.logger.info('Ensuring repository', { repositoryId, forceUpdate });
 
       // 상태 확인
       const state = await this.getRepositoryState(repositoryId);
       
       if (state && state.isCloned) {
-        // 이미 클론되어 있으면 최신화만
-        await this.fetchRepository(repositoryId);
+        // 이미 클론되어 있으면 강제 업데이트 또는 캐시 만료 시 최신화
+        if (forceUpdate || this.isCacheExpired(repositoryId)) {
+          this.dependencies.logger.info('Updating repository to latest version', { 
+            repositoryId,
+            localPath: state.localPath,
+            reason: forceUpdate ? 'forced' : 'cache_expired'
+          });
+          await this.fetchRepository(repositoryId);
+        } else {
+          this.dependencies.logger.debug('Using cached repository state', { 
+            repositoryId,
+            localPath: state.localPath 
+          });
+        }
         return state.localPath;
       }
 
@@ -120,7 +115,7 @@ export class RepositoryManager implements RepositoryManagerInterface {
 
   async fetchRepository(repositoryId: string): Promise<void> {
     try {
-      this.dependencies.logger.info('Fetching repository updates', { repositoryId });
+      this.dependencies.logger.info('Updating repository to latest', { repositoryId });
 
       const state = await this.getRepositoryState(repositoryId);
       
@@ -128,8 +123,8 @@ export class RepositoryManager implements RepositoryManagerInterface {
         throw new Error(`Repository ${repositoryId} is not cloned`);
       }
 
-      // Git fetch 실행
-      await this.dependencies.gitService.fetch(state.localPath);
+      // Git pull로 main 브랜치를 최신 상태로 업데이트
+      await this.dependencies.gitService.pullMainBranch(state.localPath);
       
       // 상태 업데이트
       const updatedState: RepositoryState = {
@@ -140,21 +135,21 @@ export class RepositoryManager implements RepositoryManagerInterface {
       await this.dependencies.stateManager.saveRepositoryState(updatedState);
       this.updateCache(repositoryId, updatedState);
       
-      this.dependencies.logger.info('Repository fetched successfully', { 
+      this.dependencies.logger.info('Repository updated successfully', { 
         repositoryId,
         localPath: state.localPath 
       });
 
     } catch (error) {
       const managerError: ManagerError = {
-        message: error instanceof Error ? error.message : 'Repository fetch failed',
+        message: error instanceof Error ? error.message : 'Repository update failed',
         code: 'REPOSITORY_FETCH_ERROR',
         timestamp: new Date(),
         context: { repositoryId, error }
       };
       
       this.errors.push(managerError);
-      this.dependencies.logger.error('Failed to fetch repository', { error: managerError });
+      this.dependencies.logger.error('Failed to update repository', { error: managerError });
       throw error;
     }
   }

@@ -116,22 +116,84 @@ export class AIDevTeamApp {
         return { success: false };
       }
 
-      // 작업이 이미 할당되어 있다면 실행
+      // 작업이 이미 할당되어 있다면 상태 확인
       const currentTask = workerInstance.getCurrentTask();
       if (currentTask?.taskId === request.taskId) {
+        const workerStatus = workerInstance.getStatus();
+        
+        this.logger?.info('Checking worker status for task execution', {
+          workerId,
+          taskId: request.taskId,
+          workerStatus,
+          action: request.action
+        });
+
         // 이미 실행 중인지 확인
-        if (workerInstance.getStatus() === 'working') {
+        if (workerStatus === 'working') {
+          this.logger?.info('Worker is already working, waiting for completion', {
+            workerId,
+            taskId: request.taskId
+          });
           return { success: false }; // 아직 진행 중
         }
         
-        // 작업 실행
-        const result = await workerInstance.startExecution();
+        // 중지된 상태면 재개
+        if (workerStatus === 'stopped') {
+          this.logger?.info('Resuming stopped worker execution', {
+            workerId,
+            taskId: request.taskId
+          });
+          await workerInstance.resumeExecution();
+          return { success: false }; // 재개했으므로 계속 진행 중
+        }
         
-        return {
-          success: result.success,
-          ...(result.pullRequestUrl && { pullRequestUrl: result.pullRequestUrl })
-        };
+        // 대기 상태에서 작업 시작 또는 재시작
+        if (workerStatus === 'waiting') {
+          this.logger?.info('Starting or restarting worker execution', {
+            workerId,
+            taskId: request.taskId
+          });
+          
+          try {
+            const result = await workerInstance.startExecution();
+            
+            this.logger?.info('Worker execution completed', {
+              workerId,
+              taskId: request.taskId,
+              success: result.success,
+              pullRequestUrl: result.pullRequestUrl
+            });
+            
+            return {
+              success: result.success,
+              ...(result.pullRequestUrl && { pullRequestUrl: result.pullRequestUrl })
+            };
+          } catch (executionError) {
+            this.logger?.error('Worker execution failed', {
+              workerId,
+              taskId: request.taskId,
+              error: executionError instanceof Error ? executionError.message : String(executionError)
+            });
+            return { success: false };
+          }
+        }
+        
+        // idle 상태면 작업이 완료되었을 수 있음
+        if (workerStatus === 'idle') {
+          this.logger?.info('Worker is idle, task may be completed', {
+            workerId,
+            taskId: request.taskId
+          });
+          return { success: true }; // 완료된 것으로 간주
+        }
       }
+
+      this.logger?.warn('Worker task mismatch or invalid state', {
+        workerId,
+        requestTaskId: request.taskId,
+        currentTaskId: currentTask?.taskId,
+        workerStatus: workerInstance.getStatus()
+      });
 
       return { success: false };
 
