@@ -14,7 +14,8 @@ import {
   TaskResponse, 
   ResponseStatus,
   DeveloperConfig,
-  SystemDeveloperConfig
+  SystemDeveloperConfig,
+  WorkerAction
 } from '@/types';
 
 export interface SystemStatus {
@@ -174,6 +175,21 @@ export class AIDevTeamApp {
               taskId: request.taskId,
               error: executionError instanceof Error ? executionError.message : String(executionError)
             });
+            
+            // Worker 실패 시 자동으로 해제하여 상태 동기화
+            try {
+              await this.workerPoolManager.releaseWorker(workerId);
+              this.logger?.info('Worker released after execution failure', {
+                workerId,
+                taskId: request.taskId
+              });
+            } catch (releaseError) {
+              this.logger?.warn('Failed to release worker after execution failure', {
+                workerId,
+                error: releaseError instanceof Error ? releaseError.message : String(releaseError)
+              });
+            }
+            
             return { success: false };
           }
         }
@@ -425,14 +441,81 @@ export class AIDevTeamApp {
 
             } else if (request.action === 'check_status') {
               // 작업 상태 확인
-              const worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+              let worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+              
               if (!worker) {
-                return {
+                // Worker를 찾지 못한 경우 재할당 시도
+                this.logger?.warn('Worker not found for task, attempting to reassign', {
+                  taskId: request.taskId
+                });
+
+                // 사용 가능한 Worker 찾기
+                const availableWorker = await this.workerPoolManager.getAvailableWorker();
+                if (!availableWorker) {
+                  return {
+                    taskId: request.taskId,
+                    status: ResponseStatus.ERROR,
+                    message: 'No available workers to reassign task',
+                    workerStatus: 'unavailable'
+                  };
+                }
+
+                // 작업 재할당 (RESUME_TASK 액션으로)
+                const resumeTask = {
                   taskId: request.taskId,
-                  status: ResponseStatus.ERROR,
-                  message: 'Worker not found for task',
-                  workerStatus: 'not_found'
+                  action: WorkerAction.RESUME_TASK,
+                  boardItem: request.boardItem,
+                  repositoryId: request.boardItem?.metadata?.repository || 'unknown',
+                  assignedAt: new Date()
                 };
+
+                try {
+                  await this.workerPoolManager.assignWorkerTask(availableWorker.id, resumeTask);
+                  
+                  // Worker 인스턴스 가져오기
+                  const workerInstance = await this.workerPoolManager.getWorkerInstance(availableWorker.id, this.pullRequestService);
+                  if (workerInstance) {
+                    const result = await workerInstance.startExecution();
+                    
+                    this.logger?.info('Task reassigned and resumed successfully', {
+                      taskId: request.taskId,
+                      workerId: availableWorker.id,
+                      success: result.success
+                    });
+
+                    if (result.success && result.pullRequestUrl) {
+                      await this.workerPoolManager.releaseWorker(availableWorker.id);
+                      return {
+                        taskId: request.taskId,
+                        status: ResponseStatus.COMPLETED,
+                        message: 'Task completed after reassignment',
+                        pullRequestUrl: result.pullRequestUrl,
+                        workerStatus: 'completed'
+                      };
+                    }
+                  }
+
+                  return {
+                    taskId: request.taskId,
+                    status: ResponseStatus.IN_PROGRESS,
+                    message: 'Task reassigned and execution resumed',
+                    workerStatus: 'reassigned'
+                  };
+
+                } catch (error) {
+                  this.logger?.error('Failed to reassign task', {
+                    taskId: request.taskId,
+                    workerId: availableWorker.id,
+                    error: error instanceof Error ? error.message : String(error)
+                  });
+                  
+                  return {
+                    taskId: request.taskId,
+                    status: ResponseStatus.ERROR,
+                    message: 'Failed to reassign task',
+                    workerStatus: 'error'
+                  };
+                }
               }
 
               // Worker에서 실제 작업 실행 및 결과 확인
