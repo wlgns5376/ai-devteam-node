@@ -327,7 +327,8 @@ export class Planner implements PlannerService {
           // 2. Manager에게 작업 상태 확인
           const request: TaskRequest = {
             taskId: item.id,
-            action: TaskAction.CHECK_STATUS
+            action: TaskAction.CHECK_STATUS,
+            boardItem: item
           };
 
           const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
