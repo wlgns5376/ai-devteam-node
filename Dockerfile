@@ -88,7 +88,7 @@ USER appuser
 # Set environment variables
 ENV NODE_ENV=production
 ENV WORKSPACE_DIR=/workspace
-ENV LOG_LEVEL=info
+#ENV LOG_LEVEL=info
 
 # Expose any ports if needed (currently none specified)
 # EXPOSE 3000

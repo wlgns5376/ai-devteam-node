@@ -64,3 +64,4 @@ temp/
 # AI DevTeam workspace specific
 .ai-devteam/
 CLAUDE.local.md
+docker-compose.yml
