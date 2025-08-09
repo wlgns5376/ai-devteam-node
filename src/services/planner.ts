@@ -10,7 +10,8 @@ import {
   ResponseStatus,
   TaskInfo,
   PullRequestComment,
-  PullRequestState
+  PullRequestState,
+  ReviewState
 } from '@/types';
 
 export class Planner implements PlannerService {
@@ -474,7 +475,7 @@ export class Planner implements PlannerService {
               } else {
                 // 4. 미승인 - 리뷰 상태와 신규 코멘트 확인
                 const reviews = await this.dependencies.pullRequestService.getReviews(repoId, prNumber);
-                const hasChangesRequested = reviews.some((review: any) => review.state === 'CHANGES_REQUESTED');
+                const hasChangesRequested = reviews.some((review: any) => review.state === ReviewState.CHANGES_REQUESTED);
                 
                 if (hasChangesRequested) {
                   // StateManager에서 lastSyncTime 가져오기 (없으면 7일 전부터 확인)

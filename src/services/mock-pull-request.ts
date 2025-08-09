@@ -206,17 +206,21 @@ export class MockPullRequestService implements PullRequestService {
     const prNumber = parseInt(urlMatch[2]!, 10);
     
     // PR을 병합된 상태로 설정
-    const repoPRs = this.pullRequests.get(repoId);
-    if (repoPRs) {
-      const pr = repoPRs.get(prNumber);
-      if (pr) {
-        const mergedPr: PullRequest = {
-          ...pr,
-          status: PullRequestState.MERGED,
-          updatedAt: new Date()
-        };
-        repoPRs.set(prNumber, mergedPr);
-      }
+    let repoPRs = this.pullRequests.get(repoId);
+    if (!repoPRs) {
+      repoPRs = new Map<number, PullRequest>();
+      this.pullRequests.set(repoId, repoPRs);
+    }
+    
+    const pr = repoPRs.get(prNumber);
+    if (pr) {
+      // 기존 PR 업데이트
+      const mergedPr: PullRequest = {
+        ...pr,
+        status: PullRequestState.MERGED,
+        updatedAt: new Date()
+      };
+      repoPRs.set(prNumber, mergedPr);
     } else {
       // PR이 없으면 새로 생성
       const newPr: PullRequest = {
@@ -232,9 +236,7 @@ export class MockPullRequestService implements PullRequestService {
         isApproved: false,
         reviewState: ReviewState.APPROVED
       };
-      const newRepoPRs = new Map<number, PullRequest>();
-      newRepoPRs.set(prNumber, newPr);
-      this.pullRequests.set(repoId, newRepoPRs);
+      repoPRs.set(prNumber, newPr);
     }
   }
 
