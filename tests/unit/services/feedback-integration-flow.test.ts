@@ -7,7 +7,8 @@ import {
   ResponseStatus,
   PullRequestState,
   PullRequestComment,
-  WorkerAction
+  WorkerAction,
+  ReviewState
 } from '@/types';
 
 // Enhanced Mock Manager Communicator for feedback flow testing
@@ -93,7 +94,8 @@ describe('피드백 처리 통합 플로우 테스트', () => {
         lastSyncTime: new Date(),
         processedTasks: [],
         activeTasks: []
-      })
+      }),
+      addProcessedCommentsToTask: jest.fn().mockResolvedValue(undefined)
     } as any;
     
     mockLogger = Logger.createConsoleLogger();
@@ -126,17 +128,17 @@ describe('피드백 처리 통합 플로우 테스트', () => {
     it('PR에 새로운 코멘트가 추가되면 피드백 처리를 시작해야 한다', async () => {
       // Given: IN_REVIEW 상태의 작업과 PR
       await mockProjectBoardService.updateItemStatus('board-1-item-2', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-2', 'https://github.com/wlgns5376/ai-devteam-test/pull/1');
+      await (mockProjectBoardService as any).setPullRequestToItem('board-1-item-2', 'https://github.com/wlgns5376/ai-devteam-test/pull/1');
       
-      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/1', PullRequestState.CHANGES_REQUESTED);
+      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/1', ReviewState.CHANGES_REQUESTED);
       
       // 새로운 코멘트 추가
       const newComment: PullRequestComment = {
         id: 'comment-new-1',
-        body: 'Please fix the coding style and add proper error handling',
+        content: 'Please fix the coding style and add proper error handling',
         author: 'reviewer-1',
         createdAt: new Date(),
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/1#comment-new-1'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/1#comment-new-1'
       };
       
       mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/1', newComment);
@@ -156,38 +158,38 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       const feedbackRequest = feedbackRequests.find(req => req.taskId === 'board-1-item-2');
       expect(feedbackRequest).toBeDefined();
       expect(feedbackRequest.comments).toHaveLength(1);
-      expect(feedbackRequest.comments[0].body).toContain('coding style');
+      expect(feedbackRequest.comments[0].content).toContain('coding style');
       expect(feedbackRequest.pullRequestUrl).toBe('https://github.com/wlgns5376/ai-devteam-test/pull/1');
     });
 
     it('여러 개의 새로운 코멘트를 모두 포함해서 처리해야 한다', async () => {
       // Given: 여러 코멘트가 있는 PR
       await mockProjectBoardService.updateItemStatus('board-1-item-3', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-3', 'https://github.com/wlgns5376/ai-devteam-test/pull/2');
+      await (mockProjectBoardService as any).setPullRequestToItem('board-1-item-3', 'https://github.com/wlgns5376/ai-devteam-test/pull/2');
       
-      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/2', PullRequestState.CHANGES_REQUESTED);
+      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/2', ReviewState.CHANGES_REQUESTED);
       
       const comments: PullRequestComment[] = [
         {
           id: 'comment-multi-1',
-          body: 'Fix variable naming conventions',
+          content: 'Fix variable naming conventions',
           author: 'reviewer-1',
           createdAt: new Date(Date.now() - 1000),
-          url: 'https://github.com/wlgns5376/ai-devteam-test/pull/2#comment-multi-1'
+          // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/2#comment-multi-1'
         },
         {
           id: 'comment-multi-2',
-          body: 'Add unit tests for the new function',
+          content: 'Add unit tests for the new function',
           author: 'reviewer-2',
           createdAt: new Date(),
-          url: 'https://github.com/wlgns5376/ai-devteam-test/pull/2#comment-multi-2'
+          // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/2#comment-multi-2'
         },
         {
           id: 'comment-multi-3',
-          body: 'Documentation needs to be updated',
+          content: 'Documentation needs to be updated',
           author: 'reviewer-1',
           createdAt: new Date(Date.now() + 1000),
-          url: 'https://github.com/wlgns5376/ai-devteam-test/pull/2#comment-multi-3'
+          // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/2#comment-multi-3'
         }
       ];
 
@@ -210,7 +212,7 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       expect(relevantRequest).toBeDefined();
       expect(relevantRequest.comments).toHaveLength(3);
       
-      const commentBodies = relevantRequest.comments.map((c: any) => c.body);
+      const commentBodies = relevantRequest.comments.map((c: any) => c.content);
       expect(commentBodies).toContain('Fix variable naming conventions');
       expect(commentBodies).toContain('Add unit tests for the new function');
       expect(commentBodies).toContain('Documentation needs to be updated');
@@ -219,26 +221,26 @@ describe('피드백 처리 통합 플로우 테스트', () => {
     it('이미 처리된 코멘트는 제외하고 새로운 코멘트만 처리해야 한다', async () => {
       // Given: 이전에 처리된 코멘트가 있는 PR
       await mockProjectBoardService.updateItemStatus('board-1-item-4', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-4', 'https://github.com/wlgns5376/ai-devteam-test/pull/3');
+      await (mockProjectBoardService as any).setPullRequestToItem('board-1-item-4', 'https://github.com/wlgns5376/ai-devteam-test/pull/3');
       
-      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/3', PullRequestState.CHANGES_REQUESTED);
+      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/3', ReviewState.CHANGES_REQUESTED);
 
       // 이전 코멘트 (이미 처리됨으로 표시)
       const oldComment: PullRequestComment = {
         id: 'comment-old-1',
-        body: 'Old feedback that was already processed',
+        content: 'Old feedback that was already processed',
         author: 'reviewer-1',
         createdAt: new Date(Date.now() - 86400000), // 1일 전
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/3#comment-old-1'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/3#comment-old-1'
       };
 
       // 새 코멘트
       const newComment: PullRequestComment = {
         id: 'comment-new-1',
-        body: 'New feedback that needs processing',
+        content: 'New feedback that needs processing',
         author: 'reviewer-2',
         createdAt: new Date(),
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/3#comment-new-1'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/3#comment-new-1'
       };
 
       mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/3', oldComment);
@@ -263,7 +265,7 @@ describe('피드백 처리 통합 플로우 테스트', () => {
         const relevantRequest = feedbackRequests.find(req => req.taskId === 'board-1-item-4');
         if (relevantRequest) {
           expect(relevantRequest.comments).toHaveLength(1);
-          expect(relevantRequest.comments[0].body).toContain('New feedback that needs processing');
+          expect(relevantRequest.comments[0].content).toContain('New feedback that needs processing');
         }
       }
     });
@@ -273,16 +275,16 @@ describe('피드백 처리 통합 플로우 테스트', () => {
     it('Worker가 유휴 상태일 때 피드백 처리를 즉시 시작해야 한다', async () => {
       // Given: Worker가 유휴 상태이고 새 피드백이 있음
       await mockProjectBoardService.updateItemStatus('board-1-item-5', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-5', 'https://github.com/wlgns5376/ai-devteam-test/pull/4');
+      await (mockProjectBoardService as any).setPullRequestToItem('board-1-item-5', 'https://github.com/wlgns5376/ai-devteam-test/pull/4');
       
-      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/4', PullRequestState.CHANGES_REQUESTED);
+      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/4', ReviewState.CHANGES_REQUESTED);
       
       const feedbackComment: PullRequestComment = {
         id: 'comment-idle-worker',
-        body: 'Please optimize the performance',
+        content: 'Please optimize the performance',
         author: 'reviewer',
         createdAt: new Date(),
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/4#comment-idle-worker'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/4#comment-idle-worker'
       };
       
       mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/4', feedbackComment);
@@ -307,16 +309,16 @@ describe('피드백 처리 통합 플로우 테스트', () => {
     it('Worker가 작업 중일 때 피드백 처리를 지연해야 한다', async () => {
       // Given: Worker가 작업 중이고 새 피드백이 있음
       await mockProjectBoardService.updateItemStatus('board-1-item-6', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-6', 'https://github.com/wlgns5376/ai-devteam-test/pull/5');
+      await (mockProjectBoardService as any).setPullRequestToItem('board-1-item-6', 'https://github.com/wlgns5376/ai-devteam-test/pull/5');
       
-      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/5', PullRequestState.CHANGES_REQUESTED);
+      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/5', ReviewState.CHANGES_REQUESTED);
       
       const feedbackComment: PullRequestComment = {
         id: 'comment-busy-worker',
-        body: 'Add better error messages',
+        content: 'Add better error messages',
         author: 'reviewer',
         createdAt: new Date(),
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/5#comment-busy-worker'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/5#comment-busy-worker'
       };
       
       mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/5', feedbackComment);
@@ -346,16 +348,16 @@ describe('피드백 처리 통합 플로우 테스트', () => {
     it('Worker가 유휴 상태가 되면 대기 중인 피드백을 처리해야 한다', async () => {
       // Given: 이전에 거부된 피드백이 있음
       await mockProjectBoardService.updateItemStatus('board-1-item-7', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-7', 'https://github.com/wlgns5376/ai-devteam-test/pull/6');
+      await (mockProjectBoardService as any).setPullRequestToItem('board-1-item-7', 'https://github.com/wlgns5376/ai-devteam-test/pull/6');
       
-      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/6', PullRequestState.CHANGES_REQUESTED);
+      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/6', ReviewState.CHANGES_REQUESTED);
       
       const feedbackComment: PullRequestComment = {
         id: 'comment-retry',
-        body: 'Refactor the complex function',
+        content: 'Refactor the complex function',
         author: 'reviewer',
         createdAt: new Date(),
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/6#comment-retry'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/6#comment-retry'
       };
       
       mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/6', feedbackComment);
@@ -385,7 +387,7 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       const relevantRequest = feedbackRequests.find(req => req.taskId === 'board-1-item-7');
       
       expect(relevantRequest).toBeDefined();
-      expect(relevantRequest.comments[0].body).toContain('Refactor the complex function');
+      expect(relevantRequest.comments[0].content).toContain('Refactor the complex function');
     });
   });
 
@@ -393,16 +395,16 @@ describe('피드백 처리 통합 플로우 테스트', () => {
     it('피드백 처리 완료 후 새로운 PR이 생성되면 상태를 업데이트해야 한다', async () => {
       // Given: 피드백 처리가 완료되어 새 PR이 생성됨
       await mockProjectBoardService.updateItemStatus('board-1-item-8', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-8', 'https://github.com/wlgns5376/ai-devteam-test/pull/7');
+      await (mockProjectBoardService as any).setPullRequestToItem('board-1-item-8', 'https://github.com/wlgns5376/ai-devteam-test/pull/7');
       
-      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/7', PullRequestState.CHANGES_REQUESTED);
+      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/7', ReviewState.CHANGES_REQUESTED);
       
       const feedbackComment: PullRequestComment = {
         id: 'comment-completed',
-        body: 'Fix the memory leak issue',
+        content: 'Fix the memory leak issue',
         author: 'reviewer',
         createdAt: new Date(),
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/7#comment-completed'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/7#comment-completed'
       };
       
       mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/7', feedbackComment);
@@ -427,16 +429,16 @@ describe('피드백 처리 통합 플로우 테스트', () => {
     it('피드백 처리 실패 시 적절한 에러 로깅을 해야 한다', async () => {
       // Given: 피드백 처리가 실패하는 상황
       await mockProjectBoardService.updateItemStatus('board-1-item-9', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-9', 'https://github.com/wlgns5376/ai-devteam-test/pull/9');
+      await (mockProjectBoardService as any).setPullRequestToItem('board-1-item-9', 'https://github.com/wlgns5376/ai-devteam-test/pull/9');
       
-      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/9', PullRequestState.CHANGES_REQUESTED);
+      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/9', ReviewState.CHANGES_REQUESTED);
       
       const feedbackComment: PullRequestComment = {
         id: 'comment-failed',
-        body: 'Complex refactoring required',
+        content: 'Complex refactoring required',
         author: 'reviewer',
         createdAt: new Date(),
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/9#comment-failed'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/9#comment-failed'
       };
       
       mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/9', feedbackComment);
@@ -473,23 +475,23 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       ];
 
       for (let i = 0; i < taskIds.length; i++) {
-        await mockProjectBoardService.updateItemStatus(taskIds[i], 'IN_REVIEW');
-        await mockProjectBoardService.addPullRequestToItem(taskIds[i], prUrls[i]);
+        await mockProjectBoardService.updateItemStatus(taskIds[i]!, 'IN_REVIEW');
+        await (mockProjectBoardService as any).setPullRequestToItem(taskIds[i]!, prUrls[i]!);
         
-        mockPullRequestService.setPullRequestState(prUrls[i], PullRequestState.CHANGES_REQUESTED);
+        mockPullRequestService.setPullRequestState(prUrls[i]!, ReviewState.CHANGES_REQUESTED);
         
         const feedbackComment: PullRequestComment = {
           id: `comment-multi-${i}`,
-          body: `Feedback for task ${i}: Please improve the implementation`,
+          content: `Feedback for task ${i}: Please improve the implementation`,
           author: 'reviewer',
           createdAt: new Date(),
-          url: `${prUrls[i]}#comment-multi-${i}`
+          // url: `${prUrls[i]!}#comment-multi-${i}`
         };
         
-        mockPullRequestService.addComment(prUrls[i], feedbackComment);
+        mockPullRequestService.addComment(prUrls[i]!, feedbackComment);
         
-        mockManagerCommunicator.setResponse(taskIds[i], {
-          taskId: taskIds[i],
+        mockManagerCommunicator.setResponse(taskIds[i]!, {
+          taskId: taskIds[i]!,
           status: ResponseStatus.ACCEPTED
         });
       }
@@ -511,16 +513,16 @@ describe('피드백 처리 통합 플로우 테스트', () => {
     it('피드백 처리 중에 추가된 새로운 코멘트를 다음 주기에서 처리해야 한다', async () => {
       // Given: 초기 피드백이 있는 작업
       await mockProjectBoardService.updateItemStatus('board-1-item-13', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-13', 'https://github.com/wlgns5376/ai-devteam-test/pull/13');
+      await (mockProjectBoardService as any).setPullRequestToItem('board-1-item-13', 'https://github.com/wlgns5376/ai-devteam-test/pull/13');
       
-      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/13', PullRequestState.CHANGES_REQUESTED);
+      mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/13', ReviewState.CHANGES_REQUESTED);
       
       const initialComment: PullRequestComment = {
         id: 'comment-initial',
-        body: 'Initial feedback to address',
+        content: 'Initial feedback to address',
         author: 'reviewer-1',
         createdAt: new Date(Date.now() - 1000),
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/13#comment-initial'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/13#comment-initial'
       };
       
       mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/13', initialComment);
@@ -537,10 +539,10 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       // When: 새로운 코멘트 추가
       const additionalComment: PullRequestComment = {
         id: 'comment-additional',
-        body: 'Additional feedback while processing',
+        content: 'Additional feedback while processing',
         author: 'reviewer-2',
         createdAt: new Date(),
-        url: 'https://github.com/wlgns5376/ai-devteam-test/pull/13#comment-additional'
+        // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/13#comment-additional'
       };
       
       mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/13', additionalComment);
@@ -554,7 +556,7 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       if (feedbackRequests.length > 0) {
         const latestRequest = feedbackRequests[feedbackRequests.length - 1];
         expect(latestRequest.taskId).toBe('board-1-item-13');
-        expect(latestRequest.comments.some((c: any) => c.body.includes('Additional feedback'))).toBe(true);
+        expect(latestRequest.comments.some((c: any) => c.content.includes('Additional feedback'))).toBe(true);
       }
     });
   });

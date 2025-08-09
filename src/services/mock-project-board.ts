@@ -113,6 +113,37 @@ export class MockProjectBoardService implements ProjectBoardService {
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  async setPullRequestToItem(itemId: string, pullRequestUrl: string): Promise<ProjectBoardItem> {
+    // 모든 보드에서 아이템 찾기
+    for (const [boardId, boardItems] of this.items.entries()) {
+      const itemIndex = boardItems.findIndex(item => item.id === itemId);
+      if (itemIndex !== -1) {
+        const item = boardItems[itemIndex];
+        if (!item) {
+          throw new Error(`Item not found: ${itemId}`);
+        }
+
+        const updatedItem: ProjectBoardItem = {
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          status: item.status,
+          priority: item.priority,
+          assignee: item.assignee,
+          labels: item.labels,
+          createdAt: item.createdAt,
+          updatedAt: new Date(),
+          pullRequestUrls: [pullRequestUrl], // 기존 URL을 모두 교체
+          metadata: item.metadata
+        };
+        boardItems[itemIndex] = updatedItem;
+        return updatedItem;
+      }
+    }
+
+    throw new Error(`Item not found: ${itemId}`);
+  }
+
   // 테스트용 작업 추가 메서드
   addTestTask(taskId: string, boardId: string = 'test-board'): void {
     let boardItems = this.items.get(boardId);
@@ -274,6 +305,71 @@ export class MockProjectBoardService implements ProjectBoardService {
         labels: ['error-handling', 'retry', 'resilience'],
         createdAt: new Date(baseDate.getTime() - 2 * 60 * 60 * 1000), // 2시간 전
         updatedAt: new Date(baseDate.getTime() - 2 * 60 * 60 * 1000), // 2시간 전
+        pullRequestUrls: [],
+        metadata: undefined
+      },
+      {
+        id: `${boardId}-item-9`,
+        title: 'Performance optimization',
+        description: 'Optimize system performance and resource usage',
+        status: 'TODO',
+        priority: 'MEDIUM',
+        assignee: null,
+        labels: ['performance', 'optimization'],
+        createdAt: new Date(baseDate.getTime() - 1 * 60 * 60 * 1000), // 1시간 전
+        updatedAt: new Date(baseDate.getTime() - 1 * 60 * 60 * 1000), // 1시간 전
+        pullRequestUrls: [],
+        metadata: undefined
+      },
+      {
+        id: `${boardId}-item-10`,
+        title: 'Security enhancements',
+        description: 'Implement security best practices and vulnerability fixes',
+        status: 'TODO',
+        priority: 'HIGH',
+        assignee: null,
+        labels: ['security', 'vulnerability'],
+        createdAt: new Date(baseDate.getTime() - 30 * 60 * 1000), // 30분 전
+        updatedAt: new Date(baseDate.getTime() - 30 * 60 * 1000), // 30분 전
+        pullRequestUrls: [],
+        metadata: undefined
+      },
+      {
+        id: `${boardId}-item-11`,
+        title: 'Documentation update',
+        description: 'Update project documentation and API reference',
+        status: 'TODO',
+        priority: 'LOW',
+        assignee: null,
+        labels: ['documentation', 'api'],
+        createdAt: new Date(baseDate.getTime() - 15 * 60 * 1000), // 15분 전
+        updatedAt: new Date(baseDate.getTime() - 15 * 60 * 1000), // 15분 전
+        pullRequestUrls: [],
+        metadata: undefined
+      },
+      {
+        id: `${boardId}-item-12`,
+        title: 'Testing framework',
+        description: 'Implement comprehensive testing framework',
+        status: 'TODO',
+        priority: 'HIGH',
+        assignee: null,
+        labels: ['testing', 'framework'],
+        createdAt: new Date(baseDate.getTime() - 10 * 60 * 1000), // 10분 전
+        updatedAt: new Date(baseDate.getTime() - 10 * 60 * 1000), // 10분 전
+        pullRequestUrls: [],
+        metadata: undefined
+      },
+      {
+        id: `${boardId}-item-13`,
+        title: 'Deployment automation',
+        description: 'Automate deployment process with CI/CD pipeline',
+        status: 'TODO',
+        priority: 'MEDIUM',
+        assignee: null,
+        labels: ['deployment', 'automation', 'cicd'],
+        createdAt: new Date(baseDate.getTime() - 5 * 60 * 1000), // 5분 전
+        updatedAt: new Date(baseDate.getTime() - 5 * 60 * 1000), // 5분 전
         pullRequestUrls: [],
         metadata: undefined
       }

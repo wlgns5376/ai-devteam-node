@@ -3,8 +3,8 @@ import { createCLI } from './cli/commands';
 import { AIDevTeamApp } from './app';
 import { AppConfigLoader } from './config/app-config';
 
-// Load environment variables
-config();
+// Load environment variables (quiet to suppress logs)
+config({ quiet: true });
 
 /**
  * AI DevTeam main entry point
