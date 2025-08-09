@@ -509,6 +509,24 @@ export class Planner implements PlannerService {
                         taskId: item.id,
                         commentCount: newComments.length
                       });
+                    } else if (response.status === ResponseStatus.COMPLETED && response.pullRequestUrl) {
+                      // 피드백 처리 완료 시 새로운 PR URL 추가
+                      await this.dependencies.projectBoardService.addPullRequestToItem(item.id, response.pullRequestUrl);
+                      
+                      // 처리된 코멘트로 기록
+                      const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
+                      await this.dependencies.stateManager.addProcessedCommentsToTask(item.id, commentIds);
+                      
+                      this.dependencies.logger.info('Feedback processing completed with new PR', {
+                        taskId: item.id,
+                        newPullRequestUrl: response.pullRequestUrl
+                      });
+                    } else if (response.status === ResponseStatus.ERROR) {
+                      this.dependencies.logger.error('Feedback processing failed', {
+                        taskId: item.id,
+                        reason: response.message
+                      });
+                      this.addError('FEEDBACK_PROCESSING_ERROR', response.message || 'Feedback processing failed', { taskId: item.id });
                     }
                   }
                 }

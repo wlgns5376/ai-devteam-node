@@ -177,6 +177,17 @@ export class MockPullRequestService implements PullRequestService {
         reviewState: state
       };
       repoPRs.set(prNumber, newPr);
+    } else {
+      // 기존 PR 업데이트
+      const existingPr = repoPRs.get(prNumber)!;
+      const updatedPr: PullRequest = {
+        ...existingPr,
+        status: state === ReviewState.CHANGES_REQUESTED ? PullRequestState.OPEN : existingPr.status,
+        isApproved: state === ReviewState.APPROVED,
+        reviewState: state,
+        updatedAt: new Date()
+      };
+      repoPRs.set(prNumber, updatedPr);
     }
     
     // 리뷰 상태 업데이트 - 기존 리뷰를 모두 교체
