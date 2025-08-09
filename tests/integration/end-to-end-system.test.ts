@@ -7,6 +7,7 @@ import {
   SystemStatus,
   WorkerStatus,
   PullRequestState,
+  ReviewState,
   ResponseStatus,
   WorkerAction,
   PullRequestComment
@@ -19,43 +20,57 @@ class MockAIDevTeamApp extends AIDevTeamApp {
   private mockPullRequestService: MockPullRequestService;
 
   constructor() {
-    const testConfig = {
+    const testConfig: AppConfig = {
+      nodeEnv: 'test' as const,
       planner: {
         boardId: 'test-board',
         repoId: 'test-repo',
         monitoringIntervalMs: 100, // 빠른 테스트를 위해 짧은 간격
         maxRetryAttempts: 2,
-        timeoutMs: 5000
+        timeoutMs: 5000,
+        pullRequestFilter: {
+          excludeAuthor: true,
+          allowedBots: []
+        }
       },
       manager: {
-        minWorkers: 1,
-        maxWorkers: 3,
-        workerTimeoutMs: 10000,
-        workerRecoveryTimeoutMs: 5000,
-        healthCheckIntervalMs: 1000,
-        workspaceBaseDir: '/tmp/test-workspace',
-        defaultDeveloperType: 'claude' as any
-      },
-      git: {
-        defaultBranch: 'main',
-        remoteOrigin: 'origin'
+        workspaceRoot: '/tmp/test-workspace',
+        workerPool: {
+          minWorkers: 1,
+          maxWorkers: 3,
+          workerTimeoutMs: 10000
+        },
+        gitOperationTimeoutMs: 60000,
+        repositoryCacheTimeoutMs: 300000,
+        gitConfig: {
+          cloneDepth: 1,
+          enableConcurrencyLock: true
+        },
+        pullRequest: {
+          provider: 'github' as any,
+          config: {
+            type: 'github' as any,
+            apiToken: 'test-token',
+            baseUrl: 'https://api.github.com'
+          }
+        }
       },
       developer: {
-        claude: {
-          executable: 'claude-test',
-          timeoutMs: 30000
-        }
+        claudeCodePath: 'claude-test',
+        claudeCodeTimeoutMs: 30000,
+        geminiCliPath: 'gemini-test', 
+        geminiCliTimeoutMs: 30000
       },
       logger: {
         level: 'info',
-        enableConsole: false,
-        enableFile: false
+        filePath: '/tmp/test-logs/test.log',
+        enableConsole: false
       },
-      system: {
-        nodeEnv: 'test',
-        version: '1.0.0-test'
+      pullRequestFilter: {
+        excludeAuthor: true,
+        allowedBots: []
       }
-    } as AppConfig;
+    };
 
     super(testConfig);
     
@@ -168,13 +183,15 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
       
       if (taskInReview && taskInReview.pullRequestUrls.length > 0) {
         const prUrl = taskInReview.pullRequestUrls[0];
-        mockPullRequest.setPullRequestState(prUrl, PullRequestState.APPROVED);
-        
-        // 병합 완료 후 DONE으로 이동
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 처리 시간 대기
-        
-        const finalStatus = await app.waitForTaskProcessing(taskId, 3000);
-        expect(finalStatus).toBe('DONE');
+        if (prUrl) {
+          await mockPullRequest.setPullRequestState(prUrl, ReviewState.APPROVED);
+          
+          // 병합 완료 후 DONE으로 이동
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 처리 시간 대기
+          
+          const finalStatus = await app.waitForTaskProcessing(taskId, 3000);
+          expect(finalStatus).toBe('DONE');
+        }
       }
 
       // Then: 전체 워크플로우가 성공적으로 완료됨
@@ -197,17 +214,16 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
       await mockProjectBoard.addPullRequestToItem(taskId, prUrl);
       
       // PR에 변경 요청과 코멘트 추가
-      mockPullRequest.setPullRequestState(prUrl, PullRequestState.CHANGES_REQUESTED);
+      await mockPullRequest.setPullRequestState(prUrl, ReviewState.CHANGES_REQUESTED);
       
       const feedbackComment: PullRequestComment = {
         id: 'e2e-comment-1',
-        body: 'Please add unit tests and fix the naming convention',
+        content: 'Please add unit tests and fix the naming convention',
         author: 'reviewer',
-        createdAt: new Date(),
-        url: `${prUrl}#comment-1`
+        createdAt: new Date()
       };
       
-      mockPullRequest.addComment(prUrl, feedbackComment);
+      await mockPullRequest.addComment(prUrl, feedbackComment);
 
       // 피드백 처리 대기
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -215,7 +231,7 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
       // 피드백 처리 후 새로운 PR 생성 시뮬레이션
       const newPrUrl = 'https://github.com/test-repo/ai-devteam-test/pull/3';
       await mockProjectBoard.addPullRequestToItem(taskId, newPrUrl);
-      mockPullRequest.setPullRequestState(newPrUrl, PullRequestState.APPROVED);
+      await mockPullRequest.setPullRequestState(newPrUrl, ReviewState.APPROVED);
 
       // 최종 승인 및 병합
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -430,6 +446,7 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
           await app.waitForTaskProcessing(taskId, 2000); // 짧은 타임아웃으로 에러 유도
         } catch (error) {
           // 에러 발생 예상
+          expect(error).toBeDefined();
         }
       }
 
@@ -447,7 +464,7 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
         expect(['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE']).toContain(result);
       } catch (error) {
         // 시스템이 복구 중일 수 있으므로 타임아웃 허용
-        expect(error.message).toContain('timeout');
+        expect((error as Error).message).toContain('timeout');
       }
     }, 15000);
   });

@@ -26,6 +26,15 @@ export * from './manager.types';
 // Developer types
 export * from './developer.types';
 
+// System status types
+export interface SystemStatus {
+  readonly isRunning: boolean;
+  readonly plannerStatus: any;
+  readonly workerPoolStatus: any;
+  readonly startedAt?: Date;
+  readonly uptime?: number;
+}
+
 // Common utility types
 export type Result<T, E = Error> = {
   readonly success: true;

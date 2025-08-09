@@ -8,6 +8,11 @@ jest.mock('@octokit/rest');
 // Set up global test environment
 process.env.NODE_ENV = 'test';
 
+// GitHub test configuration
+process.env.GITHUB_OWNER = 'test-owner';
+process.env.GITHUB_PROJECT_NUMBER = '1';
+process.env.GITHUB_TOKEN = 'test-token';
+
 // Clean up temp files before each test file
 const cleanupTempFiles = () => {
   const tempStatePath = path.join(process.cwd(), 'temp-state');

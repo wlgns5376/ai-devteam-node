@@ -168,7 +168,7 @@ export class MockProjectBoardService implements ProjectBoardService {
         id: `${boardId}-item-3`,
         title: 'Create state management system',
         description: 'Implement JSON-based state persistence for tasks and workers',
-        status: 'TODO',
+        status: 'IN_PROGRESS',
         priority: 'HIGH',
         assignee: 'gemini-dev',
         labels: ['state', 'persistence', 'json'],

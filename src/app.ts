@@ -15,16 +15,9 @@ import {
   ResponseStatus,
   DeveloperConfig,
   SystemDeveloperConfig,
-  WorkerAction
+  WorkerAction,
+  SystemStatus
 } from '@/types';
-
-export interface SystemStatus {
-  readonly isRunning: boolean;
-  readonly plannerStatus: any;
-  readonly workerPoolStatus: any;
-  readonly startedAt?: Date;
-  readonly uptime?: number;
-}
 
 export class AIDevTeamApp {
   private planner?: Planner;

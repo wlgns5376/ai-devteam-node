@@ -128,6 +128,61 @@ export class MockPullRequestService implements PullRequestService {
     }
   }
 
+  // 테스트를 위한 추가 메서드들
+  async setPullRequestState(prUrl: string, state: ReviewState): Promise<void> {
+    // URL에서 repo와 PR 번호 추출
+    const urlMatch = prUrl.match(/github\.com\/([^\/]+\/[^\/]+)\/pull\/(\d+)/);
+    if (!urlMatch) {
+      throw new Error(`Invalid PR URL format: ${prUrl}`);
+    }
+    
+    const repoId = urlMatch[1]!;
+    const prNumber = parseInt(urlMatch[2]!, 10);
+    
+    // 리뷰 상태 업데이트
+    const key = `${repoId}/${prNumber}`;
+    let reviews = this.reviews.get(key) || [];
+    
+    // 새로운 리뷰 추가
+    const newReview: PullRequestReview = {
+      id: `review-${prNumber}-${Date.now()}`,
+      state: state,
+      comment: state === ReviewState.APPROVED ? 'Approved via test' : 'Changes requested via test',
+      reviewer: 'test-reviewer',
+      submittedAt: new Date()
+    };
+    
+    reviews = [...reviews, newReview];
+    this.reviews.set(key, reviews);
+  }
+
+  async addComment(prUrl: string, comment: Partial<PullRequestComment>): Promise<void> {
+    // URL에서 repo와 PR 번호 추출
+    const urlMatch = prUrl.match(/github\.com\/([^\/]+\/[^\/]+)\/pull\/(\d+)/);
+    if (!urlMatch) {
+      throw new Error(`Invalid PR URL format: ${prUrl}`);
+    }
+    
+    const repoId = urlMatch[1]!;
+    const prNumber = parseInt(urlMatch[2]!, 10);
+    
+    const key = `${repoId}/${prNumber}`;
+    let comments = this.comments.get(key) || [];
+    
+    const newComment: PullRequestComment = {
+      id: comment.id || `comment-${prNumber}-${Date.now()}`,
+      content: comment.content || '',
+      author: comment.author || 'test-user',
+      createdAt: comment.createdAt || new Date(),
+      updatedAt: comment.updatedAt,
+      isProcessed: comment.isProcessed || false,
+      metadata: comment.metadata
+    };
+    
+    comments = [...comments, newComment];
+    this.comments.set(key, comments);
+  }
+
   private initializeMockData(): void {
     // Mock repository
     const repoId = 'wlgns5376/ai-devteam-test';
