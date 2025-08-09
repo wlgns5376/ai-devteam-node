@@ -168,7 +168,7 @@ export class MockProjectBoardService implements ProjectBoardService {
         id: `${boardId}-item-3`,
         title: 'Create state management system',
         description: 'Implement JSON-based state persistence for tasks and workers',
-        status: 'IN_PROGRESS',
+        status: 'TODO',
         priority: 'HIGH',
         assignee: 'gemini-dev',
         labels: ['state', 'persistence', 'json'],
@@ -200,6 +200,45 @@ export class MockProjectBoardService implements ProjectBoardService {
         labels: ['logging', 'monitoring', 'debugging'],
         createdAt: new Date(baseDate.getTime() - 6 * 60 * 60 * 1000), // 6시간 전
         updatedAt: new Date(baseDate.getTime() - 6 * 60 * 60 * 1000), // 6시간 전
+        pullRequestUrls: [],
+        metadata: undefined
+      },
+      {
+        id: `${boardId}-item-6`,
+        title: 'Worker monitoring system',
+        description: 'Implement worker health monitoring and recovery',
+        status: 'TODO',
+        priority: 'MEDIUM',
+        assignee: null,
+        labels: ['monitoring', 'worker', 'health-check'],
+        createdAt: new Date(baseDate.getTime() - 4 * 60 * 60 * 1000), // 4시간 전
+        updatedAt: new Date(baseDate.getTime() - 4 * 60 * 60 * 1000), // 4시간 전
+        pullRequestUrls: [],
+        metadata: undefined
+      },
+      {
+        id: `${boardId}-item-7`,
+        title: 'Task reassignment logic',
+        description: 'Implement automatic task reassignment on worker failure',
+        status: 'TODO',
+        priority: 'HIGH',
+        assignee: null,
+        labels: ['reassignment', 'worker', 'failover'],
+        createdAt: new Date(baseDate.getTime() - 3 * 60 * 60 * 1000), // 3시간 전
+        updatedAt: new Date(baseDate.getTime() - 3 * 60 * 60 * 1000), // 3시간 전
+        pullRequestUrls: [],
+        metadata: undefined
+      },
+      {
+        id: `${boardId}-item-8`,
+        title: 'Error handling improvements',
+        description: 'Enhance error handling and retry mechanisms',
+        status: 'TODO',
+        priority: 'MEDIUM',
+        assignee: null,
+        labels: ['error-handling', 'retry', 'resilience'],
+        createdAt: new Date(baseDate.getTime() - 2 * 60 * 60 * 1000), // 2시간 전
+        updatedAt: new Date(baseDate.getTime() - 2 * 60 * 60 * 1000), // 2시간 전
         pullRequestUrls: [],
         metadata: undefined
       }
