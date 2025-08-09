@@ -113,6 +113,41 @@ export class MockProjectBoardService implements ProjectBoardService {
     throw new Error(`Item not found: ${itemId}`);
   }
 
+  // 테스트용 작업 추가 메서드
+  addTestTask(taskId: string, boardId: string = 'test-board'): void {
+    let boardItems = this.items.get(boardId);
+    if (!boardItems) {
+      boardItems = [];
+      this.items.set(boardId, boardItems);
+    }
+
+    // 이미 존재하는지 확인
+    const existingItem = boardItems.find(item => item.id === taskId);
+    if (existingItem) {
+      return;
+    }
+
+    // 새로운 테스트 작업 생성
+    const newItem: ProjectBoardItem = {
+      id: taskId,
+      title: `Test Task: ${taskId}`,
+      description: `Test task for E2E integration testing: ${taskId}`,
+      status: 'TODO',
+      priority: 'MEDIUM',
+      assignee: 'test-user',
+      labels: ['test', 'e2e'],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      pullRequestUrls: [],
+      metadata: {
+        testTask: true,
+        createdBy: 'integration-test'
+      }
+    };
+
+    boardItems.push(newItem);
+  }
+
   private initializeMockData(): void {
     // 기본 보드 생성
     const defaultBoard: ProjectBoard = {

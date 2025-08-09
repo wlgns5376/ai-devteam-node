@@ -78,6 +78,10 @@ COPY --from=builder /app/dist ./dist
 RUN mkdir -p /app/workspace /app/logs /app/config /app/state && \
     chown -R appuser:appgroup /app
 
+# Create Claude CLI configuration directory with proper permissions
+RUN mkdir -p /home/appuser/.claude && \
+    chown -R appuser:appgroup /home/appuser/.claude
+
 # Create workspace directory that can be mounted as volume
 RUN mkdir -p /workspace && \
     chown -R appuser:appgroup /workspace

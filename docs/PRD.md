@@ -56,11 +56,11 @@ Planner -> Manager -> Worker -> Developer -> Worker -> Manager -> Planner
 1. Planner 는 특정 주기로 프로젝트 보드에서 할일을 가져온다.
 2. Manager 에게 작업을 전달한다.
 3. Manager 는 Clone 된 저장소가 있는지 확인한다.
-  - 없다면 clone
-  - 있다면 fetch (최신화)
+  - 없다면 git clone
+  - 있다면 git pull (최신화)
 4. Manager 는 작업 가능한 Worker 가 있는지 확인한다.
   - Worker 가 없다면 Planner 에게 Worker 가 없다고 전달한다.
-  - Worker 가 있다면 작업 정보(작업id, 작업상태, 내용, 저장소)를 전달하고 Planner 에게 작업 시작을 알린다.
+  - Worker 가 있다면 작업 정보(작업id, 이슈번호, 작업상태, 내용, 저장소)를 전달하고 Planner 에게 작업 시작을 알린다.
 5. Planner 는 작업 상태를 진행중으로 변경한다.
 5. Worker 는 작업 디렉토리가 있는지 확인한다.
   - 없으면 디렉토리 생성, worktree 추가, 로컬 지침 전달
