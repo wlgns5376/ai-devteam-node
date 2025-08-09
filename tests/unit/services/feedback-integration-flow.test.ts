@@ -73,6 +73,9 @@ describe('피드백 처리 통합 플로우 테스트', () => {
     mockProjectBoardService = new MockProjectBoardService();
     mockPullRequestService = new MockPullRequestService();
     
+    // 처리된 코멘트 초기화 (테스트 격리)
+    mockPullRequestService.clearProcessedComments();
+    
     mockStateManager = {
       initialize: jest.fn().mockResolvedValue(undefined),
       saveTask: jest.fn().mockResolvedValue(undefined),
@@ -238,6 +241,10 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       
       await mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/3', ReviewState.CHANGES_REQUESTED);
 
+      // lastSyncTime을 과거로 설정하여 모든 코멘트가 "새로운" 것으로 간주되도록 함
+      const pastTime = new Date(Date.now() - 2 * 86400000); // 2일 전
+      mockStateManager.setPlannerLastSyncTime(pastTime);
+
       // 이전 코멘트 (이미 처리됨으로 표시)
       const oldComment: PullRequestComment = {
         id: 'comment-old-1',
@@ -256,31 +263,57 @@ describe('피드백 처리 통합 플로우 테스트', () => {
         // url: 'https://github.com/wlgns5376/ai-devteam-test/pull/3#comment-new-1'
       };
 
-      await await mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/3', oldComment);
-      await await mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/3', newComment);
+      await mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/3', oldComment);
+      await mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/3', newComment);
 
-      // 첫 번째 처리 - 이전 코멘트 처리
+      // 첫 번째 처리 - 모든 코멘트 처리
       mockManagerCommunicator.setResponse('board-1-item-4', {
         taskId: 'board-1-item-4',
         status: ResponseStatus.ACCEPTED
       });
 
       await planner.handleReviewTasks();
+      
+      // 첫 번째 처리에서 모든 코멘트가 처리되었는지 확인
+      const firstRequests = mockManagerCommunicator.getRequestsByAction('process_feedback');
+      const firstRequest = firstRequests.find(req => req.taskId === 'board-1-item-4');
+      expect(firstRequest).toBeDefined();
+      expect(firstRequest.comments).toHaveLength(2); // 두 코멘트 모두 포함
+      
+      // MockPullRequestService와 StateManager 모두에 처리된 코멘트 기록
+      await mockPullRequestService.markCommentsAsProcessed(['comment-old-1', 'comment-new-1']);
+      
       mockManagerCommunicator.clearRequests();
 
-      // When: 두 번째 처리 - 새 코멘트만 처리되어야 함
+      // When: 두 번째 처리 - 이미 처리된 코멘트는 제외되어야 함
       await planner.handleReviewTasks();
 
-      // Then: 새로운 코멘트만 포함된 요청이 전달되어야 함
-      const feedbackRequests = mockManagerCommunicator.getRequestsByAction('process_feedback');
+      // Then: 이미 처리된 코멘트가 있으므로 새로운 피드백 요청이 없어야 함
+      const secondRequests = mockManagerCommunicator.getRequestsByAction('process_feedback');
+      const secondRequest = secondRequests.find(req => req.taskId === 'board-1-item-4');
       
-      if (feedbackRequests.length > 0) {
-        const relevantRequest = feedbackRequests.find(req => req.taskId === 'board-1-item-4');
-        if (relevantRequest) {
-          expect(relevantRequest.comments).toHaveLength(1);
-          expect(relevantRequest.comments[0].content).toContain('New feedback that needs processing');
-        }
-      }
+      // 이미 처리된 코멘트만 있으므로 새로운 피드백 요청이 없어야 함
+      expect(secondRequest).toBeUndefined();
+
+      // 추가 검증: 새로운 코멘트가 추가되면 처리되어야 함
+      const newFeedbackComment: PullRequestComment = {
+        id: 'comment-really-new',
+        content: 'This is truly new feedback',
+        author: 'reviewer-3',
+        createdAt: new Date(Date.now() + 1000),
+      };
+      
+      await mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/3', newFeedbackComment);
+
+      // 세 번째 처리 - 새로운 코멘트만 처리되어야 함
+      await planner.handleReviewTasks();
+
+      const thirdRequests = mockManagerCommunicator.getRequestsByAction('process_feedback');
+      const thirdRequest = thirdRequests.find(req => req.taskId === 'board-1-item-4');
+      
+      expect(thirdRequest).toBeDefined();
+      expect(thirdRequest.comments).toHaveLength(1);
+      expect(thirdRequest.comments[0].content).toContain('This is truly new feedback');
     });
   });
 

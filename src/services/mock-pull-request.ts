@@ -118,8 +118,13 @@ export class MockPullRequestService implements PullRequestService {
       (comment.updatedAt && comment.updatedAt > since)
     );
 
+    // 처리된 코멘트 필터링 (이미 처리된 것들 제외)
+    const unprocessedComments = newComments.filter(comment => 
+      !this.processedComments.has(comment.id)
+    );
+
     // 코멘트 필터링 적용
-    return this.applyCommentFilters(newComments, pullRequest.author, filterOptions);
+    return this.applyCommentFilters(unprocessedComments, pullRequest.author, filterOptions);
   }
 
   async markCommentsAsProcessed(commentIds: string[]): Promise<void> {
@@ -129,6 +134,10 @@ export class MockPullRequestService implements PullRequestService {
   }
 
   // 테스트를 위한 추가 메서드들
+  clearProcessedComments(): void {
+    this.processedComments.clear();
+  }
+  
   async setPullRequestApproval(repoId: string, prNumber: number, isApproved: boolean): Promise<void> {
     const repoPRs = this.pullRequests.get(repoId);
     if (repoPRs) {
