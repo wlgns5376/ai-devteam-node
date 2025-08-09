@@ -82,8 +82,12 @@ describe('Git 동시성 제어 테스트', () => {
 
   beforeEach(() => {
     mockLogger = Logger.createConsoleLogger();
-    gitService = new GitService(mockLogger);
     gitLockService = new MockGitLockService();
+    gitService = new GitService({
+      logger: mockLogger,
+      gitOperationTimeoutMs: 5000,
+      gitLockService: gitLockService
+    });
   });
 
   describe('기본 락 동작', () => {
@@ -257,14 +261,15 @@ describe('Git 동시성 제어 테스트', () => {
       const results = await Promise.allSettled(operations);
 
       // Then: 성공한 작업들은 정상 결과를 반환해야 함
-      expect(results[0].status).toBe('fulfilled');
-      expect((results[0] as PromiseFulfilledResult<string>).value).toBe('success-1');
+      expect(results.length).toBe(3);
+      expect(results[0]!.status).toBe('fulfilled');
+      expect((results[0]! as PromiseFulfilledResult<string>).value).toBe('success-1');
       
-      expect(results[1].status).toBe('rejected');
-      expect((results[1] as PromiseRejectedResult).reason.message).toBe('Failed operation');
+      expect(results[1]!.status).toBe('rejected');
+      expect((results[1]! as PromiseRejectedResult).reason.message).toBe('Failed operation');
       
-      expect(results[2].status).toBe('fulfilled');
-      expect((results[2] as PromiseFulfilledResult<string>).value).toBe('success-2');
+      expect(results[2]!.status).toBe('fulfilled');
+      expect((results[2]! as PromiseFulfilledResult<string>).value).toBe('success-2');
     });
   });
 

@@ -129,6 +129,22 @@ export class MockPullRequestService implements PullRequestService {
   }
 
   // 테스트를 위한 추가 메서드들
+  async setPullRequestApproval(repoId: string, prNumber: number, isApproved: boolean): Promise<void> {
+    const repoPRs = this.pullRequests.get(repoId);
+    if (repoPRs) {
+      const pr = repoPRs.get(prNumber);
+      if (pr) {
+        // readonly 속성을 우회하기 위해 새 객체 생성
+        const updatedPr: PullRequest = {
+          ...pr,
+          isApproved: isApproved,
+          reviewState: isApproved ? ReviewState.APPROVED : ReviewState.CHANGES_REQUESTED
+        };
+        repoPRs.set(prNumber, updatedPr);
+      }
+    }
+  }
+
   async setPullRequestState(prUrl: string, state: ReviewState): Promise<void> {
     // URL에서 repo와 PR 번호 추출
     const urlMatch = prUrl.match(/github\.com\/([^\/]+\/[^\/]+)\/pull\/(\d+)/);
