@@ -36,6 +36,9 @@ export interface WorkerPool {
   readonly minWorkers: number;
   readonly maxWorkers: number;
   readonly activeWorkers: number;
+  readonly idleWorkers: number;
+  readonly stoppedWorkers: number;
+  readonly totalWorkers: number;
 }
 
 export interface WorkerUpdate {
@@ -92,7 +95,8 @@ export interface WorkerInterface {
   getProgress(): WorkerProgress | null;
   getCurrentTask(): WorkerTask | null;
   
-  // 정리
+  // 복구 및 정리
+  reset(): Promise<void>;
   cleanup(): Promise<void>;
 }
 

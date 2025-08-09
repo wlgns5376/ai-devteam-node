@@ -140,7 +140,10 @@ describe('Worker Types', () => {
         ],
         minWorkers: 1,
         maxWorkers: 5,
-        activeWorkers: 2
+        activeWorkers: 2,
+        idleWorkers: 0,
+        stoppedWorkers: 0,
+        totalWorkers: 2
       };
 
       // When: 각 속성을 확인하면
@@ -158,7 +161,10 @@ describe('Worker Types', () => {
         workers: [],
         minWorkers: 1,
         maxWorkers: 5,
-        activeWorkers: 0
+        activeWorkers: 0,
+        idleWorkers: 0,
+        stoppedWorkers: 0,
+        totalWorkers: 0
       };
 
       // When: 제약 조건을 확인하면
@@ -174,7 +180,10 @@ describe('Worker Types', () => {
         workers: [],
         minWorkers: 1,
         maxWorkers: 5,
-        activeWorkers: 0
+        activeWorkers: 0,
+        idleWorkers: 0,
+        stoppedWorkers: 0,
+        totalWorkers: 0
       };
 
       // When & Then: workers 배열이 readonly여야 함

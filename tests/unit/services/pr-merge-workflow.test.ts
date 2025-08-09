@@ -70,10 +70,11 @@ describe('PR 승인 후 병합 시나리오', () => {
       removeWorkspace: jest.fn().mockResolvedValue(undefined),
       updateLastSyncTime: jest.fn().mockResolvedValue(undefined),
       getPlannerState: jest.fn().mockResolvedValue({
-        lastSyncTime: new Date(),
+        lastSyncTime: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24시간 전
         processedTasks: [],
         activeTasks: []
-      })
+      }),
+      addProcessedCommentsToTask: jest.fn().mockResolvedValue(undefined)
     } as any;
     
     mockLogger = Logger.createConsoleLogger();
@@ -106,7 +107,8 @@ describe('PR 승인 후 병합 시나리오', () => {
     it('PR이 승인되면 병합 요청을 Manager에게 전달해야 한다', async () => {
       // Given: IN_REVIEW 상태의 작업과 승인된 PR이 있음
       await mockProjectBoardService.updateItemStatus('board-1-item-2', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-2', 'https://github.com/wlgns5376/ai-devteam-test/pull/1');
+      // 기존 PR URL을 제거하고 테스트용 PR URL만 설정
+      await mockProjectBoardService.setPullRequestToItem('board-1-item-2', 'https://github.com/wlgns5376/ai-devteam-test/pull/1');
       
       // PR이 승인된 상태로 설정
       mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/1', ReviewState.APPROVED);
@@ -132,7 +134,7 @@ describe('PR 승인 후 병합 시나리오', () => {
     it('병합 성공 시 작업 상태를 DONE으로 변경해야 한다', async () => {
       // Given: 병합 요청이 성공적으로 처리됨
       await mockProjectBoardService.updateItemStatus('board-1-item-3', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-3', 'https://github.com/wlgns5376/ai-devteam-test/pull/2');
+      await mockProjectBoardService.setPullRequestToItem('board-1-item-3', 'https://github.com/wlgns5376/ai-devteam-test/pull/2');
       
       mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/2', ReviewState.APPROVED);
       
@@ -154,7 +156,7 @@ describe('PR 승인 후 병합 시나리오', () => {
     it('병합 실패 시 작업을 IN_REVIEW 상태로 유지해야 한다', async () => {
       // Given: 병합 요청이 실패함
       await mockProjectBoardService.updateItemStatus('board-1-item-4', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-4', 'https://github.com/wlgns5376/ai-devteam-test/pull/3');
+      await mockProjectBoardService.setPullRequestToItem('board-1-item-4', 'https://github.com/wlgns5376/ai-devteam-test/pull/3');
       
       mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/3', ReviewState.APPROVED);
       
@@ -174,7 +176,7 @@ describe('PR 승인 후 병합 시나리오', () => {
 
       const status = planner.getStatus();
       expect(status.errors.length).toBeGreaterThan(0);
-      expect(status.errors[0]).toContain('Merge conflicts detected');
+      expect(status.errors[0]?.message).toContain('Merge conflicts detected');
     });
   });
 
@@ -202,11 +204,7 @@ describe('PR 승인 후 병합 시나리오', () => {
       await mockProjectBoardService.addPullRequestToItem('board-1-item-6', 'https://github.com/wlgns5376/ai-devteam-test/pull/5');
       
       // PR이 병합된 상태로 설정
-      const mockPRs = (mockPullRequestService as any).pullRequests;
-      const pr5 = mockPRs.get('wlgns5376/ai-devteam-test')?.get(5);
-      if (pr5) {
-        pr5.status = 'merged';
-      }
+      await mockPullRequestService.setPullRequestToMerged('https://github.com/wlgns5376/ai-devteam-test/pull/5');
 
       // When: 리뷰 작업을 처리하면
       await planner.handleReviewTasks();
@@ -224,12 +222,12 @@ describe('PR 승인 후 병합 시나리오', () => {
       
       mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/6', ReviewState.CHANGES_REQUESTED);
       
-      // 새로운 코멘트 추가
-      mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/6', {
+      // 새로운 코멘트 추가 (최근 시간으로 설정해야 newComments에 포함됨)
+      await mockPullRequestService.addComment('https://github.com/wlgns5376/ai-devteam-test/pull/6', {
         id: 'comment-1',
         content: 'Please fix the code style issues',
         author: 'reviewer',
-        createdAt: new Date()
+        createdAt: new Date() // 현재 시간으로 설정
       });
 
       mockManagerCommunicator.setResponse('board-1-item-7', {
@@ -291,7 +289,7 @@ describe('PR 승인 후 병합 시나리오', () => {
     it('Worker 없음으로 병합 실패 시 재시도해야 한다', async () => {
       // Given: 병합 요청 시 Worker가 없음
       await mockProjectBoardService.updateItemStatus('board-1-item-9', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-9', 'https://github.com/wlgns5376/ai-devteam-test/pull/8');
+      await mockProjectBoardService.setPullRequestToItem('board-1-item-9', 'https://github.com/wlgns5376/ai-devteam-test/pull/8');
       
       mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/8', ReviewState.APPROVED);
       
@@ -315,7 +313,7 @@ describe('PR 승인 후 병합 시나리오', () => {
     it('병합 성공 시 활성 작업에서 제거되어야 한다', async () => {
       // Given: 병합이 성공적으로 완료된 작업
       await mockProjectBoardService.updateItemStatus('board-1-item-10', 'IN_REVIEW');
-      await mockProjectBoardService.addPullRequestToItem('board-1-item-10', 'https://github.com/wlgns5376/ai-devteam-test/pull/9');
+      await mockProjectBoardService.setPullRequestToItem('board-1-item-10', 'https://github.com/wlgns5376/ai-devteam-test/pull/9');
       
       mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/9', ReviewState.APPROVED);
       

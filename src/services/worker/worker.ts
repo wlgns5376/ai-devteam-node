@@ -305,6 +305,31 @@ export class Worker implements WorkerInterface {
     }
   }
 
+  async reset(): Promise<void> {
+    try {
+      // 진행 중인 작업이 있으면 취소
+      if (this._currentTask) {
+        await this.cancelExecution();
+      }
+
+      // 상태 초기화
+      this._currentTask = null;
+      this._status = WorkerStatus.IDLE;
+      this._progress = null;
+      this._lastActiveAt = new Date();
+
+      this.dependencies.logger.info('Worker reset completed', {
+        workerId: this.id
+      });
+    } catch (error) {
+      this.dependencies.logger.error('Worker reset failed', {
+        workerId: this.id,
+        error
+      });
+      throw error;
+    }
+  }
+
   private completeTask(): void {
     this._currentTask = null;
     this._status = WorkerStatus.IDLE;

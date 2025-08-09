@@ -155,11 +155,34 @@ export class MockPullRequestService implements PullRequestService {
     const repoId = urlMatch[1]!;
     const prNumber = parseInt(urlMatch[2]!, 10);
     
-    // 리뷰 상태 업데이트
-    const key = `${repoId}/${prNumber}`;
-    let reviews = this.reviews.get(key) || [];
+    // PR이 존재하지 않으면 생성
+    let repoPRs = this.pullRequests.get(repoId);
+    if (!repoPRs) {
+      repoPRs = new Map<number, PullRequest>();
+      this.pullRequests.set(repoId, repoPRs);
+    }
     
-    // 새로운 리뷰 추가
+    if (!repoPRs.has(prNumber)) {
+      const newPr: PullRequest = {
+        id: prNumber,
+        title: `Test PR ${prNumber}`,
+        description: 'Test pull request',
+        status: PullRequestState.OPEN,
+        sourceBranch: 'feature-branch',
+        targetBranch: 'main',
+        author: 'test-author',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        isApproved: state === ReviewState.APPROVED,
+        reviewState: state
+      };
+      repoPRs.set(prNumber, newPr);
+    }
+    
+    // 리뷰 상태 업데이트 - 기존 리뷰를 모두 교체
+    const key = `${repoId}/${prNumber}`;
+    
+    // 새로운 리뷰로 교체 (기존 리뷰들은 무시)
     const newReview: PullRequestReview = {
       id: `review-${prNumber}-${Date.now()}`,
       state: state,
@@ -168,8 +191,51 @@ export class MockPullRequestService implements PullRequestService {
       submittedAt: new Date()
     };
     
-    reviews = [...reviews, newReview];
-    this.reviews.set(key, reviews);
+    // 기존 리뷰들을 모두 제거하고 새로운 리뷰만 설정
+    this.reviews.set(key, [newReview]);
+  }
+
+  async setPullRequestToMerged(prUrl: string): Promise<void> {
+    // URL에서 repo와 PR 번호 추출
+    const urlMatch = prUrl.match(/github\.com\/([^\/]+\/[^\/]+)\/pull\/(\d+)/);
+    if (!urlMatch) {
+      throw new Error(`Invalid PR URL format: ${prUrl}`);
+    }
+    
+    const repoId = urlMatch[1]!;
+    const prNumber = parseInt(urlMatch[2]!, 10);
+    
+    // PR을 병합된 상태로 설정
+    const repoPRs = this.pullRequests.get(repoId);
+    if (repoPRs) {
+      const pr = repoPRs.get(prNumber);
+      if (pr) {
+        const mergedPr: PullRequest = {
+          ...pr,
+          status: PullRequestState.MERGED,
+          updatedAt: new Date()
+        };
+        repoPRs.set(prNumber, mergedPr);
+      }
+    } else {
+      // PR이 없으면 새로 생성
+      const newPr: PullRequest = {
+        id: prNumber,
+        title: `Test PR ${prNumber}`,
+        description: 'Test pull request',
+        status: PullRequestState.MERGED,
+        sourceBranch: 'feature-branch',
+        targetBranch: 'main',
+        author: 'test-author',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        isApproved: false,
+        reviewState: ReviewState.APPROVED
+      };
+      const newRepoPRs = new Map<number, PullRequest>();
+      newRepoPRs.set(prNumber, newPr);
+      this.pullRequests.set(repoId, newRepoPRs);
+    }
   }
 
   async addComment(prUrl: string, comment: Partial<PullRequestComment>): Promise<void> {

@@ -9,7 +9,8 @@ import {
   TaskRequest,
   ResponseStatus,
   TaskInfo,
-  PullRequestComment
+  PullRequestComment,
+  PullRequestState
 } from '@/types';
 
 export class Planner implements PlannerService {
@@ -399,7 +400,7 @@ export class Planner implements PlannerService {
           pullRequestUrls: item.pullRequestUrls
         });
         
-        if (item.pullRequestUrls.length > 0) {
+        if (item.pullRequestUrls && item.pullRequestUrls.length > 0) {
           try {
             const prUrl = item.pullRequestUrls[0];
             this.dependencies.logger.debug('Parsing PR URL', { taskId: item.id, prUrl });
@@ -416,7 +417,7 @@ export class Planner implements PlannerService {
               prCreatedAt: pr.createdAt 
             });
 
-            if (pr.status === 'merged') {
+            if (pr.status === PullRequestState.MERGED) {
               // 이미 병합됨 -> 완료로 변경
               await this.dependencies.projectBoardService.updateItemStatus(item.id, 'DONE');
               
@@ -438,16 +439,32 @@ export class Planner implements PlannerService {
                 const request: TaskRequest = {
                   taskId: item.id,
                   action: TaskAction.REQUEST_MERGE,
-                  pullRequestUrl: prUrl
+                  pullRequestUrl: prUrl,
+                  boardItem: item
                 };
 
                 const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
 
-                if (response.status === ResponseStatus.ACCEPTED) {
+                if (response.status === ResponseStatus.COMPLETED) {
+                  // 병합이 완료되면 DONE으로 변경
+                  await this.dependencies.projectBoardService.updateItemStatus(item.id, 'DONE');
+                  this.workflowState.activeTasks.delete(item.id);
+                  
+                  this.dependencies.logger.info('Merge completed successfully', {
+                    taskId: item.id,
+                    prUrl
+                  });
+                } else if (response.status === ResponseStatus.ACCEPTED) {
                   this.dependencies.logger.info('Merge request sent to manager', {
                     taskId: item.id,
                     prUrl
                   });
+                } else if (response.status === ResponseStatus.ERROR) {
+                  this.dependencies.logger.error('Merge failed with error', {
+                    taskId: item.id,
+                    reason: response.message
+                  });
+                  this.addError('MERGE_ERROR', response.message || 'Merge failed', { taskId: item.id });
                 } else {
                   this.dependencies.logger.warn('Merge request rejected by manager', {
                     taskId: item.id,
@@ -455,74 +472,43 @@ export class Planner implements PlannerService {
                   });
                 }
               } else {
-                // 4. 미승인 - 신규 코멘트 확인
-                // StateManager에서 lastSyncTime 가져오기 (없으면 7일 전부터 확인)
-                const plannerState = await this.dependencies.stateManager.getPlannerState();
-                const since = plannerState.lastSyncTime || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-                this.dependencies.logger.debug('Checking for new comments', { 
-                  taskId: item.id, 
-                  since, 
-                  lastSyncTime: plannerState.lastSyncTime,
-                  repoId, 
-                  prNumber 
-                });
+                // 4. 미승인 - 리뷰 상태와 신규 코멘트 확인
+                const reviews = await this.dependencies.pullRequestService.getReviews(repoId, prNumber);
+                const hasChangesRequested = reviews.some((review: any) => review.state === 'CHANGES_REQUESTED');
                 
-                // 모든 코멘트 확인 (디버깅용)
-                const allComments = await this.dependencies.pullRequestService.getComments(repoId, prNumber);
-                this.dependencies.logger.debug('All comments retrieved for debugging', {
-                  taskId: item.id,
-                  allCommentsCount: allComments.length,
-                  allCommentDetails: allComments.map((c: any) => ({
-                    id: c.id,
-                    author: c.author,
-                    createdAt: c.createdAt,
-                    content: c.content.substring(0, 50) + (c.content.length > 50 ? '...' : '')
-                  }))
-                });
-                
-                // 설정에서 필터링 옵션 가져오기 (환경변수 우선)
-                const filterOptions = this.config.pullRequestFilter || {
-                  excludeAuthor: true, // 기본값
-                };
-                const newComments = await this.dependencies.pullRequestService.getNewComments(repoId, prNumber, since, filterOptions);
-                
-                // 필터링 전후 비교를 위해 전체 코멘트도 조회
-                const allNewCommentsUnfiltered = await this.dependencies.pullRequestService.getNewComments(repoId, prNumber, since, { excludeAuthor: false });
-                
-                this.dependencies.logger.debug('New comments checked with filtering', { 
-                  taskId: item.id, 
-                  totalNewComments: allNewCommentsUnfiltered.length,
-                  filteredNewComments: newComments.length,
-                  filteredOut: allNewCommentsUnfiltered.length - newComments.length,
-                  commentDetails: newComments.map((c: any) => ({
-                    id: c.id,
-                    author: c.author,
-                    createdAt: c.createdAt,
-                    content: c.content.substring(0, 100) + (c.content.length > 100 ? '...' : '')
-                  }))
-                });
-
-                if (newComments.length > 0) {
-                  // 5. Manager에게 피드백 전달
-                  const request: TaskRequest = {
-                    taskId: item.id,
-                    action: TaskAction.PROCESS_FEEDBACK,
-                    pullRequestUrl: prUrl,
-                    boardItem: item,
-                    comments: newComments
+                if (hasChangesRequested) {
+                  // StateManager에서 lastSyncTime 가져오기 (없으면 7일 전부터 확인)
+                  const plannerState = await this.dependencies.stateManager.getPlannerState();
+                  const since = plannerState.lastSyncTime || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                  
+                  // 설정에서 필터링 옵션 가져오기 (환경변수 우선)
+                  const filterOptions = this.config.pullRequestFilter || {
+                    excludeAuthor: true, // 기본값
                   };
+                  const newComments = await this.dependencies.pullRequestService.getNewComments(repoId, prNumber, since, filterOptions);
 
-                  const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
-
-                  if (response.status === ResponseStatus.ACCEPTED) {
-                    // 처리된 코멘트로 기록 (Task별 관리)
-                    const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
-                    await this.dependencies.stateManager.addProcessedCommentsToTask(item.id, commentIds);
-                    
-                    this.dependencies.logger.info('Feedback processed', {
+                  if (newComments.length > 0) {
+                    // 5. Manager에게 피드백 전달
+                    const request: TaskRequest = {
                       taskId: item.id,
-                      commentCount: newComments.length
-                    });
+                      action: TaskAction.PROCESS_FEEDBACK,
+                      pullRequestUrl: prUrl,
+                      boardItem: item,
+                      comments: newComments
+                    };
+
+                    const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
+
+                    if (response.status === ResponseStatus.ACCEPTED) {
+                      // 처리된 코멘트로 기록 (Task별 관리)
+                      const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
+                      await this.dependencies.stateManager.addProcessedCommentsToTask(item.id, commentIds);
+                      
+                      this.dependencies.logger.info('Feedback processed', {
+                        taskId: item.id,
+                        commentCount: newComments.length
+                      });
+                    }
                   }
                 }
               }

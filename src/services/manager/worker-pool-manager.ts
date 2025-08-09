@@ -362,12 +362,21 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     const activeWorkers = workers.filter(
       worker => worker.status === WorkerStatus.WORKING
     ).length;
+    const idleWorkers = workers.filter(
+      worker => worker.status === WorkerStatus.IDLE
+    ).length;
+    const stoppedWorkers = workers.filter(
+      worker => worker.status === WorkerStatus.STOPPED
+    ).length;
 
     return {
       workers,
       minWorkers: this.config.minWorkers,
       maxWorkers: this.config.maxWorkers,
-      activeWorkers
+      activeWorkers,
+      idleWorkers,
+      stoppedWorkers,
+      totalWorkers: workers.length
     };
   }
 
