@@ -1,33 +1,97 @@
-import { GitService } from '@/services/git/git.service';
 import { Logger } from '@/services/logger';
 
 // Mock GitLockService for testing concurrency
 class MockGitLockService {
   private locks = new Map<string, Promise<void>>();
+  private activeLocks = new Set<string>();
   private lockCallOrder: string[] = [];
   private operationCallOrder: string[] = [];
+  readonly lockTimeoutMs = 5000;
+  readonly dependencies = { logger: Logger.createConsoleLogger() };
 
-  async withLock<T>(repoId: string, operation: () => Promise<T>): Promise<T> {
-    this.lockCallOrder.push(`lock-${repoId}`);
+  async acquireLock(repositoryId: string, operation: 'clone' | 'fetch' | 'pull' | 'worktree'): Promise<void> {
+    // Mock implementation
+  }
+
+  releaseLock(repositoryId: string, operation: 'clone' | 'fetch' | 'pull' | 'worktree'): void {
+    // Mock implementation
+  }
+
+  async withLock<T>(
+    repositoryId: string, 
+    operation: 'clone' | 'fetch' | 'pull' | 'worktree',
+    fn: () => Promise<T>
+  ): Promise<T> {
+    this.lockCallOrder.push(`lock-${repositoryId}-${operation}`);
     
-    // 기존 작업이 있으면 대기
-    const existingLock = this.locks.get(repoId);
-    if (existingLock) {
+    // 동일한 저장소에 대한 모든 작업은 순차 처리 
+    // (실제 GitLockService는 operation별로 락을 관리하지만, 테스트를 위해 저장소별로 처리)
+    const repoLockKey = repositoryId;
+    
+    // 해당 저장소에 대한 기존 작업이 있으면 대기
+    let existingLock = this.locks.get(repoLockKey);
+    while (existingLock) {
       await existingLock;
+      existingLock = this.locks.get(repoLockKey); // 재확인
     }
     
     // 새로운 작업 실행
-    const operationPromise = operation();
-    this.locks.set(repoId, operationPromise.then(() => {}));
+    this.operationCallOrder.push(`exec-${repositoryId}-${operation}`);
+    const lockKey = `${repositoryId}:${operation}`;
+    this.activeLocks.add(lockKey);
     
-    this.operationCallOrder.push(`exec-${repoId}`);
+    // 작업 실행 Promise를 생성하되, 완료 시점에 락을 해제하도록 처리
+    let resolveLock: () => void;
+    const lockPromise = new Promise<void>(resolve => {
+      resolveLock = resolve;
+    });
+    this.locks.set(repoLockKey, lockPromise);
     
     try {
-      return await operationPromise;
+      const result = await fn();
+      return result;
     } finally {
-      this.locks.delete(repoId);
-      this.operationCallOrder.push(`done-${repoId}`);
+      this.activeLocks.delete(lockKey);
+      this.operationCallOrder.push(`done-${repositoryId}-${operation}`);
+      this.locks.delete(repoLockKey);
+      resolveLock!(); // 대기 중인 다른 작업들에게 진행 신호
     }
+  }
+
+  isLocked(repositoryId: string, operation?: 'clone' | 'fetch' | 'pull' | 'worktree'): boolean {
+    if (operation) {
+      const lockKey = `${repositoryId}:${operation}`;
+      return this.activeLocks.has(lockKey);
+    }
+    
+    // operation이 지정되지 않으면 모든 작업에 대해 확인
+    const operations: Array<'clone' | 'fetch' | 'pull' | 'worktree'> = ['clone', 'fetch', 'pull', 'worktree'];
+    return operations.some(op => this.isLocked(repositoryId, op));
+  }
+
+  getCurrentLocks(): ReadonlyArray<any> {
+    return Array.from(this.activeLocks);
+  }
+
+  getLockKey(repositoryId: string, operation: 'clone' | 'fetch' | 'pull' | 'worktree'): string {
+    return `${repositoryId}:${operation}`;
+  }
+
+  isLockExpired(lock: any): boolean {
+    return false; // Mock implementation
+  }
+
+  cleanupExpiredLocks(): void {
+    // Mock implementation
+  }
+
+  delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  clearAllLocks(): void {
+    this.locks.clear();
+    this.activeLocks.clear();
   }
 
   getLockCallOrder(): string[] {
@@ -43,8 +107,13 @@ class MockGitLockService {
     this.operationCallOrder = [];
   }
 
-  hasActiveLock(repoId: string): boolean {
-    return this.locks.has(repoId);
+  hasActiveLock(repositoryId: string): boolean {
+    // 해당 repositoryId와 관련된 모든 작업에 대해 락이 있는지 확인
+    const operations: Array<'clone' | 'fetch' | 'pull' | 'worktree'> = ['clone', 'fetch', 'pull', 'worktree'];
+    return operations.some(op => {
+      const lockKey = `${repositoryId}:${op}`;
+      return this.activeLocks.has(lockKey);
+    });
   }
 }
 
@@ -52,16 +121,24 @@ class MockGitLockService {
 class MockWorker {
   constructor(
     public id: string,
-    private gitService: GitService,
     private gitLockService: MockGitLockService
   ) {}
 
   async setupWorkspace(repositoryId: string, taskId: string): Promise<void> {
-    return this.gitLockService.withLock(repositoryId, async () => {
-      // Git 작업 시뮬레이션
-      await this.gitService.fetch(repositoryId);
+    return this.gitLockService.withLock(repositoryId, 'worktree', async () => {
+      // Git 작업 시뮬레이션 - fetch를 모킹
+      await this.simulateFetchOperation(repositoryId);
       await this.simulateWorktreeOperation(repositoryId, taskId);
       return Promise.resolve();
+    });
+  }
+
+  private async simulateFetchOperation(repositoryId: string): Promise<void> {
+    // fetch 작업 시뮬레이션 (30ms 지연)
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve();
+      }, 30);
     });
   }
 
@@ -76,18 +153,12 @@ class MockWorker {
 }
 
 describe('Git 동시성 제어 테스트', () => {
-  let gitService: GitService;
   let gitLockService: MockGitLockService;
   let mockLogger: Logger;
 
   beforeEach(() => {
     mockLogger = Logger.createConsoleLogger();
     gitLockService = new MockGitLockService();
-    gitService = new GitService({
-      logger: mockLogger,
-      gitOperationTimeoutMs: 5000,
-      gitLockService: gitLockService
-    });
   });
 
   describe('기본 락 동작', () => {
@@ -96,12 +167,12 @@ describe('Git 동시성 제어 테스트', () => {
       const repoId = 'owner/repo';
       const operations: Promise<string>[] = [];
 
-      const operation1 = gitLockService.withLock(repoId, async () => {
+      const operation1 = gitLockService.withLock(repoId, 'clone', async () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         return 'operation-1-completed';
       });
 
-      const operation2 = gitLockService.withLock(repoId, async () => {
+      const operation2 = gitLockService.withLock(repoId, 'fetch', async () => {
         await new Promise(resolve => setTimeout(resolve, 50));
         return 'operation-2-completed';
       });
@@ -117,10 +188,10 @@ describe('Git 동시성 제어 테스트', () => {
       // 락 호출 순서 확인
       const callOrder = gitLockService.getOperationCallOrder();
       expect(callOrder).toEqual([
-        'exec-owner/repo',
-        'done-owner/repo', 
-        'exec-owner/repo',
-        'done-owner/repo'
+        'exec-owner/repo-clone',
+        'done-owner/repo-clone', 
+        'exec-owner/repo-fetch',
+        'done-owner/repo-fetch'
       ]);
     });
 
@@ -130,12 +201,12 @@ describe('Git 동시성 제어 테스트', () => {
       const repo2 = 'owner/repo2';
       const operations: Promise<string>[] = [];
 
-      const operation1 = gitLockService.withLock(repo1, async () => {
+      const operation1 = gitLockService.withLock(repo1, 'clone', async () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         return 'repo1-completed';
       });
 
-      const operation2 = gitLockService.withLock(repo2, async () => {
+      const operation2 = gitLockService.withLock(repo2, 'fetch', async () => {
         await new Promise(resolve => setTimeout(resolve, 100));
         return 'repo2-completed';
       });
@@ -160,9 +231,9 @@ describe('Git 동시성 제어 테스트', () => {
     it('동일한 저장소에서 여러 Worker가 작업 시 순차 처리되어야 한다', async () => {
       // Given: 동일한 저장소에서 작업하는 여러 Worker
       const repoId = 'owner/shared-repo';
-      const worker1 = new MockWorker('worker-1', gitService, gitLockService);
-      const worker2 = new MockWorker('worker-2', gitService, gitLockService);
-      const worker3 = new MockWorker('worker-3', gitService, gitLockService);
+      const worker1 = new MockWorker('worker-1', gitLockService);
+      const worker2 = new MockWorker('worker-2', gitLockService);
+      const worker3 = new MockWorker('worker-3', gitLockService);
 
       // When: 세 Worker가 동시에 워크스페이스를 설정하면
       const setupPromises = [
@@ -176,23 +247,23 @@ describe('Git 동시성 제어 테스트', () => {
       const endTime = Date.now();
 
       // Then: 순차적으로 처리되어 시간이 누적되어야 함
-      // 3개 작업 * 50ms ≈ 150ms 이상 소요
-      expect(endTime - startTime).toBeGreaterThan(130);
+      // 3개 작업 * (30ms fetch + 50ms worktree) = 240ms 이상 소요
+      expect(endTime - startTime).toBeGreaterThan(150);
       
       // 락이 올바르게 순차 실행되었는지 확인
       const lockCalls = gitLockService.getLockCallOrder();
       expect(lockCalls).toEqual([
-        `lock-${repoId}`,
-        `lock-${repoId}`,
-        `lock-${repoId}`
+        `lock-${repoId}-worktree`,
+        `lock-${repoId}-worktree`,
+        `lock-${repoId}-worktree`
       ]);
     });
 
     it('서로 다른 저장소에서 Worker들이 작업 시 병렬 처리되어야 한다', async () => {
       // Given: 서로 다른 저장소에서 작업하는 Worker들
-      const worker1 = new MockWorker('worker-1', gitService, gitLockService);
-      const worker2 = new MockWorker('worker-2', gitService, gitLockService);
-      const worker3 = new MockWorker('worker-3', gitService, gitLockService);
+      const worker1 = new MockWorker('worker-1', gitLockService);
+      const worker2 = new MockWorker('worker-2', gitLockService);
+      const worker3 = new MockWorker('worker-3', gitLockService);
 
       // When: 세 Worker가 각각 다른 저장소에서 작업하면
       const setupPromises = [
@@ -206,8 +277,8 @@ describe('Git 동시성 제어 테스트', () => {
       const endTime = Date.now();
 
       // Then: 병렬 처리되어 시간이 단축되어야 함
-      // 병렬 실행으로 50ms + 여유분
-      expect(endTime - startTime).toBeLessThan(100);
+      // 병렬 실행으로 (30ms fetch + 50ms worktree) + 여유분
+      expect(endTime - startTime).toBeLessThan(120);
     });
   });
 
@@ -216,7 +287,7 @@ describe('Git 동시성 제어 테스트', () => {
       // Given: 에러가 발생하는 작업
       const repoId = 'owner/error-repo';
       
-      const errorOperation = gitLockService.withLock(repoId, async () => {
+      const errorOperation = gitLockService.withLock(repoId, 'clone', async () => {
         throw new Error('Simulated error');
       });
 
@@ -231,7 +302,7 @@ describe('Git 동시성 제어 테스트', () => {
       expect(gitLockService.hasActiveLock(repoId)).toBe(false);
 
       // 새로운 작업이 정상적으로 실행되어야 함
-      const nextOperation = await gitLockService.withLock(repoId, async () => {
+      const nextOperation = await gitLockService.withLock(repoId, 'fetch', async () => {
         return 'next-operation-success';
       });
       
@@ -243,15 +314,15 @@ describe('Git 동시성 제어 테스트', () => {
       const repoId = 'owner/mixed-repo';
       
       const operations = [
-        gitLockService.withLock(repoId, async () => {
+        gitLockService.withLock(repoId, 'clone', async () => {
           await new Promise(resolve => setTimeout(resolve, 50));
           return 'success-1';
         }),
-        gitLockService.withLock(repoId, async () => {
+        gitLockService.withLock(repoId, 'clone', async () => {
           await new Promise(resolve => setTimeout(resolve, 30));
           throw new Error('Failed operation');
         }),
-        gitLockService.withLock(repoId, async () => {
+        gitLockService.withLock(repoId, 'clone', async () => {
           await new Promise(resolve => setTimeout(resolve, 40));
           return 'success-2';
         })
@@ -280,7 +351,7 @@ describe('Git 동시성 제어 테스트', () => {
       const numberOfOperations = 10;
       
       const operations = Array.from({ length: numberOfOperations }, (_, index) => 
-        gitLockService.withLock(repoId, async () => {
+        gitLockService.withLock(repoId, 'clone', async () => {
           await new Promise(resolve => setTimeout(resolve, 10)); // 짧은 작업 시간
           return `operation-${index}`;
         })
@@ -311,7 +382,7 @@ describe('Git 동시성 제어 테스트', () => {
         const repoId = `owner/repo-${repoIndex}`;
         
         for (let opIndex = 0; opIndex < operationsPerRepo; opIndex++) {
-          const operation = gitLockService.withLock(repoId, async () => {
+          const operation = gitLockService.withLock(repoId, 'clone', async () => {
             await new Promise(resolve => setTimeout(resolve, 20));
             return `repo-${repoIndex}-op-${opIndex}`;
           });
@@ -341,16 +412,15 @@ describe('Git 동시성 제어 테스트', () => {
       const repoId = 'owner/monitoring-repo';
       
       let lockAcquired = false;
-      let lockReleased = false;
       
-      const longRunningOperation = gitLockService.withLock(repoId, async () => {
+      const longRunningOperation = gitLockService.withLock(repoId, 'clone', async () => {
         lockAcquired = true;
         await new Promise(resolve => setTimeout(resolve, 100));
         return 'completed';
       });
 
       // When: 작업 중간에 락 상태를 확인하면
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => setTimeout(resolve, 10)); // 작업이 시작될 시간 확보
       const hasLockDuringExecution = gitLockService.hasActiveLock(repoId);
       
       // Then: 활성 락이 있어야 함
