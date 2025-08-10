@@ -1,5 +1,5 @@
-import { DeveloperFactory } from './services/developer/developer-factory';
-import { Logger, LogLevel } from './services/logger';
+import { DeveloperFactory } from '../src/services/developer/developer-factory';
+import { Logger, LogLevel } from '../src/services/logger';
 
 async function runSimpleDemo() {
   console.log('🚀 AI DevTeam Developer 인터페이스 데모 시작\n');

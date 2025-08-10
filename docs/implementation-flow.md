@@ -6,7 +6,7 @@
 graph TB
     subgraph "Entry Points & CLI"
         MAIN[Main CLI<br/>index.ts]
-        DEMO[Demo Scripts<br/>demo.ts, simple-demo.ts]
+        DEMO[Demo Scripts<br/>examples/demo.ts, examples/simple-demo.ts]
         CLI[CLI Commands<br/>commands.ts]
     end
     

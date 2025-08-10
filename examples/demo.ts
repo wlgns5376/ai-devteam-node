@@ -1,10 +1,10 @@
-import { WorkerPoolManager } from './services/manager/worker-pool-manager';
-import { Worker } from './services/worker/worker';
-import { DeveloperFactory } from './services/developer/developer-factory';
-import { Logger, LogLevel } from './services/logger';
-import { StateManager } from './services/state-manager';
-import { MockProjectBoardService } from './services/project-board/mock/mock-project-board';
-import { MockPullRequestService } from './services/pull-request/mock/mock-pull-request';
+import { WorkerPoolManager } from '../src/services/manager/worker-pool-manager';
+import { Worker } from '../src/services/worker/worker';
+import { DeveloperFactory } from '../src/services/developer/developer-factory';
+import { Logger, LogLevel } from '../src/services/logger';
+import { StateManager } from '../src/services/state-manager';
+import { MockProjectBoardService } from '../src/services/project-board/mock/mock-project-board';
+import { MockPullRequestService } from '../src/services/pull-request/mock/mock-pull-request';
 import { WorkerAction } from '@/types';
 
 async function runDemo() {
