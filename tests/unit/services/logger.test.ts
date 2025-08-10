@@ -14,10 +14,22 @@ describe('Logger', () => {
   };
 
   // 고유한 테스트 ID를 생성하여 테스트 간 격리 보장
-  const getTestSpecificPath = (basePath: string) => {
+  const getTestSpecificPath = (basePath: string, isDirectory: boolean = false) => {
     const testName = expect.getState().currentTestName || 'unknown';
     const timestamp = Date.now();
-    return `${basePath}-${testName.replace(/[^a-zA-Z0-9]/g, '_')}-${timestamp}`;
+    const cleanTestName = testName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50); // 파일명 길이 제한
+    const uniqueName = `${cleanTestName}-${timestamp}`;
+    
+    if (isDirectory) {
+      // 디렉토리의 경우 testLogDir 내부에 생성
+      return path.join(testLogDir, uniqueName);
+    } else {
+      // 파일의 경우 파일명에 고유 ID 추가
+      const dir = path.dirname(basePath);
+      const ext = path.extname(basePath);
+      const name = path.basename(basePath, ext);
+      return path.join(dir, `${name}-${uniqueName}${ext}`);
+    }
   };
 
   beforeEach(async () => {
@@ -42,7 +54,8 @@ describe('Logger', () => {
       } catch (error) {
         retries--;
         if (retries === 0) {
-          console.warn(`Failed to clean up test directory after 3 attempts: ${error}`);
+          // console.warn 대신 조용히 실패 (테스트 출력 깔끔하게 유지)
+          // 테스트 디렉토리는 다음 실행 시 재생성됨
         } else {
           // 잠시 대기 후 재시도
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -218,8 +231,8 @@ describe('Logger', () => {
   describe('파일 출력', () => {
     it('should create log directory if it does not exist', async () => {
       // Given: 존재하지 않는 디렉토리 경로가 있을 때
-      const uniqueDir = getTestSpecificPath('nested-dir');
-      const newLogDir = path.join(testLogDir, uniqueDir);
+      const uniqueDir = getTestSpecificPath('nested-dir', true);
+      const newLogDir = uniqueDir;
       const newLogFile = path.join(newLogDir, 'new.log');
 
       logger = new Logger({
@@ -312,7 +325,7 @@ describe('Logger', () => {
   describe('일자별 로그 파일', () => {
     it('should create daily log files with date pattern', async () => {
       // Given: 로그 디렉토리만 지정하고 Logger를 생성할 때
-      const uniqueLogDir = getTestSpecificPath(testLogDir);
+      const uniqueLogDir = getTestSpecificPath('daily-logs', true);
       await fs.mkdir(uniqueLogDir, { recursive: true });
       
       logger = new Logger({
@@ -340,7 +353,7 @@ describe('Logger', () => {
 
     it('should append to existing daily log file', async () => {
       // Given: 이미 오늘 날짜의 로그 파일이 있을 때
-      const uniqueLogDir = getTestSpecificPath(testLogDir);
+      const uniqueLogDir = getTestSpecificPath('daily-logs', true);
       await fs.mkdir(uniqueLogDir, { recursive: true });
       
       const currentDate = getCurrentDateString();
@@ -393,7 +406,7 @@ describe('Logger', () => {
   describe('정적 팩토리 메서드', () => {
     it('should create daily logger with createDailyLogger', async () => {
       // Given: createDailyLogger로 Logger를 생성할 때
-      const uniqueLogDir = getTestSpecificPath(testLogDir);
+      const uniqueLogDir = getTestSpecificPath('daily-logs', true);
       await fs.mkdir(uniqueLogDir, { recursive: true });
       
       logger = Logger.createDailyLogger(uniqueLogDir, LogLevel.INFO);
@@ -414,7 +427,7 @@ describe('Logger', () => {
 
     it('should create daily combined logger with createDailyCombinedLogger', async () => {
       // Given: createDailyCombinedLogger로 Logger를 생성할 때
-      const uniqueLogDir = getTestSpecificPath(testLogDir);
+      const uniqueLogDir = getTestSpecificPath('daily-logs', true);
       await fs.mkdir(uniqueLogDir, { recursive: true });
       
       // When: createDailyCombinedLogger로 Logger를 생성하면

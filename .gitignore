@@ -55,6 +55,7 @@ workspaces/
 tmp/
 temp/
 temp-test/
+test-logs/
 test-logs-*/
 temp-state/
 
