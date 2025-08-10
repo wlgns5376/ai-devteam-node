@@ -13,6 +13,8 @@ import {
   MockPlannerBuilder,
   MockWorkerBuilder 
 } from '../../helpers/mock-builders';
+import { TaskRequestHandler } from '@/app/TaskRequestHandler';
+import { RepositoryInfoExtractor } from '@/utils/RepositoryInfoExtractor';
 
 describe('AIDevTeamApp - Merge Workflow', () => {
   let app: AIDevTeamApp;
@@ -48,6 +50,23 @@ describe('AIDevTeamApp - Merge Workflow', () => {
     (app as any).workerPoolManager = mockWorkerPoolManager;
     (app as any).planner = mockPlanner;
     (app as any).isInitialized = true;
+    
+    // TaskRequestHandler 수동 초기화 (테스트용)
+    const extractRepositoryFromBoardItem = (boardItem: any, pullRequestUrl?: string) => {
+      return RepositoryInfoExtractor.extractRepositoryFromBoardItem(
+        boardItem, 
+        pullRequestUrl, 
+        mockConfig.planner?.repoId
+      );
+    };
+    
+    (app as any).taskRequestHandler = new TaskRequestHandler(
+      mockWorkerPoolManager,
+      undefined, // projectBoardService
+      undefined, // pullRequestService 
+      mockLogger,
+      extractRepositoryFromBoardItem
+    );
   });
 
   describe('request_merge with existing worker', () => {

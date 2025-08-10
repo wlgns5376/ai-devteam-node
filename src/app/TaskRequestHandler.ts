@@ -1,0 +1,511 @@
+/**
+ * TaskRequestHandler - 작업 요청 처리를 담당하는 클래스
+ * AIDevTeamApp에서 분리된 Task 처리 로직
+ */
+
+import { 
+  TaskRequest, 
+  TaskResponse, 
+  ResponseStatus,
+  WorkerAction 
+} from '@/types';
+import { WorkerPoolManager } from '../services/manager/worker-pool-manager';
+import { PullRequestService, ProjectBoardService } from '../types';
+import { Logger } from '../services/logger';
+import { WorkerTaskExecutor } from './WorkerTaskExecutor';
+
+export class TaskRequestHandler {
+  private readonly workerTaskExecutor: WorkerTaskExecutor;
+
+  constructor(
+    private readonly workerPoolManager: WorkerPoolManager,
+    private readonly projectBoardService?: ProjectBoardService,
+    private readonly pullRequestService?: PullRequestService,
+    private readonly logger?: Logger,
+    private readonly extractRepositoryFromBoardItem?: (boardItem: any, pullRequestUrl?: string) => string
+  ) {
+    this.workerTaskExecutor = new WorkerTaskExecutor(this.workerPoolManager, this.logger);
+  }
+
+  async handleTaskRequest(request: TaskRequest): Promise<TaskResponse> {
+    try {
+      this.logger?.info('Received task request', { 
+        taskId: request.taskId, 
+        action: request.action 
+      });
+
+      switch (request.action) {
+        case 'start_new_task':
+          return await this.handleStartNewTask(request);
+        
+        case 'check_status':
+          return await this.handleCheckStatus(request);
+        
+        case 'process_feedback':
+          return await this.handleProcessFeedback(request);
+        
+        case 'request_merge':
+          return await this.handleRequestMerge(request);
+        
+        default:
+          return {
+            taskId: request.taskId,
+            status: ResponseStatus.ERROR,
+            message: `Unsupported action: ${request.action}`,
+            workerStatus: 'error'
+          };
+      }
+
+    } catch (error) {
+      this.logger?.error('Failed to process task request', { 
+        taskId: request.taskId, 
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.ERROR,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        workerStatus: 'error'
+      };
+    }
+  }
+
+  private async handleStartNewTask(request: TaskRequest): Promise<TaskResponse> {
+    // 새 작업 시작
+    const availableWorker = await this.workerPoolManager.getAvailableWorker();
+    if (!availableWorker) {
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.REJECTED,
+        message: 'No available workers',
+        workerStatus: 'unavailable'
+      };
+    }
+
+    // PRD 요구사항에 맞는 전체 작업 정보 생성
+    const workerTask = {
+      taskId: request.taskId,
+      action: 'start_new_task' as any,
+      boardItem: request.boardItem,
+      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem) || 'unknown/repository',
+      assignedAt: new Date()
+    };
+
+    // Worker에 전체 작업 정보 할당
+    await this.workerPoolManager.assignWorkerTask(availableWorker.id, workerTask);
+
+    // 작업 즉시 실행
+    const workerInstance = await this.workerPoolManager.getWorkerInstance(availableWorker.id, this.pullRequestService);
+    if (workerInstance) {
+      // 비동기로 작업 실행 (완료를 기다리지 않음)
+      workerInstance.startExecution().then(async (result) => {
+        this.logger?.info('New task execution completed', {
+          taskId: request.taskId,
+          workerId: availableWorker.id,
+          success: result.success,
+          pullRequestUrl: result.pullRequestUrl
+        });
+        
+        // PR이 생성된 경우 상태를 IN_REVIEW로 업데이트하고 PR 링크 연결
+        if (result.success && result.pullRequestUrl) {
+          await this.updateTaskStatusToInReview(request.taskId, result.pullRequestUrl);
+        }
+      }).catch((error) => {
+        this.logger?.error('New task execution failed', {
+          taskId: request.taskId,
+          workerId: availableWorker.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
+    }
+
+    this.logger?.info('Task assigned to worker and started', {
+      taskId: request.taskId,
+      workerId: availableWorker.id,
+      repositoryId: workerTask.repositoryId,
+      action: workerTask.action
+    });
+
+    return {
+      taskId: request.taskId,
+      status: ResponseStatus.ACCEPTED,
+      message: 'Task assigned to worker and execution started',
+      workerStatus: 'assigned'
+    };
+  }
+
+  private async handleCheckStatus(request: TaskRequest): Promise<TaskResponse> {
+    // 작업 상태 확인
+    let worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+    
+    if (!worker) {
+      // Worker를 찾지 못한 경우 재할당 시도
+      return await this.reassignTask(request);
+    }
+
+    // Worker에서 실제 작업 실행 및 결과 확인
+    const result = await this.workerTaskExecutor.executeWorkerTask(worker.id, request, this.pullRequestService);
+    
+    if (result.success && result.pullRequestUrl) {
+      // Worker 해제
+      await this.workerPoolManager.releaseWorker(worker.id);
+      
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.COMPLETED,
+        message: 'Task completed successfully',
+        pullRequestUrl: result.pullRequestUrl,
+        workerStatus: 'completed'
+      };
+    } else {
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.IN_PROGRESS,
+        message: 'Task still in progress',
+        workerStatus: 'working'
+      };
+    }
+  }
+
+  private async handleProcessFeedback(request: TaskRequest): Promise<TaskResponse> {
+    // 피드백 처리
+    let worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+    let workerId: string;
+    
+    if (!worker) {
+      // 기존 워커가 없으면 새 워커 할당
+      const availableWorker = await this.workerPoolManager.getAvailableWorker();
+      if (!availableWorker) {
+        return {
+          taskId: request.taskId,
+          status: ResponseStatus.REJECTED,
+          message: 'No available workers for feedback processing',
+          workerStatus: 'unavailable'
+        };
+      }
+      
+      workerId = availableWorker.id;
+      
+      // 새 워커에 피드백 작업 할당
+      const feedbackTask = {
+        taskId: request.taskId,
+        action: 'process_feedback' as any,
+        boardItem: request.boardItem,
+        pullRequestUrl: request.pullRequestUrl,
+        comments: request.comments,
+        repositoryId: request.boardItem ? this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) : undefined,
+        assignedAt: new Date()
+      };
+      
+      await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
+    } else {
+      // 기존 워커가 있으면 재사용
+      workerId = worker.id;
+      
+      // 기존 작업에 피드백 정보 추가
+      const feedbackTask = {
+        ...worker.currentTask,
+        action: 'process_feedback' as any,
+        comments: request.comments,
+        assignedAt: new Date()
+      };
+
+      // Worker에 피드백 작업 재할당
+      await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
+    }
+
+    // 작업 즉시 실행
+    const workerInstance = await this.workerPoolManager.getWorkerInstance(workerId, this.pullRequestService);
+    if (workerInstance) {
+      // 비동기로 작업 실행 (완료를 기다리지 않음)
+      workerInstance.startExecution().then((result) => {
+        this.logger?.info('Feedback processing completed', {
+          taskId: request.taskId,
+          workerId: workerId,
+          success: result.success
+        });
+      }).catch((error) => {
+        this.logger?.error('Feedback processing failed', {
+          taskId: request.taskId,
+          workerId: workerId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
+    }
+
+    this.logger?.info('Feedback task assigned to worker and started', {
+      taskId: request.taskId,
+      workerId: workerId,
+      commentCount: request.comments?.length || 0,
+      isNewWorker: !worker
+    });
+
+    return {
+      taskId: request.taskId,
+      status: ResponseStatus.ACCEPTED,
+      message: 'Feedback processing started and execution started',
+      workerStatus: 'processing_feedback'
+    };
+  }
+
+  private async handleRequestMerge(request: TaskRequest): Promise<TaskResponse> {
+    // PR 병합 요청 처리
+    let worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+    
+    // 이미 작업이 진행 중인 경우 중복 처리 방지
+    if (worker) {
+      const workerInstance = await this.workerPoolManager.getWorkerInstance(worker.id, this.pullRequestService);
+      if (workerInstance && (workerInstance.getStatus() === 'working' || workerInstance.getStatus() === 'waiting')) {
+        this.logger?.info('Worker already processing merge request', {
+          taskId: request.taskId,
+          workerId: worker.id,
+          status: workerInstance.getStatus()
+        });
+        
+        return {
+          taskId: request.taskId,
+          status: ResponseStatus.ACCEPTED,
+          message: 'Merge request already being processed',
+          workerStatus: 'already_processing'
+        };
+      }
+    }
+    
+    // 기존 worker가 없거나 idle 상태면 새로운 worker를 할당
+    if (!worker) {
+      worker = await this.workerPoolManager.getAvailableWorker();
+      if (!worker) {
+        return {
+          taskId: request.taskId,
+          status: ResponseStatus.ERROR,
+          message: 'No available worker for merge request',
+          workerStatus: 'no_available_worker'
+        };
+      }
+
+      this.logger?.info('Assigned new worker for merge request', {
+        taskId: request.taskId,
+        workerId: worker.id
+      });
+    }
+
+    // 병합 요청을 위한 작업 정보 생성
+    const mergeTask = {
+      taskId: request.taskId,
+      action: 'merge_request' as any,
+      pullRequestUrl: request.pullRequestUrl,
+      boardItem: request.boardItem,
+      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'unknown',
+      assignedAt: new Date()
+    };
+
+    // Worker에 병합 작업 할당
+    await this.workerPoolManager.assignWorkerTask(worker.id, mergeTask);
+
+    // 작업 즉시 실행
+    const workerInstance = await this.workerPoolManager.getWorkerInstance(worker.id, this.pullRequestService);
+    if (workerInstance) {
+      // 비동기로 작업 실행 (완료를 기다리지 않음)
+      workerInstance.startExecution().then(async (result) => {
+        this.logger?.info('Merge request execution completed', {
+          taskId: request.taskId,
+          workerId: worker.id,
+          success: result.success
+        });
+        
+        // 병합이 성공한 경우 작업을 Done 상태로 변경
+        if (result.success && this.projectBoardService) {
+          await this.updateTaskStatusToDone(request.taskId);
+        }
+        
+        // 작업 완료 후 Worker 해제
+        if (worker?.id) {
+          Promise.resolve(this.workerPoolManager.releaseWorker(worker.id)).catch(err => {
+            this.logger?.error('Failed to release worker after merge', {
+              workerId: worker.id,
+              error: err
+            });
+          });
+        }
+      }).catch((error) => {
+        this.logger?.error('Merge request execution failed', {
+          taskId: request.taskId,
+          workerId: worker.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        
+        // 실패해도 Worker는 해제
+        if (worker?.id) {
+          Promise.resolve(this.workerPoolManager.releaseWorker(worker.id)).catch(err => {
+            this.logger?.error('Failed to release worker after error', {
+              workerId: worker.id,
+              error: err
+            });
+          });
+        }
+      });
+    }
+
+    this.logger?.info('Merge request task assigned and started', {
+      taskId: request.taskId,
+      workerId: worker.id,
+      pullRequestUrl: request.pullRequestUrl
+    });
+
+    return {
+      taskId: request.taskId,
+      status: ResponseStatus.ACCEPTED,
+      message: 'Merge request processing started',
+      workerStatus: 'processing_merge'
+    };
+  }
+
+  private async reassignTask(request: TaskRequest): Promise<TaskResponse> {
+    this.logger?.warn('Worker not found for task, attempting to reassign', {
+      taskId: request.taskId
+    });
+
+    // 사용 가능한 Worker 찾기
+    const availableWorker = await this.workerPoolManager.getAvailableWorker();
+    if (!availableWorker) {
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.ERROR,
+        message: 'No available workers to reassign task',
+        workerStatus: 'unavailable'
+      };
+    }
+
+    // 작업 재할당 (RESUME_TASK 액션으로)
+    const resumeTask = {
+      taskId: request.taskId,
+      action: WorkerAction.RESUME_TASK,
+      boardItem: request.boardItem,
+      repositoryId: request.boardItem?.metadata?.repository || 'unknown',
+      assignedAt: new Date()
+    };
+
+    try {
+      await this.workerPoolManager.assignWorkerTask(availableWorker.id, resumeTask);
+      
+      // Worker 인스턴스 가져오기
+      const workerInstance = await this.workerPoolManager.getWorkerInstance(availableWorker.id, this.pullRequestService);
+      if (workerInstance) {
+        const result = await workerInstance.startExecution();
+        
+        this.logger?.info('Task reassigned and resumed successfully', {
+          taskId: request.taskId,
+          workerId: availableWorker.id,
+          success: result.success
+        });
+
+        if (result.success && result.pullRequestUrl) {
+          await this.workerPoolManager.releaseWorker(availableWorker.id);
+          return {
+            taskId: request.taskId,
+            status: ResponseStatus.COMPLETED,
+            message: 'Task completed after reassignment',
+            pullRequestUrl: result.pullRequestUrl,
+            workerStatus: 'completed'
+          };
+        }
+      }
+
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.IN_PROGRESS,
+        message: 'Task reassigned and execution resumed',
+        workerStatus: 'reassigned'
+      };
+
+    } catch (error) {
+      this.logger?.error('Failed to reassign task', {
+        taskId: request.taskId,
+        workerId: availableWorker.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.ERROR,
+        message: 'Failed to reassign task',
+        workerStatus: 'error'
+      };
+    }
+  }
+
+
+  private async updateTaskStatusToInReview(taskId: string, pullRequestUrl: string): Promise<void> {
+    this.logger?.info('Updating task status to IN_REVIEW and linking PR', {
+      taskId,
+      pullRequestUrl
+    });
+    
+    // 상태 업데이트와 PR 연결을 분리하여 처리
+    let statusUpdateSuccess = false;
+    let prLinkSuccess = false;
+
+    // 1단계: 상태를 IN_REVIEW로 변경
+    try {
+      await this.projectBoardService?.updateItemStatus(taskId, 'IN_REVIEW');
+      statusUpdateSuccess = true;
+      this.logger?.info('Task status updated to IN_REVIEW successfully', {
+        taskId,
+        newStatus: 'IN_REVIEW'
+      });
+    } catch (statusError) {
+      this.logger?.error('Failed to update task status', {
+        taskId,
+        error: statusError instanceof Error ? statusError.message : String(statusError),
+        stack: statusError instanceof Error ? statusError.stack : undefined
+      });
+    }
+
+    // PR URL은 로컬 캐시에만 저장됨 (GitHub Projects API 제한)
+    prLinkSuccess = true;
+    this.logger?.info('PR URL stored in local cache', {
+      taskId,
+      pullRequestUrl,
+      note: 'GitHub Projects API does not support direct PR linking'
+    });
+
+    // 결과 로깅
+    if (statusUpdateSuccess && prLinkSuccess) {
+      this.logger?.info('Task status updated and PR linked successfully', {
+        taskId,
+        newStatus: 'IN_REVIEW',
+        pullRequestUrl
+      });
+    } else if (statusUpdateSuccess || prLinkSuccess) {
+      this.logger?.warn('Partial success in task update', {
+        taskId,
+        statusUpdateSuccess,
+        prLinkSuccess,
+        pullRequestUrl
+      });
+    } else {
+      this.logger?.error('Both task status update and PR linking failed', {
+        taskId,
+        pullRequestUrl
+      });
+    }
+  }
+
+  private async updateTaskStatusToDone(taskId: string): Promise<void> {
+    try {
+      this.logger?.info('Updating task status to DONE after successful merge', {
+        taskId
+      });
+      await this.projectBoardService?.updateItemStatus(taskId, 'DONE');
+      this.logger?.info('Task status updated to DONE', {
+        taskId
+      });
+    } catch (updateError) {
+      this.logger?.error('Failed to update task status to DONE', {
+        taskId,
+        error: updateError instanceof Error ? updateError.message : String(updateError)
+      });
+    }
+  }
+}
