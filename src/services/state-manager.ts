@@ -241,22 +241,6 @@ export class StateManager {
     await this.savePlannerState({ lastSyncTime: time });
   }
 
-  /**
-   * @deprecated Use addProcessedCommentsToTask() instead
-   */
-  async addProcessedComment(_commentId: string): Promise<void> {
-    // Legacy method - no longer functional after processedComments removal
-    console.warn('addProcessedComment is deprecated. Use addProcessedCommentsToTask() instead.');
-  }
-
-  /**
-   * @deprecated Use isCommentProcessedForTask() instead
-   */
-  async isCommentProcessed(_commentId: string): Promise<boolean> {
-    // Legacy method - no longer functional after processedComments removal
-    console.warn('isCommentProcessed is deprecated. Use isCommentProcessedForTask() instead.');
-    return false;
-  }
 
   // Task별 코멘트 관리 메서드들
   async addProcessedCommentToTask(taskId: string, commentId: string): Promise<void> {

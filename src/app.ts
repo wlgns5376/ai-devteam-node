@@ -19,6 +19,8 @@ import {
   SystemStatus
 } from '@/types';
 
+export { SystemStatus } from '@/types';
+
 export class AIDevTeamApp {
   private planner?: Planner;
   private workerPoolManager?: WorkerPoolManager;

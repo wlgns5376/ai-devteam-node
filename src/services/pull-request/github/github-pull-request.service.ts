@@ -334,11 +334,11 @@ export class GitHubPullRequestService implements PullRequestService {
 
   async markCommentsAsProcessed(commentIds: string[]): Promise<void> {
     // GitHub API에는 코멘트 처리 상태를 직접 저장할 수 없으므로,
-    // 실제 구현에서는 로컬 상태 관리나 별도 저장소를 사용해야 함
+    // 로컬에서 상태를 관리하며 StateManager 통합은 별도 작업으로 처리
     this.logger.debug('Marking comments as processed', { commentIds });
     
-    // TODO: StateManager나 별도 저장소에 처리된 코멘트 ID 저장
-    // 현재는 로깅만 수행
+    // 현재는 로깅만 수행하며, StateManager 통합은 Worker와의 연동 시 구현
+    // Worker가 작업별로 처리된 코멘트를 관리하도록 설계됨
   }
 
   private parseRepoId(repoId: string): { owner: string; repo: string } {
