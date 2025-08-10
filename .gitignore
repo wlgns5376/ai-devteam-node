@@ -54,6 +54,9 @@ workspaces/
 # Temporary files
 tmp/
 temp/
+temp-test/
+test-logs-*/
+temp-state/
 
 # Task files
 # tasks.json
