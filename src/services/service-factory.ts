@@ -1,15 +1,12 @@
 import { ProjectBoardService, PullRequestService, ServiceProvider, ProviderConfig } from '@/types';
 import { GitServiceInterface, RepositoryManagerInterface } from '@/types/manager.types';
-import { MockProjectBoardService } from './mock-project-board';
-import { MockPullRequestService } from './mock-pull-request';
-import { GitHubProjectBoardV2Service } from './project-board/github/github-project-board-v2.service';
-import { GitHubPullRequestService } from './pull-request/github/github-pull-request.service';
-import { ProjectV2Config } from './project-board/github/graphql-types';
 import { Logger } from './logger';
 import { GitService } from './git/git.service';
 import { GitLockService } from './git/git-lock.service';
 import { RepositoryManager } from './manager/repository-manager';
 import { StateManager } from './state-manager';
+import { ServiceFactoryRegistry } from './factory';
+import { ConfigurationService } from './configuration';
 
 export interface ServiceBundle {
   readonly projectBoardService: ProjectBoardService;
@@ -23,9 +20,11 @@ export class ServiceFactory {
   private gitLockService: GitLockService | null = null;
   private repositoryManager: RepositoryManagerInterface | null = null;
   private logger: Logger;
+  private factoryRegistry: ServiceFactoryRegistry;
 
   constructor(logger?: Logger) {
     this.logger = logger || Logger.createConsoleLogger();
+    this.factoryRegistry = new ServiceFactoryRegistry(this.logger);
   }
 
   createProjectBoardService(config: ProviderConfig): ProjectBoardService {
@@ -36,56 +35,24 @@ export class ServiceFactory {
       return cached;
     }
 
-    let service: ProjectBoardService;
+    try {
+      // 새로운 Factory Registry를 사용하여 서비스 생성
+      const factory = this.factoryRegistry.getFactory(config);
+      const service = factory.createProjectBoardService(config);
 
-    switch (config.type) {
-      case ServiceProvider.MOCK:
-        service = new MockProjectBoardService();
-        break;
-      case ServiceProvider.GITHUB:
-        service = this.createGitHubProjectBoardService(config);
-        break;
-      default:
-        throw new Error(`Unsupported project board provider: ${config.type}`);
+      this.projectBoardServices.set(cacheKey, service);
+      return service;
+    } catch (error) {
+      // Registry에서 "Unsupported project board provider" 에러인 경우에만 그대로 던짐
+      // 나머지 구체적인 에러들(API token required, owner required 등)은 그대로 전달
+      if (error instanceof Error && error.message.startsWith('Unsupported project board provider')) {
+        throw error;
+      }
+      // 다른 모든 에러는 그대로 전달 (구체적인 에러 메시지 유지)
+      throw error;
     }
-
-    this.projectBoardServices.set(cacheKey, service);
-    return service;
   }
 
-  private createGitHubProjectBoardService(config: ProviderConfig): ProjectBoardService {
-    if (!config.apiToken) {
-      throw new Error('GitHub API token is required');
-    }
-
-    // Projects v2 (GraphQL) 서비스만 지원
-    return this.createGitHubProjectBoardV2Service(config);
-  }
-
-
-  private createGitHubProjectBoardV2Service(config: ProviderConfig): GitHubProjectBoardV2Service {
-    const options = config.options || {};
-    const projectV2Config: ProjectV2Config = {
-      token: config.apiToken,
-      owner: options.owner as string || '',
-      projectNumber: options.projectNumber as number
-    };
-
-    // 레포지토리 필터링 설정 추가
-    if (options.repositoryFilter) {
-      projectV2Config.repositoryFilter = options.repositoryFilter as any;
-    }
-
-    if (!projectV2Config.owner) {
-      throw new Error('GitHub owner is required for Projects v2');
-    }
-
-    if (!projectV2Config.projectNumber) {
-      throw new Error('Project number is required for Projects v2');
-    }
-
-    return new GitHubProjectBoardV2Service(projectV2Config, this.logger);
-  }
 
   createPullRequestService(config: ProviderConfig): PullRequestService {
     // 설정별 캐시 키 생성
@@ -95,30 +62,21 @@ export class ServiceFactory {
       return cached;
     }
 
-    let service: PullRequestService;
+    try {
+      // 새로운 Factory Registry를 사용하여 서비스 생성
+      const factory = this.factoryRegistry.getFactory(config);
+      const service = factory.createPullRequestService(config);
 
-    switch (config.type) {
-      case ServiceProvider.MOCK:
-        service = new MockPullRequestService();
-        break;
-      case ServiceProvider.GITHUB:
-        if (!config.apiToken) {
-          throw new Error('GitHub API token is required for GitHub PullRequestService');
-        }
-        service = new GitHubPullRequestService(
-          {
-            token: config.apiToken,
-            baseUrl: config.options?.baseUrl as string
-          },
-          this.logger
-        );
-        break;
-      default:
+      this.pullRequestServices.set(cacheKey, service);
+      return service;
+    } catch (error) {
+      // Registry에서 "Unsupported project board provider" 에러인 경우 pull request 에러로 변환
+      if (error instanceof Error && error.message.startsWith('Unsupported project board provider')) {
         throw new Error(`Unsupported pull request provider: ${config.type}`);
+      }
+      // 다른 모든 에러는 그대로 전달 (구체적인 에러 메시지 유지)
+      throw error;
     }
-
-    this.pullRequestServices.set(cacheKey, service);
-    return service;
   }
 
   createServices(config: ProviderConfig): ServiceBundle {
@@ -194,81 +152,11 @@ export class ServiceFactory {
     };
     token?: string;
   }): ProviderConfig {
-    const token = options.token || process.env.GITHUB_TOKEN;
-    if (!token) {
-      throw new Error('GitHub token is required. Set GITHUB_TOKEN environment variable or provide token in options.');
-    }
-
-    return {
-      type: ServiceProvider.GITHUB,
-      apiToken: token,
-      options: {
-        owner: options.owner,
-        projectNumber: options.projectNumber,
-        repositoryFilter: options.repositoryFilter,
-        apiVersion: 'v2'
-      }
-    };
+    return ConfigurationService.createGitHubV2Config(options);
   }
 
   // 편의 메소드: 환경변수에서 GitHub Projects v2 설정 생성
   static createGitHubV2ConfigFromEnv(): ProviderConfig {
-    const owner = process.env.GITHUB_OWNER;
-    const projectNumber = process.env.GITHUB_PROJECT_NUMBER;
-    const token = process.env.GITHUB_TOKEN;
-    const githubRepos = process.env.GITHUB_REPOS;
-    const githubRepo = process.env.GITHUB_REPO;
-    const filterMode = process.env.GITHUB_REPO_FILTER_MODE as 'whitelist' | 'blacklist' | undefined;
-
-    if (!owner) {
-      throw new Error('GITHUB_OWNER environment variable is required');
-    }
-    if (!projectNumber) {
-      throw new Error('GITHUB_PROJECT_NUMBER environment variable is required');
-    }
-    if (!token) {
-      throw new Error('GITHUB_TOKEN environment variable is required');
-    }
-
-    const projectNum = parseInt(projectNumber, 10);
-    if (isNaN(projectNum)) {
-      throw new Error('GITHUB_PROJECT_NUMBER must be a valid number');
-    }
-
-    // 레포지토리 필터 설정
-    let repositoryFilter: { allowedRepositories?: string[]; mode: 'whitelist' | 'blacklist' } | undefined;
-    
-    // GITHUB_REPOS 환경변수 우선 (새로운 방식)
-    if (githubRepos) {
-      const repositories = githubRepos
-        .split(',')
-        .map(repo => repo.trim())
-        .filter(repo => repo.length > 0);
-
-      if (repositories.length > 0) {
-        repositoryFilter = {
-          allowedRepositories: repositories,
-          mode: filterMode || 'whitelist'
-        };
-      }
-    }
-    // GITHUB_REPO 환경변수 사용 (기존 방식)
-    else if (githubRepo) {
-      repositoryFilter = {
-        allowedRepositories: [`${owner}/${githubRepo}`],
-        mode: 'whitelist'
-      };
-    }
-
-    return {
-      type: ServiceProvider.GITHUB,
-      apiToken: token,
-      options: {
-        owner,
-        projectNumber: projectNum,
-        repositoryFilter,
-        apiVersion: 'v2'
-      }
-    };
+    return ConfigurationService.createGitHubV2ConfigFromEnv();
   }
 }
