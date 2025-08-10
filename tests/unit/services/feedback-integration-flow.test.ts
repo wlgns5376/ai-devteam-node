@@ -1,6 +1,6 @@
 import { Planner } from '@/services/planner';
-import { MockProjectBoardService } from '@/services/mock-project-board';
-import { MockPullRequestService } from '@/services/mock-pull-request';
+import { MockProjectBoardService } from '@/services/project-board/mock/mock-project-board';
+import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
 import { Logger } from '@/services/logger';
 import { 
   PlannerServiceConfig,

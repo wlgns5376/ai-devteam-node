@@ -1,6 +1,6 @@
 import { ServiceFactory } from '@/services/service-factory';
-import { MockProjectBoardService } from '@/services/mock-project-board';
-import { MockPullRequestService } from '@/services/mock-pull-request';
+import { MockProjectBoardService } from '@/services/project-board/mock/mock-project-board';
+import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
 import { ProjectBoardService, PullRequestService, ServiceProvider, ProviderConfig } from '@/types';
 
 

@@ -1,8 +1,8 @@
 import { AIDevTeamApp } from '@/app';
 import { Logger } from '@/services/logger';
 import { AppConfig } from '@/config/app-config';
-import { MockProjectBoardService } from '@/services/mock-project-board';
-import { MockPullRequestService } from '@/services/mock-pull-request';
+import { MockProjectBoardService } from '@/services/project-board/mock/mock-project-board';
+import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
 import { WorkerPoolManager } from '@/services/manager/worker-pool-manager';
 import { Planner } from '@/services/planner';
 import { 

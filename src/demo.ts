@@ -3,8 +3,8 @@ import { Worker } from './services/worker/worker';
 import { DeveloperFactory } from './services/developer/developer-factory';
 import { Logger, LogLevel } from './services/logger';
 import { StateManager } from './services/state-manager';
-import { MockProjectBoardService } from './services/mock-project-board';
-import { MockPullRequestService } from './services/mock-pull-request';
+import { MockProjectBoardService } from './services/project-board/mock/mock-project-board';
+import { MockPullRequestService } from './services/pull-request/mock/mock-pull-request';
 import { WorkerAction } from '@/types';
 
 async function runDemo() {

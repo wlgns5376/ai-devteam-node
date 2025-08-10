@@ -7,7 +7,7 @@ import {
   ReviewState,
   CommentFilterOptions,
   DEFAULT_ALLOWED_BOTS
-} from '../types';
+} from '@/types';
 
 export class MockPullRequestService implements PullRequestService {
   private pullRequests: Map<string, Map<number, PullRequest>> = new Map();

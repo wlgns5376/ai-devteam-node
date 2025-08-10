@@ -1,6 +1,6 @@
 import { ProjectBoardService, PullRequestService, ProviderConfig, ServiceProvider } from '@/types';
-import { MockProjectBoardService } from '../mock-project-board';
-import { MockPullRequestService } from '../mock-pull-request';
+import { MockProjectBoardService } from '../project-board/mock/mock-project-board';
+import { MockPullRequestService } from '../pull-request/mock/mock-pull-request';
 import { AbstractServiceFactory } from './abstract-service.factory';
 
 /**
