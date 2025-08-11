@@ -50,6 +50,7 @@ coverage/
 # AI DevTeam specific
 workspaces/
 *.workspace
+.test-workspace/
 
 # Temporary files
 tmp/

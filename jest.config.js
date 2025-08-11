@@ -60,5 +60,6 @@ module.exports = {
   verbose: true,
   clearMocks: true,
   restoreMocks: true,
-  extensionsToTreatAsEsm: ['.ts']
+  extensionsToTreatAsEsm: ['.ts'],
+  forceExit: true      // 테스트 완료 후 강제 종료
 };

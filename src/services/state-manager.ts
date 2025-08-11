@@ -326,6 +326,14 @@ export class StateManager {
   private async loadWorkers(): Promise<void> {
     try {
       const workersContent = await fs.readFile(this.workersFile, 'utf-8');
+      
+      // 빈 파일이나 잘못된 JSON 처리
+      if (!workersContent.trim()) {
+        this.workers.clear();
+        await this.persistWorkers();
+        return;
+      }
+      
       const workersArray: Worker[] = JSON.parse(workersContent, this.dateReviver);
       
       this.workers.clear();
@@ -335,6 +343,10 @@ export class StateManager {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         // 파일이 없으면 빈 배열로 초기화
+        this.workers.clear();
+        await this.persistWorkers();
+      } else if (error instanceof SyntaxError) {
+        // JSON 파싱 오류 시 빈 상태로 초기화
         this.workers.clear();
         await this.persistWorkers();
       } else {
@@ -410,10 +422,22 @@ export class StateManager {
   private async loadPlannerState(): Promise<void> {
     try {
       const plannerStateContent = await fs.readFile(this.plannerStateFile, 'utf-8');
+      
+      // 빈 파일이나 잘못된 JSON 처리
+      if (!plannerStateContent.trim()) {
+        this.plannerState = {};
+        await this.persistPlannerState();
+        return;
+      }
+      
       this.plannerState = JSON.parse(plannerStateContent, this.dateReviver);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         // 파일이 없으면 기본값으로 초기화
+        this.plannerState = {};
+        await this.persistPlannerState();
+      } else if (error instanceof SyntaxError) {
+        // JSON 파싱 오류 시 빈 상태로 초기화
         this.plannerState = {};
         await this.persistPlannerState();
       } else {
