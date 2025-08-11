@@ -46,6 +46,7 @@ export interface ExternalServices {
   readonly gitService?: any; // GitService type
   readonly repositoryManager?: any; // RepositoryManager type
   readonly developerFactory?: any; // DeveloperFactory type
+  readonly developer?: any; // Developer type for testing
 }
 
 // Common utility types

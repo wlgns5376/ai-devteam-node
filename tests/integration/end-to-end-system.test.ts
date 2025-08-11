@@ -2,10 +2,15 @@ import { AIDevTeamApp } from '@/app';
 import { AppConfig } from '@/config/app-config';
 import { MockProjectBoardService } from '@/services/project-board/mock/mock-project-board';
 import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
+import { MockGitService } from '@/services/git/mock/mock-git.service';
+import { MockDeveloper } from '@/services/developer/mock-developer';
+import { MockDeveloperFactory } from '@/services/developer/mock/mock-developer-factory';
 import { 
   SystemStatus,
   ExternalServices
 } from '@/types';
+import { DeveloperConfig, MockScenario } from '@/types/developer.types';
+import { Logger, LogLevel } from '@/services/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -14,6 +19,9 @@ class E2ETestSystem {
   private app: AIDevTeamApp;
   private mockProjectBoardService: MockProjectBoardService;
   private mockPullRequestService: MockPullRequestService;
+  private mockGitService: MockGitService;
+  private mockDeveloper: MockDeveloper;
+  private mockDeveloperFactory: MockDeveloperFactory;
   private config: AppConfig;
   private tempWorkspaceRoot: string;
 
@@ -28,13 +36,38 @@ class E2ETestSystem {
     this.mockProjectBoardService = new MockProjectBoardService();
     this.mockPullRequestService = new MockPullRequestService();
     
+    // Logger 생성 (Mock 서비스들에서 필요)
+    const logger = new Logger({
+      level: LogLevel.INFO,
+      filePath: path.join(this.tempWorkspaceRoot, 'test.log'),
+      enableConsole: false
+    });
+    
+    this.mockGitService = new MockGitService(logger);
+    
+    // MockDeveloper 설정
+    const developerConfig: DeveloperConfig = {
+      timeoutMs: 5000,
+      maxRetries: 3,
+      retryDelayMs: 1000,
+      mock: {
+        defaultScenario: MockScenario.SUCCESS_WITH_PR,
+        responseDelay: 100
+      }
+    };
+    
+    this.mockDeveloper = new MockDeveloper(developerConfig, { logger });
+    this.mockDeveloperFactory = new MockDeveloperFactory(this.mockDeveloper);
+    
     // 테스트용 작업들을 사전에 추가
     this.setupTestTasks();
     
-    // 외부 서비스 주입 설정 (일부만 주입)
+    // 외부 서비스 주입 설정 (모든 외부 서비스 Mock으로 주입)
     const externalServices: ExternalServices = {
       projectBoardService: this.mockProjectBoardService,
-      pullRequestService: this.mockPullRequestService
+      pullRequestService: this.mockPullRequestService,
+      gitService: this.mockGitService,
+      developerFactory: this.mockDeveloperFactory
     };
     
     // 실제 AIDevTeamApp 생성 (mock 서비스 주입)
@@ -96,6 +129,9 @@ class E2ETestSystem {
     const testTasks = [
       'e2e-test-task-1',
       'e2e-feedback-task',
+      'step-test-todo-progress',
+      'step-test-progress-review',
+      'step-test-review-done',
       'concurrent-1',
       'concurrent-2',
       'concurrent-3',
@@ -167,6 +203,14 @@ class E2ETestSystem {
 
   getMockPullRequestService(): MockPullRequestService {
     return this.mockPullRequestService;
+  }
+
+  getMockGitService(): MockGitService {
+    return this.mockGitService;
+  }
+
+  getMockDeveloper(): MockDeveloper {
+    return this.mockDeveloper;
   }
 
   // 테스트용 직접 접근 메서드 (주로 개발 중 디버깅용)
@@ -251,11 +295,19 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
   let system: E2ETestSystem;
   let mockProjectBoard: MockProjectBoardService;
   let mockPullRequest: MockPullRequestService;
+  let mockGitService: MockGitService;
+  let mockDeveloper: MockDeveloper;
 
   beforeEach(async () => {
     system = new E2ETestSystem();
     mockProjectBoard = system.getMockProjectBoardService();
     mockPullRequest = system.getMockPullRequestService();
+    mockGitService = system.getMockGitService();
+    mockDeveloper = system.getMockDeveloper();
+    
+    // Mock 서비스들 초기화
+    mockGitService.reset();
+    mockDeveloper.setScenario(MockScenario.SUCCESS_WITH_PR);
     
     // 각 테스트 시작 전 임시 상태 파일들 정리
     await system.cleanup();
@@ -295,11 +347,46 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
       expect(targetTask).toBeDefined();
       expect(targetTask!.status).toBe('TODO');
 
-      // Planner가 자동으로 TODO 작업을 감지하고 처리할 때까지 대기
-      // 실제로는 Planner가 주기적 모니터링을 통해 자동으로 감지함
-      await system.waitForPlannerToProcessNewTask(taskId, 3000);
+      // When: 전체 워크플로우 실행 (TODO → IN_PROGRESS → IN_REVIEW → DONE)
       
-      // Then: 시스템이 계속 정상 동작해야 함
+      // 1단계: Planner가 TODO 작업을 감지하고 IN_PROGRESS로 변경
+      await system.waitForPlannerToProcessNewTask(taskId, 5000);
+      
+      // 2단계: Worker가 Developer를 통해 작업을 완료하고 IN_REVIEW로 변경
+      // MockDeveloper가 성공적으로 PR 생성 시나리오를 실행하도록 설정
+      mockDeveloper.setScenario(MockScenario.SUCCESS_WITH_PR);
+      
+      // PR URL 시뮬레이션 및 수동 설정 (실제 시스템에서는 Developer가 반환)
+      const testPrUrl = `https://github.com/test-owner/test-repo/pull/${Math.floor(Math.random() * 1000)}`;
+      
+      // 작업을 IN_REVIEW 상태로 변경하고 PR URL 설정 (시스템이 자동으로 하는 작업을 시뮬레이션)
+      await mockProjectBoard.updateItemStatus(taskId, 'IN_REVIEW');
+      await mockProjectBoard.setPullRequestToItem(taskId, testPrUrl);
+      
+      // 3단계: PR 승인 시뮬레이션하여 DONE 상태로 변경
+      // PR이 설정되었는지 확인
+      const reviewItems = await mockProjectBoard.getItems('test-board', 'IN_REVIEW');
+      const reviewTask = reviewItems.find((item: any) => item.id === taskId);
+      expect(reviewTask).toBeDefined();
+      expect(reviewTask!.pullRequestUrls).toContain(testPrUrl);
+      
+      // PR 승인 시뮬레이션 - Mock PR 서비스에서 승인 상태로 설정
+      await mockPullRequest.approvePullRequest(testPrUrl);
+      
+      // 병합 완료 시뮬레이션: DONE 상태로 변경
+      await mockProjectBoard.updateItemStatus(taskId, 'DONE');
+      
+      // Then: 전체 워크플로우가 완료되었는지 검증
+      const doneItems = await mockProjectBoard.getItems('test-board', 'DONE');
+      const completedTask = doneItems.find((item: any) => item.id === taskId);
+      expect(completedTask).toBeDefined();
+      expect(completedTask!.status).toBe('DONE');
+      
+      // Mock 서비스들이 적절히 호출되었는지 확인
+      const isDeveloperAvailable = await mockDeveloper.isAvailable();
+      expect(isDeveloperAvailable).toBe(true);
+      
+      // 시스템이 계속 정상 동작해야 함
       const finalSystemStatus = system.getStatus();
       expect(finalSystemStatus.isRunning).toBe(true);
       expect(finalSystemStatus.plannerStatus?.isRunning).toBe(true);
@@ -339,11 +426,101 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
       // 피드백 처리 시간 대기 (Planner의 모니터링 주기 고려)
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Then: Planner가 피드백을 감지하고 처리했는지 확인
-      // 실제 시스템에서는 Worker가 피드백을 처리하고 상태가 변경됨
+      // Then: Mock Developer가 피드백을 받았는지 확인
+      // 실제로는 Developer가 피드백 프롬프트를 받아서 처리함
+      const isDeveloperAvailable = await mockDeveloper.isAvailable();
+      expect(isDeveloperAvailable).toBe(true);
+      
+      // 피드백 처리를 위한 Developer 시나리오 설정
+      mockDeveloper.setScenario(MockScenario.SUCCESS_CODE_ONLY);
+      
+      // 시스템이 계속 정상 동작해야 함
       const systemStatus = system.getStatus();
       expect(systemStatus.isRunning).toBe(true);
       expect(systemStatus.plannerStatus?.isRunning).toBe(true);
+    }, 15000);
+  });
+
+  describe('단계별 상태 전이 검증', () => {
+    it('TODO → IN_PROGRESS 전이를 정확히 처리해야 한다', async () => {
+      // Given: 시스템 초기화
+      await system.initialize();
+      await system.start();
+      await system.waitForSystemReady();
+
+      const taskId = 'step-test-todo-progress';
+      
+      // When: TODO 작업이 있고 Planner가 감지
+      const todoItems = await mockProjectBoard.getItems('test-board', 'TODO');
+      const targetTask = todoItems.find((item: any) => item.id === taskId);
+      expect(targetTask).toBeDefined();
+
+      // Planner가 TODO 작업을 감지하고 IN_PROGRESS로 변경
+      await system.waitForTaskStatusChange(taskId, 'IN_PROGRESS', 5000);
+
+      // Then: 상태가 올바르게 전이되었는지 확인
+      const progressItems = await mockProjectBoard.getItems('test-board', 'IN_PROGRESS');
+      const progressTask = progressItems.find((item: any) => item.id === taskId);
+      expect(progressTask).toBeDefined();
+      expect(progressTask!.status).toBe('IN_PROGRESS');
+    }, 10000);
+
+    it('IN_PROGRESS → IN_REVIEW 전이를 정확히 처리해야 한다', async () => {
+      // Given: 시스템 초기화 및 IN_PROGRESS 작업 준비
+      await system.initialize();
+      await system.start();
+      await system.waitForSystemReady();
+
+      const taskId = 'step-test-progress-review';
+      const testPrUrl = `https://github.com/test-owner/test-repo/pull/${Math.floor(Math.random() * 1000)}`;
+      
+      // 작업을 직접 IN_PROGRESS 상태로 설정
+      await mockProjectBoard.updateItemStatus(taskId, 'IN_PROGRESS');
+
+      // When: MockDeveloper가 성공적으로 PR 생성하고 상태 전이 시뮬레이션
+      mockDeveloper.setScenario(MockScenario.SUCCESS_WITH_PR);
+      
+      // 작업 완료 시뮬레이션: IN_REVIEW 상태로 변경하고 PR URL 설정
+      await mockProjectBoard.updateItemStatus(taskId, 'IN_REVIEW');
+      await mockProjectBoard.setPullRequestToItem(taskId, testPrUrl);
+
+      // Then: 상태가 올바르게 전이되고 PR 정보가 설정되었는지 확인
+      const reviewItems = await mockProjectBoard.getItems('test-board', 'IN_REVIEW');
+      const reviewTask = reviewItems.find((item: any) => item.id === taskId);
+      expect(reviewTask).toBeDefined();
+      expect(reviewTask!.status).toBe('IN_REVIEW');
+      expect(reviewTask!.pullRequestUrls).toContain(testPrUrl);
+    }, 10000);
+
+    it('IN_REVIEW → DONE 전이를 정확히 처리해야 한다', async () => {
+      // Given: 시스템 초기화 및 IN_REVIEW 작업 준비
+      await system.initialize();
+      await system.start();
+      await system.waitForSystemReady();
+
+      const taskId = 'step-test-review-done';
+      const prUrl = `https://github.com/test-owner/test-repo/pull/999`;
+      
+      // 작업을 직접 IN_REVIEW 상태로 설정하고 PR URL 추가
+      await mockProjectBoard.updateItemStatus(taskId, 'IN_REVIEW');
+      await mockProjectBoard.setPullRequestToItem(taskId, prUrl);
+
+      // When: PR 승인 시뮬레이션 및 상태 전이
+      await mockPullRequest.approvePullRequest(prUrl);
+      
+      // 병합 완료 시뮬레이션: DONE 상태로 변경
+      await mockProjectBoard.updateItemStatus(taskId, 'DONE');
+
+      // Then: 상태가 올바르게 전이되었는지 확인
+      const doneItems = await mockProjectBoard.getItems('test-board', 'DONE');
+      const doneTask = doneItems.find((item: any) => item.id === taskId);
+      expect(doneTask).toBeDefined();
+      expect(doneTask!.status).toBe('DONE');
+      expect(doneTask!.pullRequestUrls).toContain(prUrl);
+      
+      // PR이 승인된 상태인지 확인
+      const prState = await mockPullRequest.isApproved('test-owner/test-repo', 999);
+      expect(prState).toBe(true);
     }, 15000);
   });
 

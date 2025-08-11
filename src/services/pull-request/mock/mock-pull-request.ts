@@ -215,6 +215,11 @@ export class MockPullRequestService implements PullRequestService {
     this.reviews.set(key, [newReview]);
   }
 
+  async approvePullRequest(prUrl: string): Promise<void> {
+    // PR을 승인 상태로 설정
+    await this.setPullRequestState(prUrl, ReviewState.APPROVED);
+  }
+
   async setPullRequestToMerged(prUrl: string): Promise<void> {
     // URL에서 repo와 PR 번호 추출
     const urlMatch = prUrl.match(/github\.com\/([^\/]+\/[^\/]+)\/pull\/(\d+)/);
