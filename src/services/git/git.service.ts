@@ -219,13 +219,40 @@ export class GitService implements GitServiceInterface {
         // 이미 해당 경로에 worktree가 있는지 확인
         const existingWorktree = await this.findWorktreeByPath(repoPath, worktreePath);
         if (existingWorktree) {
-          this.dependencies.logger.info('Worktree already exists at path', {
-            repoPath,
-            branchName,
-            worktreePath,
-            existingBranch: existingWorktree.branch
+          // 기존 워크트리가 유효한지 추가 검증
+          const isWorktreeValid = await this.validateExistingWorktree(worktreePath);
+          if (isWorktreeValid) {
+            this.dependencies.logger.info('Valid worktree already exists at path, reusing', {
+              repoPath,
+              branchName,
+              worktreePath,
+              existingBranch: existingWorktree.branch
+            });
+            return;
+          } else {
+            this.dependencies.logger.warn('Invalid worktree found at path, removing and recreating', {
+              repoPath,
+              worktreePath,
+              existingBranch: existingWorktree.branch
+            });
+            // 유효하지 않은 워크트리 제거 (디렉토리가 없어도 Git에서 제거)
+            await this.removeWorktree(repoPath, worktreePath);
+          }
+        }
+
+        // 등록되어 있지만 누락된 워크트리가 있을 수 있으므로 prune 실행
+        try {
+          await execAsync('git worktree prune', {
+            cwd: repoPath,
+            timeout: 10000
           });
-          return;
+          this.dependencies.logger.debug('Worktree prune completed', { repoPath });
+        } catch (pruneError) {
+          // prune 실패는 무시 (보통 정리할 것이 없음)
+          this.dependencies.logger.debug('Worktree prune failed or nothing to prune', {
+            repoPath,
+            error: pruneError
+          });
         }
 
         // 브랜치와 worktree 상태 확인
@@ -396,8 +423,27 @@ export class GitService implements GitServiceInterface {
         return null;
       }).filter((wt): wt is { path: string; branch: string } => wt !== null);
 
-      return worktrees.find(wt => wt.path === targetPath) || null;
-    } catch {
+      // 경로 정규화하여 비교 (절대경로로 변환)
+      const normalizedTargetPath = path.resolve(targetPath);
+      const foundWorktree = worktrees.find(wt => {
+        const normalizedWorktreePath = path.resolve(wt.path);
+        return normalizedWorktreePath === normalizedTargetPath;
+      });
+
+      if (foundWorktree) {
+        this.dependencies.logger.debug('Found existing worktree', {
+          targetPath,
+          foundPath: foundWorktree.path,
+          branch: foundWorktree.branch
+        });
+      }
+
+      return foundWorktree || null;
+    } catch (error) {
+      this.dependencies.logger.debug('Failed to list worktrees', {
+        repoPath,
+        error
+      });
       return null;
     }
   }
@@ -495,6 +541,59 @@ export class GitService implements GitServiceInterface {
     } catch {
       // 실패하면 main을 기본값으로 사용
       return 'main';
+    }
+  }
+
+  /**
+   * 기존 워크트리가 유효한지 검증합니다.
+   */
+  private async validateExistingWorktree(worktreePath: string): Promise<boolean> {
+    try {
+      // 디렉토리 존재 확인
+      const stat = await fs.stat(worktreePath);
+      if (!stat.isDirectory()) {
+        return false;
+      }
+
+      // Git 워크트리 확인: .git 파일이 존재하고 적절한 내용을 가지는지 확인
+      const gitPath = path.join(worktreePath, '.git');
+      try {
+        const gitContent = await fs.readFile(gitPath, 'utf-8');
+        // Git worktree는 .git 파일에 "gitdir: ..." 형태로 저장됨
+        const isWorktree = gitContent.trim().startsWith('gitdir:');
+        
+        if (!isWorktree) {
+          this.dependencies.logger.debug('Path is not a valid worktree (.git file invalid)', {
+            worktreePath,
+            gitContent: gitContent.substring(0, 100)
+          });
+          return false;
+        }
+
+        // git status 명령으로 워크트리 상태 확인
+        await execAsync('git status --porcelain', {
+          cwd: worktreePath,
+          timeout: 5000
+        });
+
+        this.dependencies.logger.debug('Existing worktree validation successful', {
+          worktreePath
+        });
+
+        return true;
+      } catch (gitError) {
+        this.dependencies.logger.debug('Worktree git validation failed', {
+          worktreePath,
+          error: gitError
+        });
+        return false;
+      }
+    } catch (error) {
+      this.dependencies.logger.debug('Worktree path validation failed', {
+        worktreePath,
+        error
+      });
+      return false;
     }
   }
 

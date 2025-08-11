@@ -86,21 +86,36 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
   }
 
   async setupWorktree(workspaceInfo: WorkspaceInfo): Promise<void> {
-    // 이미 생성된 worktree인지 확인 (플래그 + 실제 존재 여부)
-    if (workspaceInfo.worktreeCreated) {
-      const isWorktreeValid = await this.isWorktreeValid(workspaceInfo);
-      if (isWorktreeValid) {
-        this.dependencies.logger.debug('Worktree already exists and is valid, skipping', {
-          taskId: workspaceInfo.taskId,
-          workspaceDir: workspaceInfo.workspaceDir
-        });
-        return;
-      } else {
-        this.dependencies.logger.warn('Worktree flag is set but worktree is invalid, recreating', {
-          taskId: workspaceInfo.taskId,
-          workspaceDir: workspaceInfo.workspaceDir
-        });
+    // 워크트리가 이미 존재하는지 확인 (플래그 상관없이 실제 상태 확인)
+    const isWorktreeValid = await this.isWorktreeValid(workspaceInfo);
+    if (isWorktreeValid) {
+      this.dependencies.logger.info('Valid worktree already exists, reusing existing worktree', {
+        taskId: workspaceInfo.taskId,
+        workspaceDir: workspaceInfo.workspaceDir,
+        branchName: workspaceInfo.branchName
+      });
+      
+      // 상태 업데이트 (플래그가 false였을 수도 있으므로)
+      if (!workspaceInfo.worktreeCreated) {
+        const updatedWorkspaceInfo: WorkspaceInfo = {
+          ...workspaceInfo,
+          worktreeCreated: true
+        };
+        await this.dependencies.stateManager.saveWorkspaceInfo(updatedWorkspaceInfo);
+        
+        // RepositoryManager에도 등록 (누락된 경우를 대비)
+        await this.dependencies.repositoryManager.addWorktree(
+          workspaceInfo.repositoryId,
+          workspaceInfo.workspaceDir
+        );
       }
+      
+      return;
+    } else if (workspaceInfo.worktreeCreated) {
+      this.dependencies.logger.warn('Worktree flag is set but worktree is invalid, recreating', {
+        taskId: workspaceInfo.taskId,
+        workspaceDir: workspaceInfo.workspaceDir
+      });
     }
 
     try {

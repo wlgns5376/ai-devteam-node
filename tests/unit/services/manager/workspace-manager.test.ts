@@ -229,6 +229,107 @@ describe('WorkspaceManager', () => {
     });
   });
 
+  describe('Git Worktree 재사용', () => {
+    let workspaceInfo: WorkspaceInfo;
+
+    beforeEach(() => {
+      workspaceInfo = {
+        taskId: 'task-123',
+        repositoryId: 'owner/repo',
+        workspaceDir: '/tmp/test-workspace/owner_repo_task-123',
+        branchName: 'task-123',
+        worktreeCreated: false,
+        claudeLocalPath: '/tmp/test-workspace/owner_repo_task-123/CLAUDE.local.md',
+        createdAt: new Date()
+      };
+    });
+
+    it('유효한 기존 워크트리를 재사용해야 한다', async () => {
+      // Given: 유효한 기존 워크트리가 존재함
+      const mockStat = { isDirectory: () => true } as any;
+      jest.spyOn(fs, 'stat').mockResolvedValue(mockStat);
+      jest.spyOn(fs, 'readFile').mockResolvedValue('gitdir: /path/to/repo/.git/worktrees/task-123');
+      
+      mockRepositoryManager.ensureRepository.mockResolvedValue('/repo/path');
+
+      // When: 워크트리 설정
+      await workspaceManager.setupWorktree(workspaceInfo);
+
+      // Then: 기존 워크트리를 재사용하고 Git 작업을 수행하지 않음
+      expect(mockGitService.createWorktree).not.toHaveBeenCalled();
+      expect(mockStateManager.saveWorkspaceInfo).toHaveBeenCalledWith({
+        ...workspaceInfo,
+        worktreeCreated: true
+      });
+      expect(mockRepositoryManager.addWorktree).toHaveBeenCalledWith(
+        workspaceInfo.repositoryId,
+        workspaceInfo.workspaceDir
+      );
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Valid worktree already exists, reusing existing worktree',
+        expect.objectContaining({
+          taskId: workspaceInfo.taskId,
+          workspaceDir: workspaceInfo.workspaceDir,
+          branchName: workspaceInfo.branchName
+        })
+      );
+    });
+
+    it('플래그가 true이지만 유효하지 않은 워크트리는 재생성해야 한다', async () => {
+      // Given: 플래그는 true이지만 실제로는 유효하지 않은 워크트리
+      const workspaceInfoWithFlag = { ...workspaceInfo, worktreeCreated: true };
+      jest.spyOn(fs, 'stat').mockRejectedValue(new Error('Directory not found'));
+      
+      mockRepositoryManager.ensureRepository.mockResolvedValue('/repo/path');
+
+      // When: 워크트리 설정
+      await workspaceManager.setupWorktree(workspaceInfoWithFlag);
+
+      // Then: 새로운 워크트리 생성
+      expect(mockGitService.createWorktree).toHaveBeenCalledWith(
+        '/repo/path',
+        workspaceInfoWithFlag.branchName,
+        workspaceInfoWithFlag.workspaceDir
+      );
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Worktree flag is set but worktree is invalid, recreating',
+        expect.objectContaining({
+          taskId: workspaceInfoWithFlag.taskId,
+          workspaceDir: workspaceInfoWithFlag.workspaceDir
+        })
+      );
+    });
+
+    it('플래그가 false이지만 유효한 워크트리가 있으면 재사용하고 플래그를 업데이트해야 한다', async () => {
+      // Given: 플래그는 false이지만 유효한 워크트리가 존재 (기본값이 false임)
+      const mockStat = { isDirectory: () => true } as any;
+      jest.spyOn(fs, 'stat').mockResolvedValue(mockStat);
+      jest.spyOn(fs, 'readFile').mockResolvedValue('gitdir: /path/to/repo/.git/worktrees/task-123');
+      
+      mockRepositoryManager.ensureRepository.mockResolvedValue('/repo/path');
+
+      // When: 워크트리 설정
+      await workspaceManager.setupWorktree(workspaceInfo);
+
+      // Then: 기존 워크트리를 재사용하고 플래그 업데이트
+      expect(mockGitService.createWorktree).not.toHaveBeenCalled();
+      expect(mockStateManager.saveWorkspaceInfo).toHaveBeenCalledWith({
+        ...workspaceInfo,
+        worktreeCreated: true
+      });
+      expect(mockRepositoryManager.addWorktree).toHaveBeenCalledWith(
+        workspaceInfo.repositoryId,
+        workspaceInfo.workspaceDir
+      );
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Valid worktree already exists, reusing existing worktree',
+        expect.objectContaining({
+          taskId: workspaceInfo.taskId
+        })
+      );
+    });
+  });
+
   describe('Git Worktree 설정', () => {
     let workspaceInfo: WorkspaceInfo;
 
