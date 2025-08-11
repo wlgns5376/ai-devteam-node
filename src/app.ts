@@ -5,7 +5,7 @@ import { WorkspaceManager } from './services/manager/workspace-manager';
 import { Logger, LogLevel } from './services/logger';
 import { StateManager } from './services/state-manager';
 import { ServiceFactory } from './services/service-factory';
-import { ProjectBoardService, PullRequestService } from './types';
+import { ProjectBoardService, PullRequestService, ExternalServices } from './types';
 import { DeveloperFactory } from './services/developer/developer-factory';
 import { TaskRequestHandler } from './app/TaskRequestHandler';
 import { RepositoryInfoExtractor } from './utils/RepositoryInfoExtractor';
@@ -36,7 +36,10 @@ export class AIDevTeamApp {
   private isRunning = false;
   private startedAt: Date | undefined = undefined;
 
-  constructor(private readonly config: AppConfig) {}
+  constructor(
+    private readonly config: AppConfig,
+    private readonly externalServices?: ExternalServices
+  ) {}
 
   private createDeveloperConfig(systemConfig: SystemDeveloperConfig): DeveloperConfig {
     return {
@@ -101,32 +104,57 @@ export class AIDevTeamApp {
       this.logger.info('StateManager initialized');
 
       // 3. 서비스들 초기화
-      // GitHub Projects v2 및 PullRequest 서비스 사용
-      const serviceFactory = new ServiceFactory(this.logger);
-      const githubV2Config = ServiceFactory.createGitHubV2ConfigFromEnv();
-      this.projectBoardService = serviceFactory.createProjectBoardService(githubV2Config);
-      this.pullRequestService = serviceFactory.createPullRequestService(githubV2Config);
+      // 주입된 서비스가 있으면 사용, 없으면 ServiceFactory로 생성
+      let gitService;
+      let repositoryManager;
+      let developerFactory;
       
-      // Repository 관련 서비스 초기화
-      const gitService = serviceFactory.createGitService(this.config.manager.gitOperationTimeoutMs);
-      const repositoryManager = serviceFactory.createRepositoryManager(
-        {
-          workspaceBasePath: this.config.manager.workspaceRoot,
-          repositoryCacheTimeoutMs: this.config.manager.repositoryCacheTimeoutMs,
-          gitOperationTimeoutMs: this.config.manager.gitOperationTimeoutMs,
-          minWorkers: this.config.manager.workerPool.minWorkers,
-          maxWorkers: this.config.manager.workerPool.maxWorkers,
-          workerRecoveryTimeoutMs: this.config.manager.workerPool.workerTimeoutMs
-        },
-        this.stateManager
-      );
+      if (this.externalServices) {
+        // 주입된 서비스 사용
+        if (this.externalServices.projectBoardService) {
+          this.projectBoardService = this.externalServices.projectBoardService;
+        }
+        if (this.externalServices.pullRequestService) {
+          this.pullRequestService = this.externalServices.pullRequestService;
+        }
+        gitService = this.externalServices.gitService;
+        repositoryManager = this.externalServices.repositoryManager;
+        developerFactory = this.externalServices.developerFactory;
+      }
+      
+      // 주입되지 않은 서비스는 ServiceFactory로 생성
+      const serviceFactory = new ServiceFactory(this.logger);
+      
+      if (!this.projectBoardService || !this.pullRequestService) {
+        const githubV2Config = ServiceFactory.createGitHubV2ConfigFromEnv();
+        this.projectBoardService = this.projectBoardService || serviceFactory.createProjectBoardService(githubV2Config);
+        this.pullRequestService = this.pullRequestService || serviceFactory.createPullRequestService(githubV2Config);
+      }
+      
+      if (!gitService) {
+        gitService = serviceFactory.createGitService(this.config.manager.gitOperationTimeoutMs);
+      }
+      
+      if (!repositoryManager) {
+        repositoryManager = serviceFactory.createRepositoryManager(
+          {
+            workspaceBasePath: this.config.manager.workspaceRoot,
+            repositoryCacheTimeoutMs: this.config.manager.repositoryCacheTimeoutMs,
+            gitOperationTimeoutMs: this.config.manager.gitOperationTimeoutMs,
+            minWorkers: this.config.manager.workerPool.minWorkers,
+            maxWorkers: this.config.manager.workerPool.maxWorkers,
+            workerRecoveryTimeoutMs: this.config.manager.workerPool.workerTimeoutMs
+          },
+          this.stateManager
+        );
+      }
       
       this.logger.info('Services initialized', { 
-        projectBoardService: 'GitHub Projects v2',
-        pullRequestService: 'GitHub',
-        gitService: 'GitService with Lock',
-        repositoryManager: 'RepositoryManager',
-        config: githubV2Config
+        projectBoardService: this.externalServices?.projectBoardService ? 'Injected' : 'GitHub Projects v2',
+        pullRequestService: this.externalServices?.pullRequestService ? 'Injected' : 'GitHub',
+        gitService: this.externalServices?.gitService ? 'Injected' : 'GitService with Lock',
+        repositoryManager: this.externalServices?.repositoryManager ? 'Injected' : 'RepositoryManager',
+        developerFactory: this.externalServices?.developerFactory ? 'Injected' : 'Default'
       });
 
       // 4. WorkspaceManager 초기화
@@ -161,7 +189,8 @@ export class AIDevTeamApp {
           logger: this.logger, 
           stateManager: this.stateManager,
           workspaceManager,
-          developerConfig: this.createDeveloperConfig(this.config.developer)
+          developerConfig: this.createDeveloperConfig(this.config.developer),
+          developerFactory
         }
       );
       this.logger.info('WorkerPoolManager and WorkspaceManager initialized');

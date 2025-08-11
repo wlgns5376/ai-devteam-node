@@ -19,6 +19,7 @@ interface WorkerPoolManagerDependencies {
   readonly stateManager: StateManager;
   readonly workspaceManager?: WorkspaceManagerInterface;
   readonly developerConfig: DeveloperConfig;
+  readonly developerFactory?: typeof DeveloperFactory;
 }
 
 export class WorkerPoolManager implements WorkerPoolManagerInterface {
@@ -479,7 +480,8 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
 
   private createWorkerInstance(worker: WorkerType): Worker {
     // 실제 Developer 인스턴스 생성
-    const developer = DeveloperFactory.create(
+    const factory = this.dependencies.developerFactory || DeveloperFactory;
+    const developer = factory.create(
       worker.developerType,
       this.dependencies.developerConfig,
       { logger: this.dependencies.logger }

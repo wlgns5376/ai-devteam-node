@@ -35,6 +35,19 @@ export interface SystemStatus {
   readonly uptime?: number;
 }
 
+// Import types for ExternalServices
+import type { ProjectBoardService } from './project-board.types';
+import type { PullRequestService } from './pull-request.types';
+
+// External Services for dependency injection
+export interface ExternalServices {
+  readonly projectBoardService?: ProjectBoardService;
+  readonly pullRequestService?: PullRequestService;
+  readonly gitService?: any; // GitService type
+  readonly repositoryManager?: any; // RepositoryManager type
+  readonly developerFactory?: any; // DeveloperFactory type
+}
+
 // Common utility types
 export type Result<T, E = Error> = {
   readonly success: true;
