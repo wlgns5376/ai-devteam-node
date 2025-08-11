@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { AIDevTeamApp, SystemStatus } from '../app';
+import { AIDevTeamApp } from '../app';
+import { SystemStatus } from '@/types';
 import { AppConfigLoader } from '../config/app-config';
 
 export function createCLI(): Command {
