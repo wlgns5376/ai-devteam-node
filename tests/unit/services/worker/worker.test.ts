@@ -197,7 +197,7 @@ describe('Worker', () => {
       };
     });
 
-    it('성공적인 작업 실행을 완료해야 한다', async () => {
+    it('성공적인 작업 실행을 완료한 후 리뷰 대기 상태가 되어야 한다', async () => {
       // Given: 성공적인 실행을 위한 Mock 설정
       await worker.assignTask(task);
       
@@ -228,10 +228,10 @@ describe('Worker', () => {
       // When: 작업 실행
       const result = await worker.startExecution();
 
-      // Then: 성공적인 실행 완료
+      // Then: PR 생성 완료 후 리뷰 대기 상태
       expect(result).toEqual(expectedResult);
-      expect(worker.getStatus()).toBe(WorkerStatus.IDLE);
-      expect(worker.getCurrentTask()).toBeNull();
+      expect(worker.getStatus()).toBe(WorkerStatus.WAITING); // PR 생성 완료, 리뷰 대기 중
+      expect(worker.getCurrentTask()).toEqual(task); // 워크플로우 완료까지 task 유지
       
       // 각 단계별 호출 확인
       expect(mockWorkspaceSetup.prepareWorkspace).toHaveBeenCalledWith(task);
