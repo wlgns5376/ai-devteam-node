@@ -138,13 +138,33 @@ export class WorkerTaskExecutor {
   }
 
   /**
-   * 대기 중인 Worker 처리 - 작업 시작
+   * 대기 중인 Worker 처리 - 작업 시작 또는 완료된 결과 확인
    */
   private async handleWaitingStatus(
     workerInstance: any,
     workerId: string,
     taskId: string
   ): Promise<WorkerExecutionResult> {
+    // 먼저 저장된 작업 결과가 있는지 확인 (완료된 작업의 경우)
+    const storedResult = this.workerPoolManager.getTaskResult(taskId);
+    if (storedResult) {
+      this.logger?.info('Found stored task result for waiting worker', {
+        workerId,
+        taskId,
+        success: storedResult.success,
+        pullRequestUrl: storedResult.pullRequestUrl
+      });
+      
+      // 결과 사용 후 정리
+      this.workerPoolManager.clearTaskResult(taskId);
+      
+      return {
+        success: storedResult.success,
+        ...(storedResult.pullRequestUrl && { pullRequestUrl: storedResult.pullRequestUrl })
+      };
+    }
+    
+    // 저장된 결과가 없으면 작업 시작
     this.logger?.info('Starting or restarting worker execution', {
       workerId,
       taskId
@@ -182,11 +202,32 @@ export class WorkerTaskExecutor {
    * 유휴 상태 Worker 처리 - 완료된 것으로 간주
    */
   private async handleIdleStatus(workerId: string, taskId: string): Promise<WorkerExecutionResult> {
-    this.logger?.info('Worker is idle, task may be completed', {
+    this.logger?.info('Worker is idle, checking for stored task result', {
       workerId,
       taskId
     });
-    return { success: true }; // 완료된 것으로 간주
+    
+    // 저장된 작업 결과 확인
+    const storedResult = this.workerPoolManager.getTaskResult(taskId);
+    if (storedResult) {
+      this.logger?.info('Found stored task result', {
+        workerId,
+        taskId,
+        success: storedResult.success,
+        pullRequestUrl: storedResult.pullRequestUrl
+      });
+      
+      // 결과 사용 후 정리
+      this.workerPoolManager.clearTaskResult(taskId);
+      
+      return {
+        success: storedResult.success,
+        ...(storedResult.pullRequestUrl && { pullRequestUrl: storedResult.pullRequestUrl })
+      };
+    }
+    
+    // 저장된 결과가 없으면 완료된 것으로 간주 (기본 동작)
+    return { success: true };
   }
 
   /**
@@ -229,11 +270,22 @@ export class WorkerTaskExecutor {
           success: result.success,
           pullRequestUrl: result.pullRequestUrl
         });
+        
+        // 완료된 작업 결과를 WorkerPoolManager에 저장
+        this.workerPoolManager.storeTaskResult(task.taskId, {
+          success: result.success,
+          pullRequestUrl: result.pullRequestUrl
+        });
       }).catch((error: any) => {
         this.logger?.error('Task execution failed', {
           taskId: task.taskId,
           workerId,
           error: error instanceof Error ? error.message : String(error)
+        });
+        
+        // 실패한 작업 결과도 저장
+        this.workerPoolManager.storeTaskResult(task.taskId, {
+          success: false
         });
       });
     }

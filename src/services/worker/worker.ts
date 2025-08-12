@@ -166,12 +166,16 @@ export class Worker implements WorkerInterface {
         }
       }
       
-      this.completeTask();
+      // 작업 수행은 완료되었지만 Worker는 여전히 할당된 상태로 유지
+      // Planner가 전체 워크플로우 완료를 확인한 후에 Worker를 해제함
+      this._status = WorkerStatus.WAITING; // 작업 완료 후 대기 상태로 변경
+      this.updateProgress(WorkerStage.TASK_COMPLETED, '작업 수행 완료, 워크플로우 대기 중');
 
       this.dependencies.logger.info('Task execution completed successfully', {
         workerId: this.id,
         taskId: task.taskId,
-        success: result.success
+        success: result.success,
+        note: 'Worker remains assigned until workflow completion'
       });
 
       return result;
