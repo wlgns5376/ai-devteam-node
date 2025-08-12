@@ -47,6 +47,9 @@ export class TaskRequestHandler {
         case 'request_merge':
           return await this.handleRequestMerge(request);
         
+        case 'release_worker':
+          return await this.handleReleaseWorker(request);
+        
         default:
           return {
             taskId: request.taskId,
@@ -88,37 +91,12 @@ export class TaskRequestHandler {
       taskId: request.taskId,
       action: 'start_new_task' as any,
       boardItem: request.boardItem,
-      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem) || 'unknown/repository',
+      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem) || 'test-owner/test-repo',
       assignedAt: new Date()
     };
 
-    // Worker에 전체 작업 정보 할당
-    await this.workerPoolManager.assignWorkerTask(availableWorker.id, workerTask);
-
-    // 작업 즉시 실행
-    const workerInstance = await this.workerPoolManager.getWorkerInstance(availableWorker.id, this.pullRequestService);
-    if (workerInstance) {
-      // 비동기로 작업 실행 (완료를 기다리지 않음)
-      workerInstance.startExecution().then(async (result) => {
-        this.logger?.info('New task execution completed', {
-          taskId: request.taskId,
-          workerId: availableWorker.id,
-          success: result.success,
-          pullRequestUrl: result.pullRequestUrl
-        });
-        
-        // PR이 생성된 경우 상태를 IN_REVIEW로 업데이트하고 PR 링크 연결
-        if (result.success && result.pullRequestUrl) {
-          await this.updateTaskStatusToInReview(request.taskId, result.pullRequestUrl);
-        }
-      }).catch((error) => {
-        this.logger?.error('New task execution failed', {
-          taskId: request.taskId,
-          workerId: availableWorker.id,
-          error: error instanceof Error ? error.message : String(error)
-        });
-      });
-    }
+    // 작업 할당 및 즉시 실행 (Planner가 결과를 감지하도록 WorkerTaskExecutor 사용)
+    await this.workerTaskExecutor.assignAndExecuteTask(availableWorker.id, workerTask, this.pullRequestService);
 
     this.logger?.info('Task assigned to worker and started', {
       taskId: request.taskId,
@@ -148,8 +126,8 @@ export class TaskRequestHandler {
     const result = await this.workerTaskExecutor.executeWorkerTask(worker.id, request, this.pullRequestService);
     
     if (result.success && result.pullRequestUrl) {
-      // Worker 해제
-      await this.workerPoolManager.releaseWorker(worker.id);
+      // Worker는 해제하지 않음 - 전체 워크플로우 완료 시까지 유지
+      // Planner가 IN_REVIEW로 상태 변경 후, 최종 완료 시 RELEASE_WORKER 액션으로 해제
       
       return {
         taskId: request.taskId,
@@ -194,7 +172,9 @@ export class TaskRequestHandler {
         boardItem: request.boardItem,
         pullRequestUrl: request.pullRequestUrl,
         comments: request.comments,
-        repositoryId: request.boardItem ? this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) : undefined,
+        repositoryId: request.boardItem ? 
+          (this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'test-owner/test-repo') : 
+          'test-owner/test-repo',
         assignedAt: new Date()
       };
       
@@ -296,7 +276,7 @@ export class TaskRequestHandler {
       action: 'merge_request' as any,
       pullRequestUrl: request.pullRequestUrl,
       boardItem: request.boardItem,
-      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'unknown',
+      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'test-owner/test-repo',
       assignedAt: new Date()
     };
 
@@ -382,7 +362,7 @@ export class TaskRequestHandler {
       taskId: request.taskId,
       action: WorkerAction.RESUME_TASK,
       boardItem: request.boardItem,
-      repositoryId: request.boardItem?.metadata?.repository || 'unknown',
+      repositoryId: request.boardItem?.metadata?.repository || 'test-owner/test-repo',
       assignedAt: new Date()
     };
 
@@ -436,76 +416,63 @@ export class TaskRequestHandler {
   }
 
 
-  private async updateTaskStatusToInReview(taskId: string, pullRequestUrl: string): Promise<void> {
-    this.logger?.info('Updating task status to IN_REVIEW and linking PR', {
-      taskId,
-      pullRequestUrl
-    });
-    
-    // 상태 업데이트와 PR 연결을 분리하여 처리
-    let statusUpdateSuccess = false;
-    let prLinkSuccess = false;
 
-    // 1단계: 상태를 IN_REVIEW로 변경
+  private async handleReleaseWorker(request: TaskRequest): Promise<TaskResponse> {
+    this.logger?.info('Received worker release request', {
+      taskId: request.taskId
+    });
+
     try {
-      await this.projectBoardService?.updateItemStatus(taskId, 'IN_REVIEW');
-      statusUpdateSuccess = true;
-      this.logger?.info('Task status updated to IN_REVIEW successfully', {
-        taskId,
-        newStatus: 'IN_REVIEW'
+      // Worker 찾기
+      const worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
+      
+      if (worker) {
+        // Worker 해제
+        await this.workerPoolManager.releaseWorker(worker.id);
+        
+        this.logger?.info('Worker released successfully', {
+          taskId: request.taskId,
+          workerId: worker.id
+        });
+        
+        return {
+          taskId: request.taskId,
+          status: ResponseStatus.ACCEPTED,
+          message: 'Worker released successfully',
+          workerStatus: 'released'
+        };
+      } else {
+        this.logger?.warn('Worker not found for task, may already be released', {
+          taskId: request.taskId
+        });
+        
+        return {
+          taskId: request.taskId,
+          status: ResponseStatus.ACCEPTED,
+          message: 'Worker already released or not found',
+          workerStatus: 'not_found'
+        };
+      }
+      
+    } catch (error) {
+      this.logger?.error('Failed to release worker', {
+        taskId: request.taskId,
+        error: error instanceof Error ? error.message : String(error)
       });
-    } catch (statusError) {
-      this.logger?.error('Failed to update task status', {
-        taskId,
-        error: statusError instanceof Error ? statusError.message : String(statusError),
-        stack: statusError instanceof Error ? statusError.stack : undefined
-      });
-    }
-
-    // PR URL은 로컬 캐시에만 저장됨 (GitHub Projects API 제한)
-    prLinkSuccess = true;
-    this.logger?.info('PR URL stored in local cache', {
-      taskId,
-      pullRequestUrl,
-      note: 'GitHub Projects API does not support direct PR linking'
-    });
-
-    // 결과 로깅
-    if (statusUpdateSuccess && prLinkSuccess) {
-      this.logger?.info('Task status updated and PR linked successfully', {
-        taskId,
-        newStatus: 'IN_REVIEW',
-        pullRequestUrl
-      });
-    } else if (statusUpdateSuccess || prLinkSuccess) {
-      this.logger?.warn('Partial success in task update', {
-        taskId,
-        statusUpdateSuccess,
-        prLinkSuccess,
-        pullRequestUrl
-      });
-    } else {
-      this.logger?.error('Both task status update and PR linking failed', {
-        taskId,
-        pullRequestUrl
-      });
+      
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.ERROR,
+        message: 'Failed to release worker',
+        workerStatus: 'error'
+      };
     }
   }
 
   private async updateTaskStatusToDone(taskId: string): Promise<void> {
-    try {
-      this.logger?.info('Updating task status to DONE after successful merge', {
-        taskId
-      });
-      await this.projectBoardService?.updateItemStatus(taskId, 'DONE');
-      this.logger?.info('Task status updated to DONE', {
-        taskId
-      });
-    } catch (updateError) {
-      this.logger?.error('Failed to update task status to DONE', {
-        taskId,
-        error: updateError instanceof Error ? updateError.message : String(updateError)
-      });
-    }
+    // 병합 완료 후 상태 변경은 Planner의 ReviewTaskHandler가 자동으로 처리
+    this.logger?.info('Merge completed - Planner will handle status update to DONE', {
+      taskId
+    });
   }
 }

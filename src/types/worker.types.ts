@@ -17,7 +17,8 @@ export enum WorkerStage {
   GENERATING_PROMPT = 'generating_prompt',
   EXECUTING_TASK = 'executing_task',
   PROCESSING_RESULT = 'processing_result',
-  COMPLETING_TASK = 'completing_task'
+  COMPLETING_TASK = 'completing_task',
+  TASK_COMPLETED = 'task_completed' // 작업 수행 완료, 워크플로우 대기
 }
 
 export interface Worker {

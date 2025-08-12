@@ -64,8 +64,7 @@ class E2ETestSystem {
     this.mockDeveloper = new MockDeveloper(developerConfig, { logger }, this.mockPullRequestService);
     this.mockDeveloperFactory = new MockDeveloperFactory(this.mockDeveloper);
     
-    // 테스트용 작업들을 사전에 추가
-    this.setupTestTasks();
+    // 테스트별로 필요한 작업만 추가하도록 변경 (기본 작업 미리 추가 안함)
     
     // 외부 서비스 주입 설정 (모든 외부 서비스 Mock으로 주입)
     const externalServices: ExternalServices = {
@@ -129,33 +128,25 @@ class E2ETestSystem {
     };
   }
 
-  private setupTestTasks(): void {
-    // 테스트에서 사용할 작업들을 미리 생성
-    const testTasks = [
+  private setupTestTasks(taskIds?: string[]): void {
+    // 기본 테스트 작업들 (전체 테스트에서 사용)
+    const defaultTestTasks = [
       'e2e-test-task-1',
-      // 'e2e-feedback-task',
-      // 'step-test-todo-progress',
-      // 'step-test-progress-review',
-      // 'step-test-review-done',
-      // 'concurrent-1',
-      // 'concurrent-2',
-      // 'concurrent-3',
-      // 'recovery-test-task',
-      // 'resilience-test-task',
-      // 'long-running-task',
-      // 'memory-test-0',
-      // 'memory-test-1',
-      // 'memory-test-2',
-      // 'memory-test-3',
-      // 'memory-test-4',
-      // 'error-1',
-      // 'error-2',
-      // 'error-3',
-      // 'recovery-after-errors'
+      'e2e-feedback-task'
     ];
+
+    // 특정 테스트에서 요청한 작업들이 있으면 해당 작업들만 추가
+    const testTasks = taskIds || defaultTestTasks;
 
     // Mock 서비스에 작업들을 미리 추가 (addTestTask 메서드 사용)
     testTasks.forEach(taskId => {
+      (this.mockProjectBoardService as any).addTestTask(taskId, 'test-board');
+    });
+  }
+
+  // 특정 테스트를 위한 작업 추가 메서드
+  addTestTasks(taskIds: string[]): void {
+    taskIds.forEach(taskId => {
       (this.mockProjectBoardService as any).addTestTask(taskId, 'test-board');
     });
   }
@@ -325,12 +316,20 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
       } catch (error) {
         // 이미 종료된 경우 무시
       }
-      // await system.cleanup();
+      await system.cleanup();
     }
   });
   
 
   describe('완전한 작업 생명주기', () => {
+    beforeEach(() => {
+      // 완전한 작업 생명주기 테스트에 필요한 작업들만 추가
+      system.addTestTasks([
+        'e2e-test-task-1',
+        'e2e-feedback-task'
+      ]);
+    });
+
     it('신규 작업부터 완료까지 전체 워크플로우를 처리해야 한다', async () => {
       // Given: 시스템 초기화 및 시작
       await system.initialize();
@@ -424,7 +423,7 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
     }, 30000);
 
     it('피드백이 있는 작업의 전체 생명주기를 처리해야 한다', async () => {
-      // Given: 시스템 초기화
+      // Given: 시스템 초기화 (beforeEach에서 이미 필요한 작업들 추가됨)
       await system.initialize();
       await system.start();
       await system.waitForSystemReady();
@@ -473,6 +472,15 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
   });
 
   describe('단계별 상태 전이 검증', () => {
+    beforeEach(() => {
+      // 단계별 전이 테스트에 필요한 작업들만 추가
+      system.addTestTasks([
+        'step-test-todo-progress',
+        'step-test-progress-review',
+        'step-test-review-done'
+      ]);
+    });
+
     it('TODO → IN_PROGRESS 전이를 정확히 처리해야 한다', async () => {
       // Given: 시스템 초기화
       await system.initialize();
@@ -556,6 +564,15 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
   });
 
   describe('동시 작업 처리', () => {
+    beforeEach(() => {
+      // 동시 작업 테스트에 필요한 작업들만 추가
+      system.addTestTasks([
+        'concurrent-1',
+        'concurrent-2',
+        'concurrent-3'
+      ]);
+    });
+
     it('여러 작업을 동시에 처리해야 한다', async () => {
       // Given: 시스템 초기화 및 여러 작업
       await system.initialize();
@@ -606,6 +623,14 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
   });
 
   describe('시스템 복구 및 안정성', () => {
+    beforeEach(() => {
+      // 시스템 복구 테스트에 필요한 작업들만 추가
+      system.addTestTasks([
+        'recovery-test-task',
+        'resilience-test-task'
+      ]);
+    });
+
     it('Worker 장애 발생 시 자동 복구해야 한다', async () => {
       // Given: 시스템 초기화
       await system.initialize();
@@ -671,6 +696,13 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
   });
 
   describe('Graceful Shutdown 통합 테스트', () => {
+    beforeEach(() => {
+      // Graceful shutdown 테스트에 필요한 작업들만 추가
+      system.addTestTasks([
+        'long-running-task'
+      ]);
+    });
+
     it('실행 중인 작업이 있을 때 안전하게 종료해야 한다', async () => {
       // Given: 시스템 초기화 및 작업 시작
       await system.initialize();
@@ -703,6 +735,17 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
   });
 
   describe('시스템 성능 및 리소스 관리', () => {
+    beforeEach(() => {
+      // 성능 테스트에 필요한 작업들만 추가
+      system.addTestTasks([
+        'memory-test-0',
+        'memory-test-1',
+        'memory-test-2',
+        'memory-test-3',
+        'memory-test-4'
+      ]);
+    });
+
     it('메모리 누수 없이 장시간 동작해야 한다', async () => {
       // Given: 시스템 초기화
       await system.initialize();
@@ -768,6 +811,16 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
   });
 
   describe('에러 처리 및 복구', () => {
+    beforeEach(() => {
+      // 에러 처리 테스트에 필요한 작업들만 추가
+      system.addTestTasks([
+        'error-1',
+        'error-2',
+        'error-3',
+        'recovery-after-errors'
+      ]);
+    });
+
     it('연속된 에러 상황에서도 시스템이 안정해야 한다', async () => {
       // Given: 시스템 초기화
       await system.initialize();

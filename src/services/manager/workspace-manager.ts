@@ -156,6 +156,15 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
 
   async setupClaudeLocal(workspaceInfo: WorkspaceInfo): Promise<void> {
     try {
+      // 워크스페이스 디렉토리가 존재하는지 먼저 확인하고, 없으면 생성
+      await fs.access(workspaceInfo.workspaceDir).catch(async () => {
+        await fs.mkdir(workspaceInfo.workspaceDir, { recursive: true });
+        this.dependencies.logger.info('Created missing workspace directory for CLAUDE.local.md', {
+          taskId: workspaceInfo.taskId,
+          workspaceDir: workspaceInfo.workspaceDir
+        });
+      });
+
       const claudeLocalContent = this.generateClaudeLocalContent(workspaceInfo);
       
       await fs.writeFile(workspaceInfo.claudeLocalPath, claudeLocalContent, 'utf-8');

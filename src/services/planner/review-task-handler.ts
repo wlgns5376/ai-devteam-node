@@ -128,6 +128,9 @@ export class ReviewTaskHandler {
     // 완료된 작업을 활성 작업에서 제거
     this.workflowStateManager.removeActiveTask(item.id);
     
+    // Worker 해제 요청
+    await this.releaseWorker(item.id);
+    
     this.logger.info('Task completed (already merged)', {
       taskId: item.id,
       prUrl
@@ -173,6 +176,9 @@ export class ReviewTaskHandler {
       // 병합이 완료되면 DONE으로 변경
       await this.dependencies.projectBoardService.updateItemStatus(item.id, 'DONE');
       this.workflowStateManager.removeActiveTask(item.id);
+      
+      // Worker 해제 요청
+      await this.releaseWorker(item.id);
       
       this.logger.info('Merge completed successfully', {
         taskId: item.id,
@@ -289,6 +295,35 @@ export class ReviewTaskHandler {
         response.message || 'Feedback processing failed', 
         { taskId: item.id }
       );
+    }
+  }
+
+  /**
+   * Worker 해제 요청
+   */
+  private async releaseWorker(taskId: string): Promise<void> {
+    try {
+      const request: TaskRequest = {
+        taskId,
+        action: TaskAction.RELEASE_WORKER
+      };
+
+      const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
+      
+      if (response.status === ResponseStatus.ACCEPTED) {
+        this.logger.info('Worker released successfully', { taskId });
+      } else {
+        this.logger.warn('Worker release request failed', { 
+          taskId, 
+          status: response.status,
+          message: response.message 
+        });
+      }
+    } catch (error) {
+      this.logger.error('Failed to release worker', {
+        taskId,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 

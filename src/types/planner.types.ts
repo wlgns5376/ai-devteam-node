@@ -32,7 +32,8 @@ export enum TaskAction {
   CHECK_STATUS = 'check_status', 
   PROCESS_FEEDBACK = 'process_feedback',
   REQUEST_MERGE = 'request_merge',
-  RESUME_TASK = 'resume_task'
+  RESUME_TASK = 'resume_task',
+  RELEASE_WORKER = 'release_worker' // 워크플로우 완료 시 Worker 해제
 }
 
 export enum ResponseStatus {

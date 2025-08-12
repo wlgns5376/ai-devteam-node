@@ -124,11 +124,10 @@ export class ServiceFactory {
       maxWorkers: number;
       workerRecoveryTimeoutMs: number;
     },
-    stateManager: StateManager
+    stateManager: StateManager,
+    gitService: GitServiceInterface
   ): RepositoryManagerInterface {
     if (!this.repositoryManager) {
-      const gitService = this.createGitService(config.gitOperationTimeoutMs);
-      
       this.repositoryManager = new RepositoryManager(
         config,
         {

@@ -25,6 +25,7 @@ interface WorkerPoolManagerDependencies {
 export class WorkerPoolManager implements WorkerPoolManagerInterface {
   private workers: Map<string, WorkerType> = new Map();
   private workerInstances: Map<string, Worker> = new Map();
+  private completedTaskResults: Map<string, { success: boolean; pullRequestUrl?: string; completedAt: Date }> = new Map();
   private isInitialized = false;
   private errors: ManagerError[] = [];
   private cleanupTimer: NodeJS.Timeout | null = null;
@@ -515,5 +516,35 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 8);
     return `worker-${timestamp}-${random}`;
+  }
+
+  /**
+   * 완료된 작업 결과 저장
+   */
+  storeTaskResult(taskId: string, result: { success: boolean; pullRequestUrl?: string }): void {
+    this.completedTaskResults.set(taskId, {
+      ...result,
+      completedAt: new Date()
+    });
+    
+    this.dependencies.logger.debug('Task result stored', {
+      taskId,
+      success: result.success,
+      pullRequestUrl: result.pullRequestUrl
+    });
+  }
+
+  /**
+   * 완료된 작업 결과 조회
+   */
+  getTaskResult(taskId: string): { success: boolean; pullRequestUrl?: string; completedAt: Date } | null {
+    return this.completedTaskResults.get(taskId) || null;
+  }
+
+  /**
+   * 완료된 작업 결과 제거
+   */
+  clearTaskResult(taskId: string): void {
+    this.completedTaskResults.delete(taskId);
   }
 }

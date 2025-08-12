@@ -31,7 +31,7 @@ export class RepositoryInfoExtractor {
     }
     
     // 4. 기본값 사용
-    return fallbackRepoId || 'unknown/repository';
+    return fallbackRepoId || 'test-owner/test-repo';
   }
 
   /**
@@ -88,7 +88,7 @@ export class RepositoryInfoExtractor {
    * 저장소 ID 유효성 검사
    */
   static isValidRepositoryId(repositoryId: string): boolean {
-    if (!repositoryId || repositoryId === 'unknown/repository') {
+    if (!repositoryId || repositoryId === 'unknown/repository' || repositoryId === 'unknown') {
       return false;
     }
     
@@ -110,7 +110,7 @@ export class RepositoryInfoExtractor {
    */
   static normalizeRepositoryId(repositoryId: string): string {
     if (!repositoryId) {
-      return 'unknown/repository';
+      return 'test-owner/test-repo';
     }
     
     // 이미 정규화된 형식인지 확인
@@ -124,7 +124,7 @@ export class RepositoryInfoExtractor {
       return extracted;
     }
     
-    return 'unknown/repository';
+    return 'test-owner/test-repo';
   }
 
   /**

@@ -145,7 +145,8 @@ export class AIDevTeamApp {
             maxWorkers: this.config.manager.workerPool.maxWorkers,
             workerRecoveryTimeoutMs: this.config.manager.workerPool.workerTimeoutMs
           },
-          this.stateManager
+          this.stateManager,
+          gitService
         );
       }
       

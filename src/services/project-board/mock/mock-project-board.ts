@@ -172,7 +172,8 @@ export class MockProjectBoardService implements ProjectBoardService {
       pullRequestUrls: [],
       metadata: {
         testTask: true,
-        createdBy: 'integration-test'
+        createdBy: 'integration-test',
+        repository: 'test-owner/test-repo'
       }
     };
 
