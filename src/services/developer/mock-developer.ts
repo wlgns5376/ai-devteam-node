@@ -9,6 +9,8 @@ import {
   DeveloperErrorCode,
   Command
 } from '@/types/developer.types';
+import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
+import { ReviewState } from '@/types';
 
 export class MockDeveloper implements DeveloperInterface {
   readonly type: DeveloperType = 'mock';
@@ -18,7 +20,8 @@ export class MockDeveloper implements DeveloperInterface {
 
   constructor(
     private readonly config: DeveloperConfig,
-    private readonly dependencies: DeveloperDependencies
+    private readonly dependencies: DeveloperDependencies,
+    private readonly mockPullRequestService?: MockPullRequestService
   ) {
     this.currentScenario = config.mock?.defaultScenario || MockScenario.SUCCESS_WITH_PR;
     this.timeoutMs = config.timeoutMs;
@@ -88,6 +91,10 @@ export class MockDeveloper implements DeveloperInterface {
     const lowerPrompt = prompt.toLowerCase();
 
     // 프롬프트 기반 시나리오 선택
+    if (lowerPrompt.includes('merge') || lowerPrompt.includes('병합')) {
+      return MockScenario.SUCCESS_CODE_ONLY; // merge는 PR 없이 코드만 성공
+    }
+    
     if (lowerPrompt.includes('pr') || lowerPrompt.includes('pull request')) {
       return MockScenario.SUCCESS_WITH_PR;
     }
@@ -114,7 +121,7 @@ export class MockDeveloper implements DeveloperInterface {
   ): Promise<DeveloperOutput> {
     switch (scenario) {
       case MockScenario.SUCCESS_WITH_PR:
-        return this.generateSuccessWithPr(prompt, workspaceDir);
+        return await this.generateSuccessWithPr(prompt, workspaceDir);
       
       case MockScenario.SUCCESS_CODE_ONLY:
         return this.generateSuccessCodeOnly(prompt, workspaceDir);
@@ -144,11 +151,16 @@ export class MockDeveloper implements DeveloperInterface {
     }
   }
 
-  private generateSuccessWithPr(prompt: string, workspaceDir: string): DeveloperOutput {
+  private async generateSuccessWithPr(prompt: string, workspaceDir: string): Promise<DeveloperOutput> {
     const branchName = 'feature/user-auth';
     const commitHash = this.generateCommitHash();
     const prNumber = Math.floor(Math.random() * 1000) + 1;
-    const prLink = `https://github.com/user/repo/pull/${prNumber}`;
+    const prLink = `https://github.com/test-owner/test-repo/pull/${prNumber}`;
+
+    // MockPullRequestService에 PR 등록 (주입된 경우에만)
+    if (this.mockPullRequestService) {
+      await this.mockPullRequestService.setPullRequestState(prLink, ReviewState.CHANGES_REQUESTED);
+    }
 
     const commands: Command[] = [
       {
@@ -203,21 +215,52 @@ export class MockDeveloper implements DeveloperInterface {
 
   private generateSuccessCodeOnly(prompt: string, workspaceDir: string): DeveloperOutput {
     const commitHash = this.generateCommitHash();
-
-    const commands: Command[] = [
-      {
-        command: 'git add .',
-        output: '',
-        exitCode: 0,
-        timestamp: new Date()
-      },
-      {
-        command: 'git commit -m "Refactor code structure"',
-        output: `[main ${commitHash.substring(0, 7)}] Refactor code structure\n 5 files changed, 80 insertions(+), 120 deletions(-)`,
-        exitCode: 0,
-        timestamp: new Date()
-      }
-    ];
+    const lowerPrompt = prompt.toLowerCase();
+    
+    // merge 작업인지 확인
+    const isMergeOperation = lowerPrompt.includes('merge') || lowerPrompt.includes('병합');
+    
+    const commands: Command[] = [];
+    
+    if (isMergeOperation) {
+      // merge 작업 시뮬레이션
+      commands.push(
+        {
+          command: 'git checkout main',
+          output: 'Switched to branch \'main\'',
+          exitCode: 0,
+          timestamp: new Date()
+        },
+        {
+          command: 'git merge --no-ff feature/user-auth',
+          output: `Merge made by the 'recursive' strategy.\n 3 files changed, 150 insertions(+)`,
+          exitCode: 0,
+          timestamp: new Date()
+        },
+        {
+          command: 'git push origin main',
+          output: 'Everything up-to-date',
+          exitCode: 0,
+          timestamp: new Date()
+        }
+      );
+    } else {
+      // 일반 코드 수정 작업
+      commands.push(
+        {
+          command: 'git add .',
+          output: '',
+          exitCode: 0,
+          timestamp: new Date()
+        },
+        {
+          command: 'git commit -m "Refactor code structure"',
+          output: `[main ${commitHash.substring(0, 7)}] Refactor code structure\n 5 files changed, 80 insertions(+), 120 deletions(-)`,
+          exitCode: 0,
+          timestamp: new Date()
+        }
+      );
+    }
 
     const rawOutput = this.generateRawOutput(commands, undefined, commitHash);
 
@@ -228,10 +271,9 @@ export class MockDeveloper implements DeveloperInterface {
         commitHash
       },
       executedCommands: commands,
-      modifiedFiles: [
-        'src/services/user.service.ts',
-        'src/utils/helpers.ts'
-      ],
+      modifiedFiles: isMergeOperation 
+        ? ['src/auth/auth.service.ts', 'src/auth/auth.controller.ts', 'src/auth/auth.module.ts']
+        : ['src/services/user.service.ts', 'src/utils/helpers.ts'],
       metadata: {
         startTime: new Date(),
         endTime: new Date(),
@@ -253,7 +295,7 @@ export class MockDeveloper implements DeveloperInterface {
     }
 
     if (prLink) {
-      output += `PR이 생성되었습니다: ${prLink}\n`;
+      output += `생성된 PR: ${prLink}\n`;
     }
 
     output += '\n작업을 완료했습니다!';
