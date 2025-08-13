@@ -291,7 +291,14 @@ describe('Worker', () => {
 
   describe('다양한 작업 유형', () => {
     it('재개 작업을 처리할 수 있어야 한다', async () => {
-      // Given: 재개 작업
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 재개 작업으로 전환
+      const initialTask: WorkerTask = {
+        taskId: 'task-resume',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const resumeTask: WorkerTask = {
         taskId: 'task-resume',
         action: WorkerAction.RESUME_TASK,
@@ -309,6 +316,9 @@ describe('Worker', () => {
         createdAt: new Date()
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 재개 작업으로 변경
       await worker.assignTask(resumeTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
@@ -343,7 +353,14 @@ describe('Worker', () => {
     });
 
     it('피드백 처리 작업을 처리할 수 있어야 한다', async () => {
-      // Given: 피드백 처리 작업
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 피드백 처리 작업으로 전환
+      const initialTask: WorkerTask = {
+        taskId: 'task-feedback',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const feedbackTask: WorkerTask = {
         taskId: 'task-feedback',
         action: WorkerAction.PROCESS_FEEDBACK,
@@ -354,6 +371,9 @@ describe('Worker', () => {
         ]
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 피드백 처리 작업으로 변경
       await worker.assignTask(feedbackTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue({} as WorkspaceInfo);
@@ -390,7 +410,14 @@ describe('Worker', () => {
     });
 
     it('병합 작업 성공 시 워크스페이스를 정리해야 한다', async () => {
-      // Given: 병합 작업
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 병합 작업으로 전환
+      const initialTask: WorkerTask = {
+        taskId: 'task-merge',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const mergeTask: WorkerTask = {
         taskId: 'task-merge',
         action: WorkerAction.MERGE_REQUEST,
@@ -409,6 +436,9 @@ describe('Worker', () => {
         createdAt: new Date()
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 병합 작업으로 변경
       await worker.assignTask(mergeTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
@@ -449,7 +479,14 @@ describe('Worker', () => {
     });
 
     it('병합 작업 실패 시 워크스페이스 정리를 하지 않아야 한다', async () => {
-      // Given: 병합 작업이 실패하는 경우
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 병합 작업으로 전환 (실패 케이스)
+      const initialTask: WorkerTask = {
+        taskId: 'task-merge-fail',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const mergeTask: WorkerTask = {
         taskId: 'task-merge-fail',
         action: WorkerAction.MERGE_REQUEST,
@@ -468,6 +505,9 @@ describe('Worker', () => {
         createdAt: new Date()
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 병합 작업으로 변경
       await worker.assignTask(mergeTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
@@ -502,7 +542,14 @@ describe('Worker', () => {
     });
 
     it('병합 작업 성공 후 워크스페이스 정리 실패 시 경고 로그를 남겨야 한다', async () => {
-      // Given: 병합 성공 후 워크스페이스 정리 실패
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 병합 작업으로 전환 (정리 실패 케이스)
+      const initialTask: WorkerTask = {
+        taskId: 'task-merge-cleanup-fail',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const mergeTask: WorkerTask = {
         taskId: 'task-merge-cleanup-fail',
         action: WorkerAction.MERGE_REQUEST,
@@ -521,6 +568,9 @@ describe('Worker', () => {
         createdAt: new Date()
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 병합 작업으로 변경
       await worker.assignTask(mergeTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
