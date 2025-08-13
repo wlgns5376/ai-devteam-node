@@ -134,7 +134,7 @@ export class TaskRequestHandler {
         status: ResponseStatus.COMPLETED,
         message: 'Task completed successfully',
         pullRequestUrl: result.pullRequestUrl,
-        workerStatus: 'completed'
+        workerStatus: 'waiting_for_review'
       };
     } else {
       return {
@@ -381,13 +381,14 @@ export class TaskRequestHandler {
         });
 
         if (result.success && result.pullRequestUrl) {
-          await this.workerPoolManager.releaseWorker(availableWorker.id);
+          // Worker는 해제하지 않음 - 피드백 처리를 위해 WAITING 상태로 유지
+          // Planner가 IN_REVIEW로 상태 변경 후, 최종 완료 시 RELEASE_WORKER 액션으로 해제
           return {
             taskId: request.taskId,
             status: ResponseStatus.COMPLETED,
             message: 'Task completed after reassignment',
             pullRequestUrl: result.pullRequestUrl,
-            workerStatus: 'completed'
+            workerStatus: 'waiting_for_review'
           };
         }
       }
