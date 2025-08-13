@@ -14,7 +14,7 @@ export interface PlannerServiceConfig {
 
 export interface PlannerStatus {
   readonly isRunning: boolean;
-  readonly lastSyncTime?: Date | undefined;
+  readonly lastSyncTime?: Date | undefined; // 레거시 호환성을 위해 유지, 실제로는 작업별로 관리됨
   readonly totalTasksProcessed: number;
   readonly activeTasks: number;
   readonly errors: PlannerError[];
@@ -66,7 +66,7 @@ export interface ManagerCommunicator {
 }
 
 export interface WorkflowState {
-  lastSyncTime?: Date | undefined;
+  lastSyncTime?: Date | undefined; // 레거시 호환성을 위해 유지, 실제로는 작업별로 관리됨
   processedTasks: Set<string>;
   processedComments: Set<string>;
   activeTasks: Map<string, TaskInfo>;

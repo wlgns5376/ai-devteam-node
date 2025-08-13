@@ -4,7 +4,7 @@ import { Task, TaskStatus, Worker, WorkerStatus, WorkspaceInfo } from '@/types';
 import { RepositoryState } from '@/types/manager.types';
 
 export interface PlannerState {
-  lastSyncTime?: Date;
+  // 기존 lastSyncTime은 제거됨 - 이제 Worker의 WorkerTask에서 작업별로 관리
 }
 
 export class StateManager {
@@ -179,6 +179,41 @@ export class StateManager {
     });
   }
 
+  // Worker Task lastSyncTime 관리 메서드들
+  async getWorkerByTaskId(taskId: string): Promise<Worker | null> {
+    for (const worker of this.workers.values()) {
+      if (worker.currentTask?.taskId === taskId) {
+        return worker;
+      }
+    }
+    return null;
+  }
+
+  async getTaskLastSyncTime(taskId: string): Promise<Date | null> {
+    const worker = await this.getWorkerByTaskId(taskId);
+    return worker?.currentTask?.lastSyncTime || null;
+  }
+
+  async updateTaskLastSyncTime(taskId: string, lastSyncTime: Date): Promise<void> {
+    await this.withLock(async () => {
+      for (const [workerId, worker] of this.workers.entries()) {
+        if (worker.currentTask?.taskId === taskId) {
+          const updatedWorker: Worker = {
+            ...worker,
+            currentTask: {
+              ...worker.currentTask,
+              lastSyncTime
+            },
+            lastActiveAt: new Date()
+          };
+          this.workers.set(workerId, updatedWorker);
+          await this.persistWorkers();
+          break;
+        }
+      }
+    });
+  }
+
   // Workspace 관리 메서드들
   async saveWorkspaceInfo(workspaceInfo: WorkspaceInfo): Promise<void> {
     await this.withLock(async () => {
@@ -237,8 +272,9 @@ export class StateManager {
     return { ...this.plannerState };
   }
 
-  async updateLastSyncTime(time: Date): Promise<void> {
-    await this.savePlannerState({ lastSyncTime: time });
+  // 레거시 메서드 - 이제 작업별 lastSyncTime은 Worker에서 관리됨
+  async updateLastSyncTime(_time: Date): Promise<void> {
+    // 호환성을 위해 빈 구현으로 유지
   }
 
 

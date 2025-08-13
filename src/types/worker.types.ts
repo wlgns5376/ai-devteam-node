@@ -56,6 +56,7 @@ export interface WorkerTask {
   readonly assignedAt: Date;
   readonly repositoryId: string;
   readonly pullRequestUrl?: string; // For merge request actions
+  readonly lastSyncTime?: Date; // 이 작업에 대한 마지막 동기화 시간 (PR 코멘트 확인 시점)
 }
 
 export interface WorkerProgress {

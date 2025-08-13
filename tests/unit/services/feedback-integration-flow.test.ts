@@ -99,11 +99,22 @@ describe('피드백 처리 통합 플로우 테스트', () => {
         activeTasks: []
       }),
       addProcessedCommentsToTask: jest.fn().mockResolvedValue(undefined),
+      // 새로운 작업별 lastSyncTime 메서드들 (모든 작업이 새 작업으로 처리되도록 null 반환)
+      getTaskLastSyncTime: jest.fn().mockResolvedValue(null), // 기본적으로 null 반환 (7일 전 기본값 사용)
+      updateTaskLastSyncTime: jest.fn().mockResolvedValue(undefined),
+      getWorkerByTaskId: jest.fn().mockResolvedValue(null),
+      // 레거시 호환성 메서드
       setPlannerLastSyncTime: function(time: Date) {
         this.getPlannerState = jest.fn().mockResolvedValue({
           lastSyncTime: time,
           processedTasks: [],
           activeTasks: []
+        });
+      },
+      // 작업별 lastSyncTime 설정을 위한 헬퍼 메서드
+      setTaskLastSyncTime: function(taskId: string, time: Date | null) {
+        this.getTaskLastSyncTime = jest.fn().mockImplementation((id: string) => {
+          return Promise.resolve(id === taskId ? time : null);
         });
       }
     } as any;
@@ -143,9 +154,8 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       // PR을 CHANGES_REQUESTED 상태로 설정
       await mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/1', ReviewState.CHANGES_REQUESTED);
       
-      // lastSyncTime을 과거로 설정하여 새로운 코멘트가 감지되도록 함
-      const pastTime = new Date(Date.now() - 60 * 60 * 1000); // 1시간 전
-      mockStateManager.setPlannerLastSyncTime(pastTime);
+      // 작업별 lastSyncTime을 null로 설정하여 새로운 작업으로 처리 (7일 전 기본값 사용)
+      mockStateManager.setTaskLastSyncTime('board-1-item-2', null);
       
       // 새로운 코멘트 추가 (현재 시간)
       const newComment: PullRequestComment = {
@@ -184,9 +194,8 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       // PR을 CHANGES_REQUESTED 상태로 설정 (setPullRequestState를 사용)
       await mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/2', ReviewState.CHANGES_REQUESTED);
       
-      // lastSyncTime을 과거로 설정
-      const pastTime = new Date(Date.now() - 60 * 60 * 1000);
-      mockStateManager.setPlannerLastSyncTime(pastTime);
+      // 작업별 lastSyncTime을 null로 설정 (7일 전 기본값 사용)
+      mockStateManager.setTaskLastSyncTime('board-1-item-3', null);
       
       const comments: PullRequestComment[] = [
         {
@@ -241,9 +250,8 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       
       await mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/3', ReviewState.CHANGES_REQUESTED);
 
-      // lastSyncTime을 과거로 설정하여 모든 코멘트가 "새로운" 것으로 간주되도록 함
-      const pastTime = new Date(Date.now() - 2 * 86400000); // 2일 전
-      mockStateManager.setPlannerLastSyncTime(pastTime);
+      // 작업별 lastSyncTime을 null로 설정 (7일 전 기본값 사용)
+      mockStateManager.setTaskLastSyncTime('board-1-item-4', null);
 
       // 이전 코멘트 (이미 처리됨으로 표시)
       const oldComment: PullRequestComment = {

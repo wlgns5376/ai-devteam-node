@@ -74,7 +74,11 @@ describe('PR 승인 후 병합 시나리오', () => {
         processedTasks: [],
         activeTasks: []
       }),
-      addProcessedCommentsToTask: jest.fn().mockResolvedValue(undefined)
+      addProcessedCommentsToTask: jest.fn().mockResolvedValue(undefined),
+      // 새로운 작업별 lastSyncTime 메서드들
+      getTaskLastSyncTime: jest.fn().mockResolvedValue(null),
+      updateTaskLastSyncTime: jest.fn().mockResolvedValue(undefined),
+      getWorkerByTaskId: jest.fn().mockResolvedValue(null)
     } as any;
     
     mockLogger = Logger.createConsoleLogger();

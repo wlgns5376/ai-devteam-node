@@ -5,7 +5,6 @@ import {
   TaskRequest,
   ResponseStatus,
   PullRequestState,
-  ReviewState,
   PullRequestComment
 } from '@/types';
 import { WorkflowStateManager } from './workflow-state-manager';
@@ -212,25 +211,41 @@ export class ReviewTaskHandler {
       prUrl
     });
 
-    // 리뷰 상태와 신규 코멘트 확인
+    // 리뷰 상태 정보 확인 (로깅 및 분석용)
     const reviews = await this.dependencies.pullRequestService.getReviews(repoId, prNumber);
-    const hasChangesRequested = reviews.some((review: any) => review.state === ReviewState.CHANGES_REQUESTED);
     
-    if (!hasChangesRequested) {
-      this.logger.debug('No changes requested, skipping feedback processing', {
-        taskId: item.id
-      });
-      return;
-    }
+    this.logger.debug('Review status analysis', {
+      taskId: item.id,
+      reviewCount: reviews.length,
+      reviewStates: reviews.map((r: any) => ({ author: r.author, state: r.state, submittedAt: r.submittedAt }))
+    });
 
-    // StateManager에서 lastSyncTime 가져오기 (없으면 7일 전부터 확인)
-    const plannerState = await this.dependencies.stateManager.getPlannerState();
-    const since = plannerState.lastSyncTime || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    // PR 상태와 상관없이 항상 코멘트 확인
+    this.logger.debug('Checking for comments regardless of PR approval status', {
+      taskId: item.id,
+      prUrl
+    });
+
+    // 작업별 lastSyncTime 가져오기 (Worker의 currentTask에서 조회)
+    const taskLastSyncTime = await this.dependencies.stateManager.getTaskLastSyncTime(item.id);
+    const since = taskLastSyncTime || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    
+    this.logger.debug('Using sync time for comment filtering', {
+      taskId: item.id,
+      lastSyncTime: since.toISOString(),
+      syncTimeSource: taskLastSyncTime ? 'worker_task_sync_time' : 'default_7_days_ago',
+      taskLastSyncTime: taskLastSyncTime?.toISOString()
+    });
     
     // 설정에서 필터링 옵션 가져오기 (환경변수 우선)
     const filterOptions = this.config.pullRequestFilter || {
       excludeAuthor: true, // 기본값
     };
+    
+    this.logger.debug('Comment filter options', {
+      taskId: item.id,
+      filterOptions
+    });
     
     const newComments = await this.dependencies.pullRequestService.getNewComments(
       repoId, 
@@ -239,8 +254,29 @@ export class ReviewTaskHandler {
       filterOptions
     );
 
+    this.logger.debug('Comment check result', {
+      taskId: item.id,
+      since: since.toISOString(),
+      newCommentCount: newComments.length,
+      commentDetails: newComments.map((c: PullRequestComment) => ({
+        id: c.id,
+        author: c.author,
+        createdAt: c.createdAt.toISOString(),
+        type: c.metadata?.type
+      }))
+    });
+
     if (newComments.length > 0) {
+      this.logger.info('Found new comments for processing', {
+        taskId: item.id,
+        commentCount: newComments.length
+      });
       await this.handleNewComments(item, prUrl, newComments);
+    } else {
+      this.logger.debug('No new comments found since last sync', {
+        taskId: item.id,
+        lastSyncTime: since.toISOString()
+      });
     }
   }
 
@@ -269,9 +305,14 @@ export class ReviewTaskHandler {
       const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
       await this.dependencies.stateManager.addProcessedCommentsToTask(item.id, commentIds);
       
+      // 작업별 lastSyncTime 업데이트
+      const currentTime = new Date();
+      await this.dependencies.stateManager.updateTaskLastSyncTime(item.id, currentTime);
+      
       this.logger.info('Feedback processed', {
         taskId: item.id,
-        commentCount: newComments.length
+        commentCount: newComments.length,
+        updatedLastSyncTime: currentTime.toISOString()
       });
     } else if (response.status === ResponseStatus.COMPLETED && response.pullRequestUrl) {
       // 피드백 처리 완료 시 새로운 PR URL 추가
@@ -281,9 +322,14 @@ export class ReviewTaskHandler {
       const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
       await this.dependencies.stateManager.addProcessedCommentsToTask(item.id, commentIds);
       
+      // 작업별 lastSyncTime 업데이트
+      const currentTime = new Date();
+      await this.dependencies.stateManager.updateTaskLastSyncTime(item.id, currentTime);
+      
       this.logger.info('Feedback processing completed with new PR', {
         taskId: item.id,
-        newPullRequestUrl: response.pullRequestUrl
+        newPullRequestUrl: response.pullRequestUrl,
+        updatedLastSyncTime: currentTime.toISOString()
       });
     } else if (response.status === ResponseStatus.ERROR) {
       this.logger.error('Feedback processing failed', {
