@@ -187,6 +187,7 @@ export class TaskRequestHandler {
       const feedbackTask = {
         ...worker.currentTask,
         action: 'process_feedback' as any,
+        pullRequestUrl: request.pullRequestUrl,
         comments: request.comments,
         assignedAt: new Date()
       };

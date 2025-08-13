@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 
 interface WorkspaceSetupDependencies {
   readonly logger: Logger;
-  readonly workspaceManager: any; // WorkspaceManager interface
+  readonly workspaceManager: any; // WorkspaceManager interface with isWorktreeValid method
 }
 
 export class WorkspaceSetup implements WorkspaceSetupInterface {
@@ -91,7 +91,7 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
 
   async validateEnvironment(workspaceInfo: WorkspaceInfo): Promise<boolean> {
     try {
-      // 워크스페이스 디렉토리 존재 확인
+      // 기본 디렉토리 존재 확인
       await fs.access(workspaceInfo.workspaceDir);
       
       // 디렉토리인지 확인
@@ -102,6 +102,18 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
 
       // CLAUDE.local.md 파일 존재 확인
       await fs.access(workspaceInfo.claudeLocalPath);
+
+      // WorkspaceManager의 isWorktreeValid를 사용하여 Git worktree 상태 검증
+      if (this.dependencies.workspaceManager && typeof this.dependencies.workspaceManager.isWorktreeValid === 'function') {
+        const isWorktreeValid = await this.dependencies.workspaceManager.isWorktreeValid(workspaceInfo);
+        if (!isWorktreeValid) {
+          this.dependencies.logger.warn('Workspace environment validation failed', {
+            taskId: workspaceInfo.taskId,
+            reason: 'Invalid Git worktree'
+          });
+          return false;
+        }
+      }
 
       this.dependencies.logger.debug('Workspace environment validation passed', {
         taskId: workspaceInfo.taskId

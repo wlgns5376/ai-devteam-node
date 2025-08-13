@@ -381,7 +381,7 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
   /**
    * 워크스페이스 디렉토리가 유효한 Git worktree인지 확인합니다.
    */
-  private async isWorktreeValid(workspaceInfo: WorkspaceInfo): Promise<boolean> {
+  async isWorktreeValid(workspaceInfo: WorkspaceInfo): Promise<boolean> {
     try {
       // 디렉토리 존재 확인
       const directoryExists = await this.checkDirectoryExists(workspaceInfo.workspaceDir);
