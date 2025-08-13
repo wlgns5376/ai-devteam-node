@@ -256,24 +256,22 @@ describe('AIDevTeamApp - Feedback Handling', () => {
       mockWorkerPoolManager.getWorkerByTaskId.mockResolvedValue(worker);
       mockWorkerPoolManager.releaseWorker.mockResolvedValue(undefined);
 
-      // WorkerTaskExecutor mock 설정
+      // TaskRequestHandler 내부의 WorkerTaskExecutor mock 설정
       const mockWorkerTaskExecutor = {
         executeWorkerTask: jest.fn().mockResolvedValue({
           success: true,
           pullRequestUrl: 'https://github.com/owner/repo/pull/123'
         })
       };
-      (app as any).workerTaskExecutor = mockWorkerTaskExecutor;
+      
+      // TaskRequestHandler의 WorkerTaskExecutor를 mock으로 교체
+      (app as any).taskRequestHandler.workerTaskExecutor = mockWorkerTaskExecutor;
 
       // When: check_status 요청을 처리하면
       const result = await app.handleTaskRequest({
         taskId,
         action: 'check_status' as any
       });
-
-      // Debug: 결과 확인
-      console.log('Test result:', result);
-      console.log('executeWorkerTask was called with:', mockWorkerTaskExecutor.executeWorkerTask.mock.calls);
 
       // Then: Worker는 해제되지 않고 waiting_for_review 상태가 되어야 함
       expect(result.status).toBe(ResponseStatus.COMPLETED);
@@ -282,6 +280,16 @@ describe('AIDevTeamApp - Feedback Handling', () => {
       
       // Worker가 해제되지 않았는지 확인
       expect(mockWorkerPoolManager.releaseWorker).not.toHaveBeenCalled();
+      
+      // WorkerTaskExecutor가 올바르게 호출되었는지 확인
+      expect(mockWorkerTaskExecutor.executeWorkerTask).toHaveBeenCalledWith(
+        'worker-waiting-test',
+        expect.objectContaining({
+          taskId,
+          action: 'check_status'
+        }),
+        undefined // pullRequestService
+      );
     });
 
     it('reassignTask에서도 PR 생성 완료 후 Worker가 해제되지 않아야 한다', async () => {
