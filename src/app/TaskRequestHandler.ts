@@ -234,10 +234,10 @@ export class TaskRequestHandler {
     // PR 병합 요청 처리
     let worker = await this.workerPoolManager.getWorkerByTaskId(request.taskId);
     
-    // 이미 작업이 진행 중인 경우 중복 처리 방지
+    // 이미 작업이 진행 중인 경우 중복 처리 방지 (working 상태만)
     if (worker) {
       const workerInstance = await this.workerPoolManager.getWorkerInstance(worker.id, this.pullRequestService);
-      if (workerInstance && (workerInstance.getStatus() === 'working' || workerInstance.getStatus() === 'waiting')) {
+      if (workerInstance && workerInstance.getStatus() === 'working') {
         this.logger?.info('Worker already processing merge request', {
           taskId: request.taskId,
           workerId: worker.id,

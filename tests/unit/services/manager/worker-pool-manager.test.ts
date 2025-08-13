@@ -390,5 +390,41 @@ describe('WorkerPoolManager', () => {
       expect(rolledBackWorker!.status).toBe(originalStatus);
       expect(rolledBackWorker!.currentTask).toBeUndefined();
     });
+
+    it('WAITING 상태 Worker가 PROCESS_FEEDBACK 액션을 처리할 수 있어야 한다', async () => {
+      // Given: Worker를 먼저 새 작업에 할당하여 WAITING 상태로 만듦
+      const workers = Array.from(workerPoolManager.getPoolStatus().workers);
+      const worker = workers[0];
+      expect(worker).toBeDefined();
+      
+      // 먼저 새 작업 할당
+      const initialTask: WorkerTask = {
+        taskId: 'existing-task',
+        action: WorkerAction.START_NEW_TASK,
+        assignedAt: new Date(),
+        repositoryId: 'test-repo'
+      };
+      
+      await workerPoolManager.assignWorkerTask(worker!.id, initialTask);
+      
+      // Worker 상태를 WAITING으로 업데이트
+      await workerPoolManager.updateWorkerStatus(worker!.id, WorkerStatus.WAITING);
+      
+      const feedbackTask: WorkerTask = {
+        taskId: 'existing-task',
+        action: WorkerAction.PROCESS_FEEDBACK,
+        assignedAt: new Date(),
+        repositoryId: 'test-repo'
+      };
+      
+      // When: PROCESS_FEEDBACK 액션 실행
+      await expect(
+        workerPoolManager.assignWorkerTask(worker!.id, feedbackTask)
+      ).resolves.not.toThrow();
+      
+      // Then: Worker가 정상적으로 할당됨
+      const updatedWorker = workerPoolManager.getPoolStatus().workers.find(w => w.id === worker!.id);
+      expect(updatedWorker?.currentTask?.action).toBe(WorkerAction.PROCESS_FEEDBACK);
+    });
   });
 });

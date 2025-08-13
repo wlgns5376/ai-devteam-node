@@ -24,11 +24,15 @@ export class Worker implements WorkerInterface {
     id: string,
     workspaceDir: string,
     developerType: 'claude' | 'gemini',
-    private readonly dependencies: WorkerDependencies
+    private readonly dependencies: WorkerDependencies,
+    initialStatus: WorkerStatus = WorkerStatus.IDLE,
+    initialTask: WorkerTask | null = null
   ) {
     this.id = id;
     this.workspaceDir = workspaceDir;
     this.developerType = developerType;
+    this._status = initialStatus;
+    this._currentTask = initialTask;
   }
 
   // Getter properties to match the Worker interface
@@ -49,8 +53,27 @@ export class Worker implements WorkerInterface {
   }
 
   async assignTask(task: WorkerTask): Promise<void> {
-    if (this._status !== WorkerStatus.IDLE) {
+    // 작업 액션에 따른 상태 검증
+    const isNewTaskAction = task.action === WorkerAction.START_NEW_TASK;
+    const isFeedbackAction = task.action === WorkerAction.PROCESS_FEEDBACK;
+    const isResumeAction = task.action === WorkerAction.RESUME_TASK;
+    const isMergeAction = task.action === WorkerAction.MERGE_REQUEST;
+    
+    if (isNewTaskAction && this._status !== WorkerStatus.IDLE) {
       throw new Error('Worker is already assigned to a task');
+    }
+    
+    if ((isFeedbackAction || isResumeAction || isMergeAction) && 
+        this._status !== WorkerStatus.WAITING) {
+      throw new Error(`Worker cannot process ${task.action} in status: ${this._status}`);
+    }
+    
+    if (this._status === WorkerStatus.WORKING) {
+      throw new Error('Worker is currently working');
+    }
+    
+    if (this._status === WorkerStatus.STOPPED) {
+      throw new Error('Worker is stopped');
     }
 
     this._currentTask = task;

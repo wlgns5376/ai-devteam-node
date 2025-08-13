@@ -155,6 +155,56 @@ describe('AIDevTeamApp - Merge Workflow', () => {
         workerStatus: 'already_processing'
       });
     });
+
+    it('Worker가 waiting 상태일 때 병합 작업을 할당해야 한다', async () => {
+      // Given
+      const waitingWorker = TestDataFactory.createMockWorker({
+        ...mockWorker,
+        status: WorkerStatus.IDLE
+      });
+      
+      const mockWaitingWorkerInstance = {
+        getStatus: jest.fn().mockReturnValue(WorkerStatus.WAITING),
+        getCurrentTask: jest.fn().mockReturnValue({ taskId: mockRequest.taskId }),
+        startExecution: jest.fn().mockResolvedValue({ 
+          success: true, 
+          pullRequestUrl: mockRequest.pullRequestUrl
+        })
+      };
+      
+      mockWorkerPoolManager.getWorkerByTaskId.mockResolvedValue(waitingWorker);
+      mockWorkerPoolManager.getWorkerInstance.mockResolvedValue(mockWaitingWorkerInstance as any);
+
+      // When
+      const result = await (app as any).handleTaskRequest(mockRequest);
+
+      // Then
+      expect(mockWorkerPoolManager.getWorkerByTaskId).toHaveBeenCalledWith(mockRequest.taskId);
+      expect(mockWorkerPoolManager.getWorkerInstance).toHaveBeenCalledWith(waitingWorker.id, undefined);
+      expect(mockWaitingWorkerInstance.getStatus).toHaveBeenCalled();
+      expect(mockWorkerPoolManager.assignWorkerTask).toHaveBeenCalledWith(
+        waitingWorker.id,
+        expect.objectContaining({
+          taskId: mockRequest.taskId,
+          action: 'merge_request',
+          pullRequestUrl: mockRequest.pullRequestUrl
+        })
+      );
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Merge request task assigned and started',
+        expect.objectContaining({
+          taskId: mockRequest.taskId,
+          workerId: waitingWorker.id,
+          pullRequestUrl: mockRequest.pullRequestUrl
+        })
+      );
+      expect(result).toEqual({
+        taskId: mockRequest.taskId,
+        status: ResponseStatus.ACCEPTED,
+        message: 'Merge request processing started',
+        workerStatus: 'processing_merge'
+      });
+    });
   });
 
   describe('request_merge without existing worker', () => {

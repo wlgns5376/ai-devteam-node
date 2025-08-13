@@ -49,6 +49,7 @@ coverage/
 
 # AI DevTeam specific
 workspaces/
+workspace/
 *.workspace
 .test-workspace/
 

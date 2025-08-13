@@ -4,7 +4,7 @@ import {
   ManagerServiceConfig,
   ManagerError
 } from '@/types/manager.types';
-import { Worker as WorkerType, WorkerPool, WorkerStatus, WorkerUpdate } from '@/types/worker.types';
+import { Worker as WorkerType, WorkerPool, WorkerStatus, WorkerUpdate, WorkerAction } from '@/types/worker.types';
 import { DeveloperConfig, DeveloperType } from '@/types/developer.types';
 import { Worker } from '../worker/worker';
 import { WorkspaceSetup } from '../worker/workspace-setup';
@@ -193,8 +193,48 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
 
     // Worker 인스턴스의 현재 상태 확인
     const currentStatus = workerInstance.getStatus();
-    if (currentStatus !== WorkerStatus.IDLE) {
-      throw new Error(`Worker ${workerId} is not available (status: ${currentStatus})`);
+    const jsonStatus = worker.status;
+    
+    // 상태 동기화 검증 및 로깅
+    this.dependencies.logger.debug('Worker status verification', {
+      workerId,
+      jsonStatus,
+      instanceStatus: currentStatus,
+      taskAction: task.action,
+      isStatusSynced: jsonStatus === currentStatus
+    });
+    
+    // 상태 불일치 감지 시 경고
+    if (jsonStatus !== currentStatus) {
+      this.dependencies.logger.warn('Worker state mismatch detected', {
+        workerId,
+        jsonStatus,
+        instanceStatus: currentStatus,
+        taskAction: task.action
+      });
+    }
+    
+    // 작업 액션에 따른 상태 검증
+    const isNewTaskAction = task.action === WorkerAction.START_NEW_TASK;
+    const isFeedbackAction = task.action === WorkerAction.PROCESS_FEEDBACK;
+    const isResumeAction = task.action === WorkerAction.RESUME_TASK;
+    const isMergeAction = task.action === WorkerAction.MERGE_REQUEST;
+    
+    if (isNewTaskAction && currentStatus !== WorkerStatus.IDLE) {
+      throw new Error(`Worker ${workerId} is not available for new task (status: ${currentStatus})`);
+    }
+    
+    if ((isFeedbackAction || isResumeAction || isMergeAction) && 
+        currentStatus !== WorkerStatus.WAITING) {
+      throw new Error(`Worker ${workerId} is not available for ${task.action} (status: ${currentStatus})`);
+    }
+    
+    if (currentStatus === WorkerStatus.WORKING) {
+      throw new Error(`Worker ${workerId} is currently working (status: ${currentStatus})`);
+    }
+    
+    if (currentStatus === WorkerStatus.STOPPED) {
+      throw new Error(`Worker ${workerId} is stopped (status: ${currentStatus})`);
     }
 
     // 이전 상태 백업 (롤백용)
@@ -445,21 +485,21 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       this.cleanupTimer = null;
     }
     
-    // 모든 Worker 인스턴스 정리
-    for (const [workerId, workerInstance] of this.workerInstances) {
-      try {
-        await workerInstance.cleanup();
-      } catch (error) {
-        this.dependencies.logger.warn('Failed to cleanup worker instance', {
-          workerId,
-          error
-        });
-      }
-    }
+    // // 모든 Worker 인스턴스 정리
+    // for (const [workerId, workerInstance] of this.workerInstances) {
+    //   try {
+    //     await workerInstance.cleanup();
+    //   } catch (error) {
+    //     this.dependencies.logger.warn('Failed to cleanup worker instance', {
+    //       workerId,
+    //       error
+    //     });
+    //   }
+    // }
     
-    // 모든 Worker 정리
-    this.workers.clear();
-    this.workerInstances.clear();
+    // // 모든 Worker 정리
+    // this.workers.clear();
+    // this.workerInstances.clear();
     this.isInitialized = false;
     
     this.dependencies.logger.info('Worker pool shutdown completed');
@@ -504,11 +544,16 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       developer
     };
 
+    // Worker 상태를 WorkerStatus enum으로 변환
+    const workerStatus = worker.status as WorkerStatus;
+    
     return new Worker(
       worker.id,
       worker.workspaceDir,
       worker.developerType,
-      dependencies
+      dependencies,
+      workerStatus,
+      worker.currentTask || null
     );
   }
 
