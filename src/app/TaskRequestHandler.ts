@@ -316,15 +316,7 @@ export class TaskRequestHandler {
           error: error instanceof Error ? error.message : String(error)
         });
         
-        // 실패해도 Worker는 해제
-        if (worker?.id) {
-          Promise.resolve(this.workerPoolManager.releaseWorker(worker.id)).catch(err => {
-            this.logger?.error('Failed to release worker after error', {
-              workerId: worker.id,
-              error: err
-            });
-          });
-        }
+        // 병합 실패 시에는 Worker를 해제하지 않음 (재시도 가능하도록)
       });
     }
 
@@ -472,9 +464,15 @@ export class TaskRequestHandler {
   }
 
   private async updateTaskStatusToDone(taskId: string): Promise<void> {
-    // 병합 완료 후 상태 변경은 Planner의 ReviewTaskHandler가 자동으로 처리
-    this.logger?.info('Merge completed - Planner will handle status update to DONE', {
-      taskId
-    });
+    if (this.projectBoardService) {
+      await this.projectBoardService.updateItemStatus(taskId, 'DONE');
+      this.logger?.info('Task status updated to DONE after merge completion', {
+        taskId
+      });
+    } else {
+      this.logger?.warn('ProjectBoardService not available, cannot update task status', {
+        taskId
+      });
+    }
   }
 }

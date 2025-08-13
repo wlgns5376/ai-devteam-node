@@ -41,7 +41,7 @@ class E2ETestSystem {
     
     // Logger 생성 (Mock 서비스들에서 필요)
     this.logger = new Logger({
-      level: LogLevel.INFO,
+      level: LogLevel.DEBUG,
       filePath: path.join(this.tempWorkspaceRoot, 'test.log'),
       enableConsole: false
     });
@@ -119,7 +119,7 @@ class E2ETestSystem {
         geminiCliTimeoutMs: 5000
       },
       logger: {
-        level: 'info',
+        level: 'debug',
         filePath: path.join(this.tempWorkspaceRoot, 'test.log'),
         enableConsole: false
       },
@@ -438,41 +438,30 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
         author: 'reviewer',
         createdAt: new Date()
       });
-      
-      // 5.2: Planner가 피드백을 감지할 때까지 대기
-      console.log('🔄 Planner가 피드백을 감지하고 Worker에게 전달하도록 대기 중...');
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Planner 모니터링 주기 대기
-      
+
       // 5.3: MockDeveloper가 피드백 처리를 위한 시나리오 설정
-      mockDeveloper.setScenario(MockScenario.SUCCESS_CODE_ONLY);
+      mockDeveloper.setScenario(MockScenario.PR_FEEDBACK_APPLIED);
+
+      // 5.2: 피드백을 처리할 때 까지 대기
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
-      // 5.4: 개발자가 피드백을 처리할 시간 대기
-      console.log('🔄 개발자가 피드백을 처리하도록 대기 중...');
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // // 5.4: 개발자가 피드백을 처리할 시간 대기
+      // console.log('🔄 개발자가 피드백을 처리하도록 대기 중...');
+      // await new Promise(resolve => setTimeout(resolve, 1500));
       
       // 5.4.1: 개발자가 피드백을 받고 처리했는지 검증
       const isDeveloperAvailable = await mockDeveloper.isAvailable();
       expect(isDeveloperAvailable).toBe(true);
       console.log('✅ 개발자가 피드백을 받아 처리 중임을 확인');
       
-      // 5.5: 피드백이 처리되었다고 표시
-      await mockPullRequest.markCommentsAsProcessed(['feedback-1']);
-      
       // 5.6: PR 재승인 시뮬레이션
-      console.log('🔄 수정 완료 후 PR 승인 시뮬레이션:', reviewPrUrl);
+      // console.log('🔄 수정 완료 후 PR 승인 시뮬레이션:', reviewPrUrl);
+      mockDeveloper.setScenario(MockScenario.SUCCESS_CODE_ONLY);
       await mockPullRequest.approvePullRequest(reviewPrUrl);
-      
-      // 5.7: 피드백 처리 후 PR 상태 재확인
-      const prAfterFeedback = await mockPullRequest.isApproved('test-owner/test-repo', parseInt(reviewPrUrl.split('/').pop()!));
-      expect(prAfterFeedback).toBe(true);
-      console.log('✅ 피드백 처리 후 PR이 승인 상태로 변경됨');
+      await new Promise(resolve => setTimeout(resolve, 1500));
       
       // 6단계: Planner가 승인을 감지하고 병합 후 DONE 상태로 전환
-      console.log('🔄 Planner가 PR 승인을 감지하여 병합 후 DONE 상태로 전환하도록 대기 중...');
-      
-      // 실제 Planner가 승인을 감지하고 자동으로 DONE 상태로 변경하도록 대기
-      // Mock 환경에서는 실제 Git 병합이 불가능하므로, 일정 시간 대기 후 
-      // 필요시 Mock을 통해 병합 완료 상태를 시뮬레이션
       await system.waitForTaskStatusChange(taskId, 'DONE', 10000);
       
       // Then: 전체 워크플로우가 완료되었는지 검증

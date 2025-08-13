@@ -76,6 +76,7 @@ export interface MockConfig {
 export enum MockScenario {
   SUCCESS_WITH_PR = 'success_with_pr',
   SUCCESS_CODE_ONLY = 'success_code_only',
+  PR_FEEDBACK_APPLIED = 'pr_feedback_applied',
   ERROR = 'error',
   TIMEOUT = 'timeout',
   EXECUTION_FAILURE = 'execution_failure',
