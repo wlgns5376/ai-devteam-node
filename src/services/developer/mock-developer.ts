@@ -142,6 +142,43 @@ export class MockDeveloper implements DeveloperInterface {
           'mock'
         );
       
+      case MockScenario.EXECUTION_FAILURE:
+        throw new DeveloperError(
+          'Developer execution failed',
+          DeveloperErrorCode.EXECUTION_FAILED,
+          'mock',
+          { prompt, workspaceDir }
+        );
+      
+      case MockScenario.INVALID_RESPONSE:
+        return this.generateInvalidResponse(prompt, workspaceDir);
+      
+      case MockScenario.PROCESS_CRASH:
+        // 프로세스 크래시 시뮬레이션
+        await this.delay(100);
+        throw new DeveloperError(
+          'Developer process crashed unexpectedly',
+          DeveloperErrorCode.PROCESS_CRASHED,
+          'mock',
+          { prompt, workspaceDir }
+        );
+      
+      case MockScenario.NETWORK_ERROR:
+        throw new DeveloperError(
+          'Network error during execution',
+          DeveloperErrorCode.EXECUTION_FAILED,
+          'mock',
+          { prompt, workspaceDir, errorType: 'NETWORK_ERROR' }
+        );
+      
+      case MockScenario.RESOURCE_EXHAUSTION:
+        throw new DeveloperError(
+          'Resource exhaustion: out of memory',
+          DeveloperErrorCode.EXECUTION_FAILED,
+          'mock',
+          { prompt, workspaceDir, errorType: 'RESOURCE_EXHAUSTION' }
+        );
+      
       default:
         throw new DeveloperError(
           `Unknown scenario: ${scenario}`,
@@ -301,6 +338,44 @@ export class MockDeveloper implements DeveloperInterface {
     output += '\n작업을 완료했습니다!';
 
     return output;
+  }
+
+  private generateInvalidResponse(prompt: string, workspaceDir: string): DeveloperOutput {
+    // 유효하지 않은 PR URL을 생성
+    const invalidPrLink = 'not-a-valid-url';
+    const commitHash = this.generateCommitHash();
+    
+    const commands: Command[] = [
+      {
+        command: 'git add .',
+        output: '',
+        exitCode: 0,
+        timestamp: new Date()
+      },
+      {
+        command: 'git commit -m "Test commit"',
+        output: `[main ${commitHash.substring(0, 7)}] Test commit`,
+        exitCode: 0,
+        timestamp: new Date()
+      }
+    ];
+    
+    return {
+      rawOutput: 'Invalid response simulation\n' + invalidPrLink,
+      result: {
+        success: true,
+        prLink: invalidPrLink, // 유효하지 않은 PR URL
+        commitHash
+      },
+      executedCommands: commands,
+      modifiedFiles: ['test.ts'],
+      metadata: {
+        startTime: new Date(),
+        endTime: new Date(),
+        duration: 0,
+        developerType: 'mock'
+      }
+    };
   }
 
   private generateCommitHash(): string {

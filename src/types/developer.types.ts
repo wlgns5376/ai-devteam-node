@@ -77,7 +77,12 @@ export enum MockScenario {
   SUCCESS_WITH_PR = 'success_with_pr',
   SUCCESS_CODE_ONLY = 'success_code_only',
   ERROR = 'error',
-  TIMEOUT = 'timeout'
+  TIMEOUT = 'timeout',
+  EXECUTION_FAILURE = 'execution_failure',
+  INVALID_RESPONSE = 'invalid_response',
+  PROCESS_CRASH = 'process_crash',
+  NETWORK_ERROR = 'network_error',
+  RESOURCE_EXHAUSTION = 'resource_exhaustion'
 }
 
 export class DeveloperError extends Error {

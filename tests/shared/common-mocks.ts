@@ -265,3 +265,26 @@ export class FileSystemMock {
     this.directories.clear();
   }
 }
+
+/**
+ * Mock Logger 생성
+ */
+export function createMockLogger(): any {
+  return {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn()
+  };
+}
+
+/**
+ * Mock GitLockService 생성
+ */
+export function createMockGitLockService(): any {
+  return {
+    withLock: jest.fn().mockImplementation(async (repoId: string, operation: string, callback: () => Promise<any>) => {
+      return await callback();
+    })
+  };
+}
