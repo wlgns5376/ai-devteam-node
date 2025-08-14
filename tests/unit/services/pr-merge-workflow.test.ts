@@ -69,11 +69,6 @@ describe('PR 승인 후 병합 시나리오', () => {
       getWorkspace: jest.fn().mockResolvedValue(undefined),
       removeWorkspace: jest.fn().mockResolvedValue(undefined),
       updateLastSyncTime: jest.fn().mockResolvedValue(undefined),
-      getPlannerState: jest.fn().mockResolvedValue({
-        lastSyncTime: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24시간 전
-        processedTasks: [],
-        activeTasks: []
-      }),
       addProcessedCommentsToTask: jest.fn().mockResolvedValue(undefined),
       // 새로운 작업별 lastSyncTime 메서드들
       getTaskLastSyncTime: jest.fn().mockResolvedValue(null),

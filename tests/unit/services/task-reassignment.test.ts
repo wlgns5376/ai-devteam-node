@@ -83,12 +83,7 @@ describe('작업 재할당 시나리오', () => {
       saveWorkspace: jest.fn().mockResolvedValue(undefined),
       getWorkspace: jest.fn().mockResolvedValue(undefined),
       removeWorkspace: jest.fn().mockResolvedValue(undefined),
-      updateLastSyncTime: jest.fn().mockResolvedValue(undefined),
-      getPlannerState: jest.fn().mockResolvedValue({
-        lastSyncTime: new Date(),
-        processedTasks: [],
-        activeTasks: []
-      })
+      updateLastSyncTime: jest.fn().mockResolvedValue(undefined)
     } as any;
     
     mockLogger = Logger.createConsoleLogger();

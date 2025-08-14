@@ -90,10 +90,10 @@ export class WorkflowInitializer {
         errors.push('Project board service returned invalid data');
       }
 
-      // StateManager 연결 확인
-      const plannerState = await this.dependencies.stateManager.getPlannerState();
-      if (!plannerState) {
-        warnings.push('Planner state not found in StateManager');
+      // StateManager 연결 확인 - Worker 상태 확인으로 대체
+      const workers = await this.dependencies.stateManager.getAllWorkers();
+      if (!workers) {
+        warnings.push('Unable to retrieve workers from StateManager');
       }
 
       // Manager Communicator 연결 확인은 실제 호출 없이는 어려우므로 생략

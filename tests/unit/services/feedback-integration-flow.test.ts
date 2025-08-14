@@ -93,24 +93,11 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       getWorkspace: jest.fn().mockResolvedValue(undefined),
       removeWorkspace: jest.fn().mockResolvedValue(undefined),
       updateLastSyncTime: jest.fn().mockResolvedValue(undefined),
-      getPlannerState: jest.fn().mockResolvedValue({
-        lastSyncTime: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24시간 전
-        processedTasks: [],
-        activeTasks: []
-      }),
       addProcessedCommentsToTask: jest.fn().mockResolvedValue(undefined),
       // 새로운 작업별 lastSyncTime 메서드들 (모든 작업이 새 작업으로 처리되도록 null 반환)
       getTaskLastSyncTime: jest.fn().mockResolvedValue(null), // 기본적으로 null 반환 (7일 전 기본값 사용)
       updateTaskLastSyncTime: jest.fn().mockResolvedValue(undefined),
       getWorkerByTaskId: jest.fn().mockResolvedValue(null),
-      // 레거시 호환성 메서드
-      setPlannerLastSyncTime: function(time: Date) {
-        this.getPlannerState = jest.fn().mockResolvedValue({
-          lastSyncTime: time,
-          processedTasks: [],
-          activeTasks: []
-        });
-      },
       // 작업별 lastSyncTime 설정을 위한 헬퍼 메서드
       setTaskLastSyncTime: function(taskId: string, time: Date | null) {
         this.getTaskLastSyncTime = jest.fn().mockImplementation((id: string) => {
