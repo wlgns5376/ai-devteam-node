@@ -40,9 +40,11 @@ export class ReviewTaskHandler {
         reviewItemsCount: reviewItems.length
       });
 
-      for (const item of reviewItems) {
+      // 병렬 처리를 위해 Promise.allSettled 사용
+      const processingPromises = reviewItems.map(async (item: any) => {
         try {
           await this.processItem(item);
+          return { taskId: item.id, success: true };
         } catch (error) {
           this.logger.error('Review task processing error', {
             taskId: item.id,
@@ -54,8 +56,37 @@ export class ReviewTaskHandler {
             `Failed to handle review task ${item.id}`, 
             { error, taskId: item.id }
           );
+          return { taskId: item.id, success: false, error };
         }
-      }
+      });
+
+      // 모든 작업을 병렬로 처리하고 결과를 기다림
+      const results = await Promise.allSettled(processingPromises);
+      
+      // 처리 결과 로깅
+      let successCount = 0;
+      let failureCount = 0;
+      
+      results.forEach((result, index) => {
+        const item = reviewItems[index];
+        if (result.status === 'fulfilled' && result.value.success) {
+          successCount++;
+        } else {
+          failureCount++;
+          this.logger.warn('Review task processing failed', {
+            taskId: item.id,
+            status: result.status,
+            reason: result.status === 'rejected' ? result.reason : result.value.error
+          });
+        }
+      });
+
+      this.logger.info('Review task processing completed', {
+        totalTasks: reviewItems.length,
+        successCount,
+        failureCount,
+        processingMode: 'parallel'
+      });
 
       this.logger.debug('Review task handling completed');
 

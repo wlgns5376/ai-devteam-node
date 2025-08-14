@@ -29,6 +29,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   private isInitialized = false;
   private errors: ManagerError[] = [];
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private workerAllocationLock: Map<string, Promise<void>> = new Map();
   
   // Worker 생명주기 설정
   private readonly lifecycleConfig: {
@@ -134,31 +135,73 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   }
 
   async getAvailableWorker(): Promise<WorkerType | null> {
-    // Worker 인스턴스의 상태를 신뢰할 수 있는 소스로 사용
-    const availableWorkers: WorkerType[] = [];
+    // Worker 할당 동시성 문제를 방지하기 위한 락 메커니즘
+    const lockKey = 'worker_allocation';
     
-    for (const [workerId, worker] of this.workers) {
-      const workerInstance = this.workerInstances.get(workerId);
-      if (workerInstance && workerInstance.getStatus() === WorkerStatus.IDLE) {
-        availableWorkers.push(worker);
-      }
+    // 이미 락이 걸린 경우 해당 락이 해제될 때까지 대기
+    while (this.workerAllocationLock.has(lockKey)) {
+      await this.workerAllocationLock.get(lockKey);
     }
-
-    if (availableWorkers.length === 0) {
-      // 최대 Worker 수 미만이면 새 Worker 생성 시도
-      if (this.workers.size < this.config.maxWorkers) {
-        const newWorker = this.createWorker();
-        const newWorkerInstance = this.createWorkerInstance(newWorker);
-        
-        this.workers.set(newWorker.id, newWorker);
-        this.workerInstances.set(newWorker.id, newWorkerInstance);
-        await this.dependencies.stateManager.saveWorker(newWorker);
-        return newWorker;
+    
+    // 새로운 락 생성
+    let resolveLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      resolveLock = resolve;
+    });
+    this.workerAllocationLock.set(lockKey, lockPromise);
+    
+    try {
+      // Worker 인스턴스의 상태를 신뢰할 수 있는 소스로 사용
+      const availableWorkers: WorkerType[] = [];
+      
+      for (const [workerId, worker] of this.workers) {
+        const workerInstance = this.workerInstances.get(workerId);
+        if (workerInstance && workerInstance.getStatus() === WorkerStatus.IDLE) {
+          availableWorkers.push(worker);
+        }
       }
-      return null;
-    }
 
-    return availableWorkers[0] || null;
+      if (availableWorkers.length === 0) {
+        // 최대 Worker 수 미만이면 새 Worker 생성 시도
+        if (this.workers.size < this.config.maxWorkers) {
+          this.dependencies.logger.debug('Creating new worker for concurrent request', {
+            currentWorkerCount: this.workers.size,
+            maxWorkers: this.config.maxWorkers
+          });
+          
+          const newWorker = this.createWorker();
+          const newWorkerInstance = this.createWorkerInstance(newWorker);
+          
+          this.workers.set(newWorker.id, newWorker);
+          this.workerInstances.set(newWorker.id, newWorkerInstance);
+          await this.dependencies.stateManager.saveWorker(newWorker);
+          
+          this.dependencies.logger.info('New worker created for concurrent processing', {
+            workerId: newWorker.id,
+            totalWorkers: this.workers.size
+          });
+          
+          return newWorker;
+        }
+        return null;
+      }
+
+      const selectedWorker = availableWorkers[0] || null;
+      
+      if (selectedWorker) {
+        this.dependencies.logger.debug('Worker allocated with concurrency protection', {
+          workerId: selectedWorker.id,
+          availableWorkersCount: availableWorkers.length
+        });
+      }
+      
+      return selectedWorker;
+      
+    } finally {
+      // 락 해제
+      this.workerAllocationLock.delete(lockKey);
+      resolveLock!();
+    }
   }
 
   async assignWorker(workerId: string, taskId: string): Promise<void> {

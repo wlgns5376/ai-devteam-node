@@ -47,7 +47,7 @@ export class MockDeveloper implements DeveloperInterface {
     const scenario = this.selectScenario(prompt);
 
     this.dependencies.logger.debug('Executing Mock AI prompt', { 
-      promptLength: prompt.length,
+      prompt,
       workspaceDir 
     });
 
@@ -100,8 +100,16 @@ export class MockDeveloper implements DeveloperInterface {
   private selectScenario(prompt: string): MockScenario {
     const lowerPrompt = prompt.toLowerCase();
 
+    if (lowerPrompt.includes('새로운 작업을 시작합니다')) {
+      return MockScenario.SUCCESS_WITH_PR;
+    }
+
     // 프롬프트 기반 시나리오 선택
     if (lowerPrompt.includes('피드백') || lowerPrompt.includes('feedback') || lowerPrompt.includes('코멘트') || lowerPrompt.includes('comment')) {
+      // 긴 처리 시간이 필요한 피드백인지 확인
+      if (lowerPrompt.includes('long') || lowerPrompt.includes('긴') || lowerPrompt.includes('오래')) {
+        return MockScenario.LONG_FEEDBACK_PROCESSING;
+      }
       return MockScenario.PR_FEEDBACK_APPLIED;
     }
 
@@ -146,6 +154,9 @@ export class MockDeveloper implements DeveloperInterface {
       
       case MockScenario.PR_FEEDBACK_APPLIED:
         return await this.generatePRFeedbackApplied(prompt, workspaceDir);
+      
+      case MockScenario.LONG_FEEDBACK_PROCESSING:
+        return await this.generateLongFeedbackProcessing(prompt, workspaceDir);
       
       case MockScenario.ERROR:
         throw new DeveloperError(
@@ -518,5 +529,98 @@ export class MockDeveloper implements DeveloperInterface {
         developerType: 'mock'
       }
     };
+  }
+
+  private async generateLongFeedbackProcessing(prompt: string, workspaceDir: string): Promise<DeveloperOutput> {
+    const commitHash = this.generateCommitHash();
+    const prNumber = Math.floor(Math.random() * 1000) + 1;
+    const prLink = `https://github.com/test-owner/test-repo/pull/${prNumber}`;
+    const branchName = 'feature/user-auth';
+
+    // 긴 피드백 처리 시간 시뮬레이션 (2-3초)
+    const longDelay = 2500;
+    await this.delay(longDelay);
+
+    // MockPullRequestService에 PR 상태를 approved로 변경 (주입된 경우에만)
+    if (this.mockPullRequestService) {
+      await this.mockPullRequestService.setPullRequestState(prLink, ReviewState.APPROVED);
+    }
+
+    const commands: Command[] = [
+      {
+        command: 'git add .',
+        output: '',
+        exitCode: 0,
+        timestamp: new Date()
+      },
+      {
+        command: 'git commit -m "Apply long feedback processing: comprehensive code review fixes"',
+        output: `[${branchName} ${commitHash.substring(0, 7)}] Apply long feedback processing: comprehensive code review fixes\n 5 files changed, 120 insertions(+), 45 deletions(-)`,
+        exitCode: 0,
+        timestamp: new Date()
+      },
+      {
+        command: `git push origin ${branchName}`,
+        output: `To github.com:test-owner/test-repo.git\n   abc1234..${commitHash.substring(0, 7)}  ${branchName} -> ${branchName}`,
+        exitCode: 0,
+        timestamp: new Date()
+      }
+    ];
+
+    const rawOutput = this.generateLongFeedbackRawOutput(commands, prLink, commitHash, longDelay);
+
+    return {
+      rawOutput,
+      result: {
+        success: true,
+        prLink,
+        commitHash
+      },
+      executedCommands: commands,
+      modifiedFiles: [
+        'src/auth/auth.service.ts',
+        'src/auth/auth.controller.ts',
+        'src/auth/auth.middleware.ts',
+        'src/auth/auth.validator.ts',
+        'src/utils/auth-helpers.ts'
+      ],
+      metadata: {
+        startTime: new Date(),
+        endTime: new Date(),
+        duration: longDelay,
+        developerType: 'mock'
+      }
+    };
+  }
+
+  private generateLongFeedbackRawOutput(commands: Command[], prLink?: string, commitHash?: string, duration?: number): string {
+    let output = '🔄 긴 피드백 처리를 시작합니다... (복잡한 리뷰 코멘트 반영)\n\n';
+
+    output += '📝 상세한 리뷰 코멘트 분석 중...\n';
+    output += '  - 코드 구조 개선 사항 검토\n';
+    output += '  - 보안 취약점 수정 방안 분석\n';
+    output += '  - 성능 최적화 요구사항 검토\n';
+    output += '  - 테스트 커버리지 개선 방안 분석\n\n';
+    
+    output += '🔧 복잡한 코드 수정 진행 중...\n';
+    if (duration) {
+      output += `⏱️  예상 처리 시간: ${duration}ms\n\n`;
+    }
+
+    for (const cmd of commands) {
+      output += `$ ${cmd.command}\n`;
+      if (cmd.output) {
+        output += `${cmd.output}\n`;
+      }
+      output += '\n';
+    }
+
+    if (prLink) {
+      output += `✅ 긴 피드백 처리 완료 - PR 업데이트됨: ${prLink}\n`;
+    }
+
+    output += '\n🎉 복잡한 리뷰 코멘트가 모두 반영되었습니다! (긴 처리 시간 소요됨)';
+
+    return output;
   }
 }

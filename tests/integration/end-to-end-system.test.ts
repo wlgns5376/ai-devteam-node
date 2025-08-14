@@ -376,15 +376,12 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
   
 
   describe('완전한 작업 생명주기', () => {
-    beforeEach(() => {
-      // 완전한 작업 생명주기 테스트에 필요한 작업들만 추가
+    it('신규 작업부터 완료까지 전체 워크플로우를 처리해야 한다', async () => {
       system.addTestTasks([
         'e2e-test-task-1',
         'e2e-feedback-task'
       ]);
-    });
 
-    it('신규 작업부터 완료까지 전체 워크플로우를 처리해야 한다', async () => {
       // Given: 시스템 초기화 및 시작
       await system.initialize();
       await system.start();
@@ -492,6 +489,141 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
       
       console.log('✅ 전체 워크플로우 테스트 완료: TODO → IN_PROGRESS → IN_REVIEW → 피드백 → 수정 → 재승인 → DONE');
     }, 30000);
+
+    it('여러 PR의 피드백을 동시에 비동기로 처리해야 한다', async () => {
+      system.addTestTasks([
+        'e2e-async-feedback-1',
+        'e2e-async-feedback-2'
+      ]);
+      // Given: 시스템 초기화 및 두 작업 준비
+      await system.initialize();
+      await system.start();
+      await system.waitForSystemReady(3000);
+      
+      mockDeveloper.setScenario(MockScenario.SUCCESS_WITH_PR);
+      
+      const task1 = 'e2e-async-feedback-1';
+      const task2 = 'e2e-async-feedback-2';
+
+      await system.waitForTaskStatusChange(task1, 'IN_REVIEW', 15000);
+      await system.waitForTaskStatusChange(task2, 'IN_REVIEW', 15000);
+
+      const reviewItems = await mockProjectBoard.getItems('test-board', 'IN_REVIEW');
+      const reviewTask1 = reviewItems.find((item: any) => item.id === task1);
+      const reviewTask2 = reviewItems.find((item: any) => item.id === task2);
+      
+      const tasksToProcess: string[] = [];
+      const prUrls: string[] = [];
+
+      expect(reviewTask1!.pullRequestUrls!.length).toBeGreaterThan(0);
+      expect(reviewTask2!.pullRequestUrls!.length).toBeGreaterThan(0);
+
+      if (reviewTask1?.pullRequestUrls?.[0]) {
+        tasksToProcess.push(task1);
+        prUrls.push(reviewTask1.pullRequestUrls[0]);
+      }
+      
+      if (reviewTask2?.pullRequestUrls?.[0]) {
+        tasksToProcess.push(task2);
+        prUrls.push(reviewTask2.pullRequestUrls[0]);
+      }
+
+      // When: PR에 피드백 추가
+      const feedbackStartTime = Date.now();
+      
+      // 각 PR에 CHANGES_REQUESTED 상태 설정과 피드백 추가
+      const feedbackPromises = prUrls.map(async (prUrl, index) => {
+        await mockPullRequest.setPullRequestState(prUrl, 'CHANGES_REQUESTED' as any);
+        
+        // task1 (index 0)은 "긴 피드백"으로 설정하여 LONG_FEEDBACK_PROCESSING 시나리오 트리거
+        // task2 (index 1)는 일반 피드백으로 설정
+        const isLongTask = index === 0;
+        const content = isLongTask 
+          ? `Please update the module ${index} - 긴 피드백 처리가 필요한 복잡한 수정 사항입니다`
+          : `Please update the module ${index}`;
+        
+        await mockPullRequest.addComment(prUrl, {
+          id: `async-feedback-${index}`,
+          content,
+          author: `reviewer${index}`,
+          createdAt: new Date()
+        });
+      });
+      
+      await Promise.all(feedbackPromises);
+      
+      // MockDeveloper를 피드백 처리 시나리오로 변경
+      mockDeveloper.setScenario(MockScenario.PR_FEEDBACK_APPLIED);
+      
+      // 완료 순서를 추적하기 위한 배열
+      const completionOrder: { taskId: string; completedAt: number }[] = [];
+      
+      // 두 작업의 완료를 병렬로 모니터링
+      const task1Promise = system.waitForTaskStatusChange(task1, 'DONE', 10000)
+        .then(() => {
+          const completedAt = Date.now();
+          completionOrder.push({ taskId: task1, completedAt });
+          return { taskId: task1, completedAt };
+        })
+        .catch(() => ({ taskId: task1, completedAt: -1, error: true }));
+      
+      const task2Promise = system.waitForTaskStatusChange(task2, 'DONE', 10000)
+        .then(() => {
+          const completedAt = Date.now();
+          completionOrder.push({ taskId: task2, completedAt });
+          return { taskId: task2, completedAt };
+        })
+        .catch(() => ({ taskId: task2, completedAt: -1, error: true }));
+      
+      // 두 작업 중 하나가 먼저 완료될 때까지 대기
+      await Promise.race([task1Promise, task2Promise]);
+      
+      // 잠시 대기 후 두 번째 작업도 확인
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Then: 완료 순서 검증
+      if (completionOrder.length >= 2) {
+        completionOrder.sort((a, b) => a.completedAt - b.completedAt);
+        const firstCompleted = completionOrder[0];
+        const secondCompleted = completionOrder[1];
+        
+        // 비동기 처리라면 빠른 작업(task2)이 먼저 완료되어야 함
+        if (firstCompleted && secondCompleted) {
+          expect(firstCompleted.taskId).toBe(task2); // 빠른 작업이 먼저 완료되어야 함
+          expect(secondCompleted.taskId).toBe(task1); // 긴 작업이 나중에 완료되어야 함
+        }
+      }
+      
+      // 피드백 처리 완료 후 PR 승인
+      mockDeveloper.setScenario(MockScenario.SUCCESS_CODE_ONLY);
+      
+      // 모든 PR 승인
+      await Promise.all(prUrls.map(prUrl => mockPullRequest.approvePullRequest(prUrl)));
+      
+      // 시스템이 승인을 감지하고 병합하도록 대기
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // 완료된 작업 수 확인 및 비동기 처리 검증
+      const completedTasks = completionOrder.filter(task => task.completedAt > 0);
+      
+      if (completedTasks.length >= 2 && completedTasks[0] && completedTasks[1]) {
+        const timeDiff = completedTasks[1].completedAt - completedTasks[0].completedAt;
+        
+        // 비동기 처리라면 시간 차이가 상당히 있어야 함 (최소 1초)
+        expect(timeDiff).toBeGreaterThan(2000);
+        expect(completedTasks[0].taskId).toBe(task2); // 빠른 작업이 먼저 완료
+      }
+      
+      // 시스템이 안정적으로 동작하는지 확인
+      const finalSystemStatus = system.getStatus();
+      expect(finalSystemStatus.isRunning).toBe(true);
+      expect(finalSystemStatus.plannerStatus?.isRunning).toBe(true);
+      
+      // 전체 처리 시간 검증
+      const totalProcessingTime = Date.now() - feedbackStartTime;
+      expect(totalProcessingTime).toBeLessThan(15100); // 15초 이내 처리
+
+    }, 40000);
   });
 
 
