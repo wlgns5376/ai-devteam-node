@@ -8,10 +8,6 @@ import { StateManager } from './state-manager';
 import { ServiceFactoryRegistry } from './factory';
 import { ConfigurationService } from './configuration';
 
-export interface ServiceBundle {
-  readonly projectBoardService: ProjectBoardService;
-  readonly pullRequestService: PullRequestService;
-}
 
 export class ServiceFactory {
   private projectBoardServices: Map<string, ProjectBoardService> = new Map();
@@ -79,12 +75,6 @@ export class ServiceFactory {
     }
   }
 
-  createServices(config: ProviderConfig): ServiceBundle {
-    return {
-      projectBoardService: this.createProjectBoardService(config),
-      pullRequestService: this.createPullRequestService(config)
-    };
-  }
 
 
   createGitService(gitOperationTimeoutMs: number = 60000): GitServiceInterface {

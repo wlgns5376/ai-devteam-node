@@ -49,13 +49,3 @@ export interface ExternalServices {
   readonly developer?: any; // Developer type for testing
 }
 
-// Common utility types
-export type Result<T, E = Error> = {
-  readonly success: true;
-  readonly data: T;
-} | {
-  readonly success: false;
-  readonly error: E;
-};
-
-export type AsyncResult<T, E = Error> = Promise<Result<T, E>>;
