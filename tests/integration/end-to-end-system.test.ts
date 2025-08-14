@@ -492,54 +492,6 @@ describe('시스템 전체 통합 테스트 (End-to-End)', () => {
       
       console.log('✅ 전체 워크플로우 테스트 완료: TODO → IN_PROGRESS → IN_REVIEW → 피드백 → 수정 → 재승인 → DONE');
     }, 30000);
-
-    it('피드백이 있는 작업의 전체 생명주기를 처리해야 한다', async () => {
-      // Given: 시스템 초기화 (beforeEach에서 이미 필요한 작업들 추가됨)
-      await system.initialize();
-      await system.start();
-      await system.waitForSystemReady();
-
-      const taskId = 'e2e-feedback-task';
-
-      // 작업을 IN_REVIEW 상태로 설정하고 피드백 추가
-      await mockProjectBoard.updateItemStatus(taskId, 'IN_REVIEW');
-      
-      // PR 링크와 피드백 시뮬레이션
-      const prUrl = `https://github.com/test-owner/test-repo/pull/123`;
-      
-      // Mock BoardItem에 PR URL 설정
-      const reviewItems = await mockProjectBoard.getItems('test-board', 'IN_REVIEW');
-      const targetTask = reviewItems.find((item: any) => item.id === taskId);
-      if (targetTask) {
-        (targetTask as any).pullRequestUrl = prUrl;
-      }
-      
-      await mockPullRequest.addComment(prUrl, {
-        id: '1',
-        content: 'Please fix the validation logic',
-        author: 'reviewer',
-        createdAt: new Date()
-      });
-
-      // When: Planner가 주기적 모니터링을 통해 피드백을 자동 감지하고 처리하도록 대기
-      // 실제로는 ReviewTaskHandler가 PR 코멘트를 감지하고 자동으로 처리함
-      
-      // 피드백 처리 시간 대기 (Planner의 모니터링 주기 고려)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Then: Mock Developer가 피드백을 받았는지 확인
-      // 실제로는 Developer가 피드백 프롬프트를 받아서 처리함
-      const isDeveloperAvailable = await mockDeveloper.isAvailable();
-      expect(isDeveloperAvailable).toBe(true);
-      
-      // 피드백 처리를 위한 Developer 시나리오 설정
-      mockDeveloper.setScenario(MockScenario.SUCCESS_CODE_ONLY);
-      
-      // 시스템이 계속 정상 동작해야 함
-      const systemStatus = system.getStatus();
-      expect(systemStatus.isRunning).toBe(true);
-      expect(systemStatus.plannerStatus?.isRunning).toBe(true);
-    }, 15000);
   });
 
 

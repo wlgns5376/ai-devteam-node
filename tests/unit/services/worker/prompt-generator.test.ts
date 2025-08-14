@@ -203,12 +203,13 @@ describe('PromptGenerator', () => {
       expect(prompt).toContain('reviewer2');
       expect(prompt).toContain('GitHub 워크플로');
       expect(prompt).toContain('gh pr comment');
+      expect(prompt).toContain('@reviewer1 @reviewer2 리뷰 피드백이 반영되었습니다');
       expect(prompt).toContain('https://github.com/owner/repo/pull/123#issuecomment-123456');
       expect(prompt).toContain('https://github.com/owner/repo/pull/123#issuecomment-123457');
       
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Generated feedback processing prompt',
-        { taskId: task.taskId, commentCount: 2, promptLength: prompt.length }
+        { taskId: task.taskId, commentCount: 2, reviewerCount: 2, promptLength: prompt.length }
       );
     });
 
@@ -275,6 +276,105 @@ describe('PromptGenerator', () => {
       expect(prompt).toContain('src/utils.ts:10');
       expect(prompt).toContain('reviewer1');
       expect(prompt).not.toContain('링크:');
+    });
+
+    it('중복된 리뷰어를 한 번만 태그해야 한다', async () => {
+      // Given: 같은 리뷰어가 여러 코멘트를 작성한 경우
+      const task: WorkerTask = {
+        taskId: 'task-duplicate',
+        action: WorkerAction.PROCESS_FEEDBACK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/456',
+        boardItem: {
+          id: 'task-duplicate',
+          title: 'Duplicate reviewers',
+          contentNumber: 456
+        }
+      };
+
+      const comments = [
+        {
+          id: 'comment-1',
+          content: '첫 번째 코멘트',
+          author: 'reviewer1',
+          createdAt: new Date()
+        },
+        {
+          id: 'comment-2',
+          content: '두 번째 코멘트',
+          author: 'reviewer1',
+          createdAt: new Date()
+        },
+        {
+          id: 'comment-3',
+          content: '세 번째 코멘트',
+          author: 'reviewer2',
+          createdAt: new Date()
+        }
+      ];
+
+      // When: 피드백 프롬프트 생성
+      const prompt = await promptGenerator.generateFeedbackPrompt(task, comments);
+
+      // Then: reviewer1은 한 번만 태그되어야 함
+      expect(prompt).toContain('@reviewer1 @reviewer2 리뷰 피드백이 반영되었습니다');
+      expect(prompt).not.toContain('@reviewer1 @reviewer1');
+      
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Generated feedback processing prompt',
+        { taskId: task.taskId, commentCount: 3, reviewerCount: 2, promptLength: prompt.length }
+      );
+    });
+
+    it('unknown 리뷰어는 태그하지 않아야 한다', async () => {
+      // Given: unknown 리뷰어가 포함된 경우
+      const task: WorkerTask = {
+        taskId: 'task-unknown',
+        action: WorkerAction.PROCESS_FEEDBACK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        pullRequestUrl: 'https://github.com/owner/repo/pull/789',
+        boardItem: {
+          id: 'task-unknown',
+          title: 'Unknown reviewer',
+          contentNumber: 789
+        }
+      };
+
+      const comments = [
+        {
+          id: 'comment-1',
+          content: '첫 번째 코멘트',
+          author: 'reviewer1',
+          createdAt: new Date()
+        },
+        {
+          id: 'comment-2',
+          content: '두 번째 코멘트',
+          author: 'unknown',
+          createdAt: new Date()
+        },
+        {
+          id: 'comment-3',
+          content: '세 번째 코멘트',
+          author: null,
+          createdAt: new Date()
+        }
+      ];
+
+      // When: 피드백 프롬프트 생성
+      const prompt = await promptGenerator.generateFeedbackPrompt(task, comments);
+
+      // Then: unknown과 null은 태그에 포함되지 않아야 함
+      expect(prompt).toContain('@reviewer1 리뷰 피드백이 반영되었습니다');
+      expect(prompt).not.toContain('@unknown');
+      expect(prompt).not.toContain('@null');
+      
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Generated feedback processing prompt',
+        { taskId: task.taskId, commentCount: 3, reviewerCount: 1, promptLength: prompt.length }
+      );
     });
   });
 

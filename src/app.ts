@@ -6,7 +6,6 @@ import { Logger, LogLevel } from './services/logger';
 import { StateManager } from './services/state-manager';
 import { ServiceFactory } from './services/service-factory';
 import { ProjectBoardService, PullRequestService, ExternalServices } from './types';
-import { DeveloperFactory } from './services/developer/developer-factory';
 import { TaskRequestHandler } from './app/TaskRequestHandler';
 import { RepositoryInfoExtractor } from './utils/RepositoryInfoExtractor';
 import { 
@@ -14,10 +13,8 @@ import {
   ManagerCommunicator, 
   TaskRequest, 
   TaskResponse, 
-  ResponseStatus,
   DeveloperConfig,
   SystemDeveloperConfig,
-  WorkerAction,
   SystemStatus
 } from '@/types';
 
