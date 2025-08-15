@@ -262,7 +262,7 @@ describe('Worker', () => {
       expect(worker.getCurrentTask()).toBeNull();
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Task execution failed',
-        { workerId: worker.id, taskId: task.taskId, stage: WorkerStage.PREPARING_WORKSPACE, error }
+        { workerId: worker.id, taskId: task.taskId, action: task.action, stage: WorkerStage.PREPARING_WORKSPACE, error }
       );
     });
 
@@ -284,7 +284,7 @@ describe('Worker', () => {
       expect(worker.getStatus()).toBe(WorkerStatus.IDLE);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Task execution failed',
-        { workerId: worker.id, taskId: task.taskId, stage: WorkerStage.EXECUTING_TASK, error }
+        { workerId: worker.id, taskId: task.taskId, action: task.action, stage: WorkerStage.EXECUTING_TASK, error }
       );
     });
   });
@@ -658,7 +658,7 @@ describe('Worker', () => {
       expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Worker execution resumed',
-        { workerId: worker.id, taskId: task.taskId }
+        { workerId: worker.id, taskId: task.taskId, previousStatus: 'stopped' }
       );
     });
 

@@ -301,10 +301,10 @@ export class StateManager {
     await this.withLock(async () => {
       const task = this.tasks.get(taskId);
       if (task) {
+        const { lastRetryAt, ...taskWithoutLastRetryAt } = task;
         const updatedTask: Task = {
-          ...task,
+          ...taskWithoutLastRetryAt,
           retryCount: 0,
-          lastRetryAt: undefined,
           updatedAt: new Date()
         };
         this.tasks.set(taskId, updatedTask);
