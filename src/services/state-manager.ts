@@ -183,7 +183,23 @@ export class StateManager {
 
   async getTaskLastSyncTime(taskId: string): Promise<Date | null> {
     const worker = await this.getWorkerByTaskId(taskId);
-    return worker?.currentTask?.lastSyncTime || null;
+    const lastSyncTime = worker?.currentTask?.lastSyncTime;
+    
+    if (!lastSyncTime) {
+      return null;
+    }
+    
+    // 문자열로 저장된 경우 Date 객체로 변환
+    if (typeof lastSyncTime === 'string') {
+      return new Date(lastSyncTime);
+    }
+    
+    // 이미 Date 객체인 경우 그대로 반환
+    if (lastSyncTime instanceof Date) {
+      return lastSyncTime;
+    }
+    
+    return null;
   }
 
   async updateTaskLastSyncTime(taskId: string, lastSyncTime: Date): Promise<void> {
@@ -258,6 +274,62 @@ export class StateManager {
     // 호환성을 위해 빈 구현으로 유지
   }
 
+
+  // Task별 재시도 관리 메서드들
+  async getTaskRetryCount(taskId: string): Promise<number> {
+    const task = this.tasks.get(taskId);
+    return task?.retryCount || 0;
+  }
+
+  async incrementTaskRetryCount(taskId: string): Promise<void> {
+    await this.withLock(async () => {
+      const task = this.tasks.get(taskId);
+      if (task) {
+        const updatedTask: Task = {
+          ...task,
+          retryCount: (task.retryCount || 0) + 1,
+          lastRetryAt: new Date(),
+          updatedAt: new Date()
+        };
+        this.tasks.set(taskId, updatedTask);
+        await this.persistTasks();
+      }
+    });
+  }
+
+  async resetTaskRetryCount(taskId: string): Promise<void> {
+    await this.withLock(async () => {
+      const task = this.tasks.get(taskId);
+      if (task) {
+        const updatedTask: Task = {
+          ...task,
+          retryCount: 0,
+          lastRetryAt: undefined,
+          updatedAt: new Date()
+        };
+        this.tasks.set(taskId, updatedTask);
+        await this.persistTasks();
+      }
+    });
+  }
+
+  async addTaskFailureReason(taskId: string, reason: string): Promise<void> {
+    await this.withLock(async () => {
+      const task = this.tasks.get(taskId);
+      if (task) {
+        const failureReasons = task.failureReasons ? [...task.failureReasons] : [];
+        failureReasons.push(`${new Date().toISOString()}: ${reason}`);
+        
+        const updatedTask: Task = {
+          ...task,
+          failureReasons,
+          updatedAt: new Date()
+        };
+        this.tasks.set(taskId, updatedTask);
+        await this.persistTasks();
+      }
+    });
+  }
 
   // Task별 코멘트 관리 메서드들
   async addProcessedCommentToTask(taskId: string, commentId: string): Promise<void> {

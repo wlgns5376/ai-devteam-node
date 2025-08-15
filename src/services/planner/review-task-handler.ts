@@ -259,7 +259,8 @@ export class ReviewTaskHandler {
 
     // 작업별 lastSyncTime 가져오기 (Worker의 currentTask에서 조회)
     const taskLastSyncTime = await this.dependencies.stateManager.getTaskLastSyncTime(item.id);
-    const since = taskLastSyncTime || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    // since는 항상 Date 객체가 되도록 보장
+    const since = taskLastSyncTime ? new Date(taskLastSyncTime) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     
     this.logger.debug('Using sync time for comment filtering', {
       taskId: item.id,
@@ -340,6 +341,9 @@ export class ReviewTaskHandler {
       const currentTime = new Date();
       await this.dependencies.stateManager.updateTaskLastSyncTime(item.id, currentTime);
       
+      // 성공 시 재시도 횟수 초기화
+      await this.dependencies.stateManager.resetTaskRetryCount(item.id);
+      
       this.logger.info('Feedback processed', {
         taskId: item.id,
         commentCount: newComments.length,
@@ -363,15 +367,68 @@ export class ReviewTaskHandler {
         updatedLastSyncTime: currentTime.toISOString()
       });
     } else if (response.status === ResponseStatus.ERROR) {
-      this.logger.error('Feedback processing failed', {
+      // 피드백 처리 실패 시 재시도 로직 처리
+      await this.handleFeedbackProcessingError(item, response.message || 'Feedback processing failed');
+    }
+  }
+
+  /**
+   * 피드백 처리 에러 핸들링 (재시도 로직 포함)
+   */
+  private async handleFeedbackProcessingError(item: any, errorMessage: string): Promise<void> {
+    const maxRetries = 3;
+    
+    try {
+      // 재시도 횟수 확인
+      const retryCount = await this.dependencies.stateManager.getTaskRetryCount(item.id);
+      
+      if (retryCount < maxRetries) {
+        // 재시도 횟수 증가
+        await this.dependencies.stateManager.incrementTaskRetryCount(item.id);
+        
+        // 실패 원인 기록
+        await this.dependencies.stateManager.addTaskFailureReason(item.id, errorMessage);
+        
+        this.logger.warn('Feedback processing failed, will retry in next cycle', {
+          taskId: item.id,
+          retryCount: retryCount + 1,
+          maxRetries,
+          errorMessage
+        });
+        
+        // Worker는 ERROR 상태로 유지되어 있으므로 다음 주기에 자동으로 복구되어 재시도됨
+        
+      } else {
+        // 최대 재시도 횟수 초과
+        this.logger.error('Feedback processing failed after max retries', {
+          taskId: item.id,
+          maxRetries,
+          errorMessage
+        });
+        
+        // 에러 매니저에 기록
+        this.errorManager.addError(
+          'FEEDBACK_PROCESSING_MAX_RETRIES_EXCEEDED',
+          `Task ${item.id} failed after ${maxRetries} retries: ${errorMessage}`,
+          { 
+            taskId: item.id,
+            retryCount,
+            errorMessage
+          }
+        );
+        
+        // 재시도 횟수 초기화 (다음 피드백에서는 다시 시도할 수 있도록)
+        await this.dependencies.stateManager.resetTaskRetryCount(item.id);
+        
+        // Worker 해제 - 작업자가 다시 할당되도록
+        await this.releaseWorker(item.id);
+      }
+      
+    } catch (error) {
+      this.logger.error('Error handling feedback processing failure', {
         taskId: item.id,
-        reason: response.message
+        error: error instanceof Error ? error.message : String(error)
       });
-      this.errorManager.addError(
-        'FEEDBACK_PROCESSING_ERROR', 
-        response.message || 'Feedback processing failed', 
-        { taskId: item.id }
-      );
     }
   }
 

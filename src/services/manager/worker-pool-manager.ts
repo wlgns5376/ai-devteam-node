@@ -442,6 +442,53 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     }
   }
 
+  async recoverErrorWorkers(): Promise<void> {
+    const errorWorkers = Array.from(this.workers.values())
+      .filter(worker => worker.status === WorkerStatus.ERROR);
+
+    const now = Date.now();
+    const recoveredWorkers: string[] = [];
+
+    for (const worker of errorWorkers) {
+      const timeSinceLastActive = now - worker.lastActiveAt.getTime();
+      
+      // ERROR 상태 복구는 더 짧은 시간 후에 시도 (기본값의 절반)
+      const recoveryTimeout = this.config.workerRecoveryTimeoutMs / 2;
+      
+      if (timeSinceLastActive >= recoveryTimeout) {
+        // Worker 인스턴스도 함께 업데이트
+        const workerInstance = this.workerInstances.get(worker.id);
+        if (workerInstance) {
+          await workerInstance.resumeExecution();
+        }
+
+        const updatedWorker: WorkerType = {
+          ...worker,
+          status: WorkerStatus.WAITING,
+          lastActiveAt: new Date()
+        };
+
+        this.workers.set(worker.id, updatedWorker);
+        await this.dependencies.stateManager.saveWorker(updatedWorker);
+        
+        recoveredWorkers.push(worker.id);
+        
+        this.dependencies.logger.info('Worker recovered from error state', {
+          workerId: worker.id,
+          taskId: worker.currentTask?.taskId,
+          recoveryTimeout
+        });
+      }
+    }
+
+    if (recoveredWorkers.length > 0) {
+      this.dependencies.logger.info('Error worker recovery completed', {
+        recoveredCount: recoveredWorkers.length,
+        recoveredWorkers
+      });
+    }
+  }
+
   getPoolStatus(): WorkerPool {
     const workers = Array.from(this.workers.values());
     const activeWorkers = workers.filter(
@@ -453,6 +500,9 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     const stoppedWorkers = workers.filter(
       worker => worker.status === WorkerStatus.STOPPED
     ).length;
+    const errorWorkers = workers.filter(
+      worker => worker.status === WorkerStatus.ERROR
+    ).length;
 
     return {
       workers,
@@ -461,6 +511,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       activeWorkers,
       idleWorkers,
       stoppedWorkers,
+      errorWorkers,
       totalWorkers: workers.length
     };
   }
@@ -473,9 +524,18 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     
     const intervalMs = this.lifecycleConfig.cleanupIntervalMinutes * 60 * 1000;
     this.cleanupTimer = setInterval(() => {
-      this.cleanupExpiredWorkers().catch(error => {
-        this.dependencies.logger.error('Failed to cleanup expired workers', { error });
-      });
+      // 정리 작업과 복구 작업을 함께 수행
+      Promise.all([
+        this.cleanupExpiredWorkers().catch(error => {
+          this.dependencies.logger.error('Failed to cleanup expired workers', { error });
+        }),
+        this.recoverStoppedWorkers().catch(error => {
+          this.dependencies.logger.error('Failed to recover stopped workers', { error });
+        }),
+        this.recoverErrorWorkers().catch(error => {
+          this.dependencies.logger.error('Failed to recover error workers', { error });
+        })
+      ]);
     }, intervalMs);
     
     this.dependencies.logger.debug('Cleanup timer started', {

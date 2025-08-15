@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { StateManager } from '@/services/state-manager';
-import { Task, TaskStatus, TaskPriority, Worker, WorkerStatus } from '@/types';
+import { Task, TaskStatus, TaskPriority, Worker, WorkerStatus, WorkerAction } from '@/types';
 
 describe('StateManager', () => {
   const testDataDir = path.join(__dirname, '../../../test-data');
@@ -443,6 +443,99 @@ describe('StateManager', () => {
 
       // Then: 빈 배열이 반환되어야 함
       expect(retrievedComments).toEqual([]);
+    });
+  });
+
+  describe('Task 동기화 시간 관리', () => {
+    it('should return null when worker not found', async () => {
+      // When: 존재하지 않는 task ID로 lastSyncTime을 조회하면
+      const result = await stateManager.getTaskLastSyncTime('non-existent-task');
+
+      // Then: null이 반환되어야 함
+      expect(result).toBeNull();
+    });
+
+    it('should return null when worker has no currentTask', async () => {
+      // Given: currentTask가 없는 Worker가 있을 때
+      const worker: Worker = {
+        id: 'worker-no-task',
+        status: WorkerStatus.IDLE,
+        workspaceDir: '/workspace/worker-no-task',
+        developerType: 'claude',
+        createdAt: new Date(),
+        lastActiveAt: new Date(),
+        workerType: 'pool'
+      };
+      await stateManager.saveWorker(worker);
+
+      // When: lastSyncTime을 조회하면
+      const result = await stateManager.getTaskLastSyncTime('some-task');
+
+      // Then: null이 반환되어야 함
+      expect(result).toBeNull();
+    });
+
+    it('should handle string lastSyncTime and convert to Date', async () => {
+      // Given: lastSyncTime이 문자열로 저장된 Worker가 있을 때
+      const currentTask = {
+        taskId: 'task-string-sync',
+        action: WorkerAction.START_NEW_TASK,
+        boardItem: {} as any,
+        repositoryId: 'test/repo',
+        assignedAt: new Date(),
+        lastSyncTime: '2025-08-13T16:54:58.988Z' as any // 문자열로 저장된 경우를 시뮬레이션
+      };
+
+      const worker: Worker = {
+        id: 'worker-string-sync',
+        status: WorkerStatus.WAITING,
+        workspaceDir: '/workspace/worker-string-sync',
+        developerType: 'claude',
+        createdAt: new Date(),
+        lastActiveAt: new Date(),
+        workerType: 'pool',
+        currentTask
+      };
+      await stateManager.saveWorker(worker);
+
+      // When: lastSyncTime을 조회하면
+      const result = await stateManager.getTaskLastSyncTime('task-string-sync');
+
+      // Then: Date 객체로 변환되어 반환되어야 함
+      expect(result).toBeInstanceOf(Date);
+      expect(result?.getTime()).toBe(new Date('2025-08-13T16:54:58.988Z').getTime());
+    });
+
+    it('should return Date when lastSyncTime is already Date object', async () => {
+      // Given: lastSyncTime이 Date 객체인 Worker가 있을 때
+      const syncTime = new Date('2025-08-13T16:54:58.988Z');
+      const currentTask = {
+        taskId: 'task-date-sync',
+        action: WorkerAction.START_NEW_TASK,
+        boardItem: {} as any,
+        repositoryId: 'test/repo',
+        assignedAt: new Date(),
+        lastSyncTime: syncTime
+      };
+
+      const worker: Worker = {
+        id: 'worker-date-sync',
+        status: WorkerStatus.WAITING,
+        workspaceDir: '/workspace/worker-date-sync',
+        developerType: 'claude',
+        createdAt: new Date(),
+        lastActiveAt: new Date(),
+        workerType: 'pool',
+        currentTask
+      };
+      await stateManager.saveWorker(worker);
+
+      // When: lastSyncTime을 조회하면
+      const result = await stateManager.getTaskLastSyncTime('task-date-sync');
+
+      // Then: 동일한 Date 객체가 반환되어야 함
+      expect(result).toBeInstanceOf(Date);
+      expect(result?.getTime()).toBe(syncTime.getTime());
     });
   });
 

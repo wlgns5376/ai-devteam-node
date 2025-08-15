@@ -56,6 +56,7 @@ export interface WorkerPoolManagerInterface {
   releaseWorker(workerId: string): Promise<void>;
   updateWorkerStatus(workerId: string, status: WorkerStatus): Promise<void>;
   recoverStoppedWorkers(): Promise<void>;
+  recoverErrorWorkers(): Promise<void>;
   getPoolStatus(): WorkerPool;
   shutdown(): Promise<void>;
 }

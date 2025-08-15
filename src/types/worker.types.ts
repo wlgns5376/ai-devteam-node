@@ -2,7 +2,8 @@ export enum WorkerStatus {
   IDLE = 'idle',
   WAITING = 'waiting',
   WORKING = 'working',
-  STOPPED = 'stopped'
+  STOPPED = 'stopped',
+  ERROR = 'error'
 }
 
 export enum WorkerAction {
@@ -39,6 +40,7 @@ export interface WorkerPool {
   readonly activeWorkers: number;
   readonly idleWorkers: number;
   readonly stoppedWorkers: number;
+  readonly errorWorkers: number;
   readonly totalWorkers: number;
 }
 

@@ -64,7 +64,7 @@ export class Worker implements WorkerInterface {
     }
     
     if ((isFeedbackAction || isResumeAction || isMergeAction) && 
-        this._status !== WorkerStatus.WAITING) {
+        this._status !== WorkerStatus.WAITING && this._status !== WorkerStatus.ERROR) {
       throw new Error(`Worker cannot process ${task.action} in status: ${this._status}`);
     }
     
@@ -209,12 +209,30 @@ export class Worker implements WorkerInterface {
       this.dependencies.logger.error('Task execution failed', {
         workerId: this.id,
         taskId: task.taskId,
+        action: task.action,
         stage: currentStage,
         error
       });
 
-      // 실패 시 상태 초기화
-      this.completeTask();
+      // 피드백 처리 중 에러는 ERROR 상태로 유지하여 재시도 가능하게 함
+      if (task.action === WorkerAction.PROCESS_FEEDBACK) {
+        this._status = WorkerStatus.ERROR;
+        this._lastActiveAt = new Date();
+        this.updateProgress(
+          WorkerStage.PROCESSING_RESULT, 
+          `피드백 처리 중 오류 발생: ${error instanceof Error ? error.message : 'Unknown error'}`
+        );
+        
+        this.dependencies.logger.warn('Worker marked as ERROR for retry', {
+          workerId: this.id,
+          taskId: task.taskId,
+          action: task.action,
+          willRetry: true
+        });
+      } else {
+        // 다른 작업은 기존처럼 초기화
+        this.completeTask();
+      }
 
       const errorMessage = `Failed to execute task ${task.taskId}: ${
         error instanceof Error ? error.message : 'Unknown error'
@@ -237,13 +255,15 @@ export class Worker implements WorkerInterface {
   }
 
   async resumeExecution(): Promise<void> {
-    if (this._currentTask && this._status === WorkerStatus.STOPPED) {
+    if (this._currentTask && (this._status === WorkerStatus.STOPPED || this._status === WorkerStatus.ERROR)) {
+      const previousStatus = this._status;
       this._status = WorkerStatus.WAITING;
       this._lastActiveAt = new Date();
 
       this.dependencies.logger.info('Worker execution resumed', {
         workerId: this.id,
-        taskId: this._currentTask.taskId
+        taskId: this._currentTask.taskId,
+        previousStatus: previousStatus === WorkerStatus.STOPPED ? 'stopped' : 'error'
       });
     }
   }
