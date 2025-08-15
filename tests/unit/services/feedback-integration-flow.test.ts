@@ -490,14 +490,27 @@ describe('피드백 처리 통합 플로우 테스트', () => {
         message: 'Feedback processing failed due to technical issues'
       });
 
+      // StateManager의 재시도 관련 메서드들을 mock으로 설정
+      mockStateManager.getTaskRetryCount = jest.fn().mockResolvedValue(0);
+      mockStateManager.incrementTaskRetryCount = jest.fn().mockResolvedValue(undefined);
+      mockStateManager.addTaskFailureReason = jest.fn().mockResolvedValue(undefined);
+      mockStateManager.resetTaskRetryCount = jest.fn().mockResolvedValue(undefined);
+
       const loggerErrorSpy = jest.spyOn(mockLogger, 'error');
+      const loggerWarnSpy = jest.spyOn(mockLogger, 'warn');
 
       // When: 피드백 처리를 시도하면
       await planner.handleReviewTasks();
 
-      // Then: 에러가 로깅되고 작업이 IN_REVIEW 상태를 유지해야 함
-      const status = planner.getStatus();
-      expect(status.errors.length).toBeGreaterThan(0);
+      // Then: 에러가 로깅되어야 함 (warn 또는 error 중 하나라도)
+      const errorCalled = loggerErrorSpy.mock.calls.length > 0;
+      const warnCalled = loggerWarnSpy.mock.calls.length > 0;
+      
+      expect(errorCalled || warnCalled).toBe(true);
+      
+      // 재시도 카운트가 증가했는지 확인
+      expect(mockStateManager.incrementTaskRetryCount).toHaveBeenCalledWith('board-1-item-9');
+      expect(mockStateManager.addTaskFailureReason).toHaveBeenCalledWith('board-1-item-9', 'Feedback processing failed due to technical issues');
       
       const reviewItems = await mockProjectBoardService.getItems('board-1', 'IN_REVIEW');
       const failedItem = reviewItems.find(item => item.id === 'board-1-item-9');

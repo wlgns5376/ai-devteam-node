@@ -1,4 +1,4 @@
-import { WorkerStatus, Worker, WorkerPool, WorkerUpdate } from '@/types/worker.types';
+import { WorkerStatus, Worker, WorkerPool, WorkerUpdate, WorkerAction } from '@/types/worker.types';
 
 describe('Worker Types', () => {
   describe('WorkerStatus enum', () => {
@@ -10,14 +10,15 @@ describe('Worker Types', () => {
       expect(WorkerStatus.WAITING).toBe('waiting');
       expect(WorkerStatus.WORKING).toBe('working');
       expect(WorkerStatus.STOPPED).toBe('stopped');
+      expect(WorkerStatus.ERROR).toBe('error');
     });
 
-    it('should have exactly 4 worker status values', () => {
+    it('should have exactly 5 worker status values', () => {
       // Given: WorkerStatus enum이 정의되어 있을 때
       // When: enum의 값 개수를 확인하면
-      // Then: 정확히 4개의 상태만 존재해야 함
+      // Then: 정확히 5개의 상태만 존재해야 함
       const statusValues = Object.values(WorkerStatus);
-      expect(statusValues).toHaveLength(4);
+      expect(statusValues).toHaveLength(5);
     });
   });
 
@@ -50,7 +51,7 @@ describe('Worker Types', () => {
         status: WorkerStatus.WORKING,
         currentTask: {
           taskId: 'task-1',
-          action: 'start_new_task' as any,
+          action: WorkerAction.START_NEW_TASK,
           assignedAt: new Date(),
           repositoryId: 'test/repo'
         },
@@ -63,7 +64,7 @@ describe('Worker Types', () => {
       // When: currentTask를 확인하면
       // Then: 올바른 타입으로 존재해야 함
       expect(typeof workerWithTask.currentTask?.taskId).toBe('string');
-      expect(workerWithTask.currentTask?.action).toBe('start_new_task');
+      expect(workerWithTask.currentTask?.action).toBe(WorkerAction.START_NEW_TASK);
     });
 
     it('should support both developer types', () => {
@@ -128,7 +129,7 @@ describe('Worker Types', () => {
             status: WorkerStatus.WORKING,
             currentTask: {
               taskId: 'task-1',
-              action: 'start_new_task' as any,
+              action: WorkerAction.START_NEW_TASK,
               assignedAt: new Date(),
               repositoryId: 'test/repo'
             },
@@ -143,6 +144,7 @@ describe('Worker Types', () => {
         activeWorkers: 2,
         idleWorkers: 0,
         stoppedWorkers: 0,
+        errorWorkers: 0,
         totalWorkers: 2
       };
 
@@ -164,6 +166,7 @@ describe('Worker Types', () => {
         activeWorkers: 0,
         idleWorkers: 0,
         stoppedWorkers: 0,
+        errorWorkers: 0,
         totalWorkers: 0
       };
 
@@ -183,6 +186,7 @@ describe('Worker Types', () => {
         activeWorkers: 0,
         idleWorkers: 0,
         stoppedWorkers: 0,
+        errorWorkers: 0,
         totalWorkers: 0
       };
 
@@ -201,7 +205,7 @@ describe('Worker Types', () => {
         status: WorkerStatus.WORKING,
         currentTask: {
           taskId: 'task-2',
-          action: 'start_new_task' as any,
+          action: WorkerAction.START_NEW_TASK,
           assignedAt: new Date(),
           repositoryId: 'test/repo'
         }
@@ -228,7 +232,7 @@ describe('Worker Types', () => {
         status: WorkerStatus.STOPPED,
         currentTask: {
           taskId: 'task-3',
-          action: 'start_new_task' as any,
+          action: WorkerAction.START_NEW_TASK,
           assignedAt: new Date(),
           repositoryId: 'test/repo'
         },
