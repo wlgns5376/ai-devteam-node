@@ -30,6 +30,8 @@ GitHub 저장소에 다음 시크릿들을 설정해야 합니다:
 1. Docker Hub에 로그인
 2. 새 저장소 생성 (Create Repository)
 3. 저장소 이름: `ai-devteam-node`
+   - 실제 Docker 이미지 경로는 `<DOCKER_USERNAME>/ai-devteam-node` 형식이 됩니다
+   - 예: 사용자명이 `myusername`인 경우 → `myusername/ai-devteam-node`
 4. Visibility: Public 또는 Private 선택
 
 ## 워크플로우 동작 방식
@@ -37,11 +39,11 @@ GitHub 저장소에 다음 시크릿들을 설정해야 합니다:
 1. `main` 브랜치에 푸시가 발생하면 워크플로우가 실행됩니다.
 2. `package.json`의 버전을 기반으로 Git 태그와 GitHub Release를 생성합니다.
 3. Docker 이미지를 빌드하고 다음 태그로 푸시합니다:
-   - `latest` (main 브랜치인 경우)
-   - `v1.0.0` (전체 버전)
-   - `v1.0` (메이저.마이너 버전)
-   - `v1` (메이저 버전)
-   - `main` (브랜치명)
+   - `<DOCKER_USERNAME>/ai-devteam-node:latest` (main 브랜치인 경우)
+   - `<DOCKER_USERNAME>/ai-devteam-node:v1.0.0` (전체 버전)
+   - `<DOCKER_USERNAME>/ai-devteam-node:v1.0` (메이저.마이너 버전)
+   - `<DOCKER_USERNAME>/ai-devteam-node:v1` (메이저 버전)
+   - `<DOCKER_USERNAME>/ai-devteam-node:main` (브랜치명)
 
 ## 주의사항
 
