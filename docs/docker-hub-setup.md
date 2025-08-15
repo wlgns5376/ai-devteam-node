@@ -43,7 +43,7 @@ GitHub 저장소에 다음 시크릿들을 설정해야 합니다:
    - `<DOCKER_USERNAME>/ai-devteam-node:v1.0.0` (전체 버전)
    - `<DOCKER_USERNAME>/ai-devteam-node:v1.0` (메이저.마이너 버전)
    - `<DOCKER_USERNAME>/ai-devteam-node:v1` (메이저 버전)
-   - `<DOCKER_USERNAME>/ai-devteam-node:main` (브랜치명)
+   - `<DOCKER_USERNAME>/ai-devteam-node:main` (main 브랜치명)
 
 ## 주의사항
 
