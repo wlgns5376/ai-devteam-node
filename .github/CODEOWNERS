@@ -1,0 +1,19 @@
+# 이 파일은 코드 리뷰어를 자동으로 할당합니다
+# 각 라인은 파일 패턴 뒤에 하나 이상의 소유자를 지정합니다
+
+# 기본 소유자
+* @wlgns5376
+
+# 설정 파일
+/.github/ @wlgns5376
+/package.json @wlgns5376
+/tsconfig.json @wlgns5376
+
+# 핵심 서비스
+/src/services/planner.ts @wlgns5376
+/src/services/manager/ @wlgns5376
+/src/services/worker/ @wlgns5376
+
+# 문서
+/docs/ @wlgns5376
+/README.md @wlgns5376

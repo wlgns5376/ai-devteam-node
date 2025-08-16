@@ -18,7 +18,7 @@ GitHub 저장소에 다음 시크릿들을 설정해야 합니다:
   1. Docker Hub 로그인
   2. Account Settings → Security → New Access Token
   3. 토큰 이름 입력 (예: `github-actions`)
-  4. 권한 선택: `Read, Write, Delete` (또는 필요에 따라 조정)
+  4. 권한 선택: `Read, Write` (필요에 따라 `Delete` 권한 추가)
   5. Generate 클릭
   6. 생성된 토큰 복사 (한 번만 표시됨)
 - 설정 경로: Settings → Secrets and variables → Actions → New repository secret
