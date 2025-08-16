@@ -8,11 +8,15 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -66,31 +70,35 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.check_tag.outputs.exists == 'false'
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          release_name: Release v${{ steps.version.outputs.version }}
-          body: |
-            ## What's Changed
-            
-            ${{ steps.changelog.outputs.changelog }}
-            
-            ## Docker Image
-            
-            ```bash
-            docker pull ${{ secrets.DOCKER_USERNAME }}/ai-devteam:v${{ steps.version.outputs.version }}
-            ```
-          draft: false
-          prerelease: false
+        run: |
+          BODY="## What's Changed
+          
+          ${{ steps.changelog.outputs.changelog }}
+          
+          ## Docker Image
+          
+          \`\`\`bash
+          docker pull ${{ secrets.DOCKER_USERNAME }}/ai-devteam:v${{ steps.version.outputs.version }}
+          \`\`\`"
+          
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "Release v${{ steps.version.outputs.version }}" \
+            --notes "$BODY" \
+            --target main
 
   docker:
     needs: release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get version from package.json
         id: version
