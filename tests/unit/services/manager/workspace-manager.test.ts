@@ -249,8 +249,7 @@ describe('WorkspaceManager', () => {
       const mockStat = { isDirectory: () => true } as any;
       jest.spyOn(fs, 'stat').mockResolvedValue(mockStat);
       jest.spyOn(fs, 'readFile').mockResolvedValue('gitdir: /path/to/repo/.git/worktrees/task-123');
-      
-      mockRepositoryManager.ensureRepository.mockResolvedValue('/repo/path');
+      jest.spyOn(fs, 'access').mockResolvedValue(undefined); // 디렉토리 존재 확인용
 
       // When: 워크트리 설정
       await workspaceManager.setupWorktree(workspaceInfo);
@@ -305,8 +304,7 @@ describe('WorkspaceManager', () => {
       const mockStat = { isDirectory: () => true } as any;
       jest.spyOn(fs, 'stat').mockResolvedValue(mockStat);
       jest.spyOn(fs, 'readFile').mockResolvedValue('gitdir: /path/to/repo/.git/worktrees/task-123');
-      
-      mockRepositoryManager.ensureRepository.mockResolvedValue('/repo/path');
+      jest.spyOn(fs, 'access').mockResolvedValue(undefined); // 디렉토리 존재 확인용
 
       // When: 워크트리 설정
       await workspaceManager.setupWorktree(workspaceInfo);
@@ -412,11 +410,12 @@ describe('WorkspaceManager', () => {
 
       // Then: Git worktree 생성하지 않음
       expect(mockGitService.createWorktree).not.toHaveBeenCalled();
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Worktree already exists and is valid, skipping',
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Valid worktree already exists, reusing existing worktree',
         { 
           taskId: existingWorkspaceInfo.taskId,
-          workspaceDir: existingWorkspaceInfo.workspaceDir
+          workspaceDir: existingWorkspaceInfo.workspaceDir,
+          branchName: existingWorkspaceInfo.branchName
         }
       );
     });
