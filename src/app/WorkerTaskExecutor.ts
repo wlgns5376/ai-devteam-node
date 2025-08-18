@@ -87,6 +87,9 @@ export class WorkerTaskExecutor {
       case 'waiting':
         return await this.handleWaitingStatus(workerInstance, workerId, request.taskId);
       
+      case 'error':
+        return await this.handleErrorStatus(workerInstance, workerId, request.taskId);
+      
       case 'idle':
         return await this.handleIdleStatus(workerId, request.taskId);
       
@@ -133,6 +136,67 @@ export class WorkerTaskExecutor {
         taskId,
         error: error instanceof Error ? error.message : String(error)
       });
+      return { success: false };
+    }
+  }
+
+  /**
+   * 오류 상태 Worker 처리 - 재시도 또는 재개
+   */
+  private async handleErrorStatus(
+    workerInstance: any, 
+    workerId: string, 
+    taskId: string
+  ): Promise<WorkerExecutionResult> {
+    this.logger?.info('Handling worker in error status', {
+      workerId,
+      taskId,
+      errorCount: workerInstance.errorCount || 0,
+      consecutiveErrors: workerInstance.consecutiveErrors || 0
+    });
+    
+    // 백오프 대기 시간 확인
+    if (workerInstance.canRetryNow && !workerInstance.canRetryNow()) {
+      this.logger?.info('Worker still in backoff period, waiting', {
+        workerId,
+        taskId,
+        lastErrorAt: workerInstance.lastErrorAt
+      });
+      return { success: false }; // 아직 대기 중
+    }
+    
+    try {
+      // ERROR 상태에서 재개 시도
+      await workerInstance.resumeExecution();
+      this.logger?.info('Worker resumed from error status', {
+        workerId,
+        taskId
+      });
+      
+      // 재개 후 작업 시작
+      const result = await workerInstance.startExecution();
+      
+      this.logger?.info('Worker execution completed after error recovery', {
+        workerId,
+        taskId,
+        success: result.success,
+        pullRequestUrl: result.pullRequestUrl
+      });
+      
+      return {
+        success: result.success,
+        ...(result.pullRequestUrl && { pullRequestUrl: result.pullRequestUrl })
+      };
+      
+    } catch (error) {
+      this.logger?.error('Failed to recover worker from error status', {
+        workerId,
+        taskId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      // 복구 실패 시 Worker 해제
+      await this.handleWorkerFailure(workerId, taskId);
       return { success: false };
     }
   }

@@ -247,44 +247,67 @@ describe('Worker', () => {
     });
 
     it('워크스페이스 준비 실패 시 적절히 처리해야 한다', async () => {
-      // Given: 워크스페이스 준비 실패
+      // Given: 워크스페이스 준비 실패 (재시도 가능한 오류)
       await worker.assignTask(task);
       
-      const error = new Error('Workspace preparation failed');
+      const error = new Error('claude process exited with code 1');
       mockWorkspaceSetup.prepareWorkspace.mockRejectedValue(error);
 
       // When & Then: 실행 실패
       await expect(worker.startExecution()).rejects.toThrow(
-        'Failed to execute task task-execute: Workspace preparation failed'
+        'Failed to execute task task-execute: claude process exited with code 1'
       );
       
-      expect(worker.getStatus()).toBe(WorkerStatus.IDLE);
-      expect(worker.getCurrentTask()).toBeNull();
+      // 재시도 가능한 오류이므로 WAITING 상태 유지
+      expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
+      expect(worker.getCurrentTask()).not.toBeNull();
+      expect(worker.errorCount).toBe(1);
+      expect(worker.consecutiveErrors).toBe(1);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Task execution failed',
-        { workerId: worker.id, taskId: task.taskId, action: task.action, stage: WorkerStage.PREPARING_WORKSPACE, error }
+        expect.objectContaining({ 
+          workerId: worker.id, 
+          taskId: task.taskId, 
+          action: task.action, 
+          stage: WorkerStage.PREPARING_WORKSPACE, 
+          error,
+          errorCount: 1,
+          consecutiveErrors: 1
+        })
       );
     });
 
     it('Developer 실행 실패 시 적절히 처리해야 한다', async () => {
-      // Given: Developer 실행 실패
+      // Given: Developer 실행 실패 (재시도 가능한 오류)
       await worker.assignTask(task);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
       mockPromptGenerator.generateNewTaskPrompt.mockResolvedValue('Generated prompt');
       
-      const error = new Error('Developer execution failed');
+      const error = new Error('claude process exited with code 1');
       mockDeveloper.executePrompt.mockRejectedValue(error);
 
       // When & Then: 실행 실패
       await expect(worker.startExecution()).rejects.toThrow(
-        'Failed to execute task task-execute: Developer execution failed'
+        'Failed to execute task task-execute: claude process exited with code 1'
       );
       
-      expect(worker.getStatus()).toBe(WorkerStatus.IDLE);
+      // 재시도 가능한 오류이므로 WAITING 상태 유지
+      expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
+      expect(worker.getCurrentTask()).not.toBeNull();
+      expect(worker.errorCount).toBe(1);
+      expect(worker.consecutiveErrors).toBe(1);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Task execution failed',
-        { workerId: worker.id, taskId: task.taskId, action: task.action, stage: WorkerStage.EXECUTING_TASK, error }
+        expect.objectContaining({ 
+          workerId: worker.id, 
+          taskId: task.taskId, 
+          action: task.action, 
+          stage: WorkerStage.EXECUTING_TASK, 
+          error,
+          errorCount: 1,
+          consecutiveErrors: 1
+        })
       );
     });
   });

@@ -339,7 +339,7 @@ export class TaskRequestHandler {
       taskId: request.taskId
     });
 
-    // 사용 가능한 Worker 찾기
+    // 사용 가능한 Worker 찾기 (idle 또는 waiting 상태)
     const availableWorker = await this.workerPoolManager.getAvailableWorker();
     if (!availableWorker) {
       return {
@@ -347,6 +347,43 @@ export class TaskRequestHandler {
         status: ResponseStatus.ERROR,
         message: 'No available workers to reassign task',
         workerStatus: 'unavailable'
+      };
+    }
+
+    // Worker 인스턴스 가져와서 상태 확인
+    const workerInstance = await this.workerPoolManager.getWorkerInstance(availableWorker.id, this.pullRequestService);
+    if (!workerInstance) {
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.ERROR,
+        message: 'Failed to get worker instance for reassignment',
+        workerStatus: 'unavailable'
+      };
+    }
+
+    const workerStatus = workerInstance.getStatus();
+    
+    this.logger?.debug('Worker status verification', {
+      workerId: availableWorker.id,
+      jsonStatus: availableWorker.status,
+      instanceStatus: workerStatus,
+      taskAction: WorkerAction.RESUME_TASK,
+      isStatusSynced: availableWorker.status === workerStatus
+    });
+
+    // idle 상태인 Worker에는 resume_task 할당 불가
+    if (workerStatus === 'idle') {
+      this.logger?.error('Failed to reassign task', {
+        taskId: request.taskId,
+        workerId: availableWorker.id,
+        error: `Worker ${availableWorker.id} is not available for ${WorkerAction.RESUME_TASK} (status: ${workerStatus})`
+      });
+      
+      return {
+        taskId: request.taskId,
+        status: ResponseStatus.ERROR,
+        message: 'Failed to reassign task',
+        workerStatus: 'error'
       };
     }
 
@@ -362,29 +399,21 @@ export class TaskRequestHandler {
     try {
       await this.workerPoolManager.assignWorkerTask(availableWorker.id, resumeTask);
       
-      // Worker 인스턴스 가져오기
-      const workerInstance = await this.workerPoolManager.getWorkerInstance(availableWorker.id, this.pullRequestService);
-      if (workerInstance) {
-        const result = await workerInstance.startExecution();
-        
-        this.logger?.info('Task reassigned and resumed successfully', {
-          taskId: request.taskId,
-          workerId: availableWorker.id,
-          success: result.success
+      // 작업 실행은 비동기로 처리 (즉시 반환)
+      this.workerTaskExecutor.assignAndExecuteTask(availableWorker.id, resumeTask, this.pullRequestService)
+        .catch((error) => {
+          this.logger?.error('Reassigned task execution failed', {
+            taskId: request.taskId,
+            workerId: availableWorker.id,
+            error: error instanceof Error ? error.message : String(error)
+          });
         });
 
-        if (result.success && result.pullRequestUrl) {
-          // Worker는 해제하지 않음 - 피드백 처리를 위해 WAITING 상태로 유지
-          // Planner가 IN_REVIEW로 상태 변경 후, 최종 완료 시 RELEASE_WORKER 액션으로 해제
-          return {
-            taskId: request.taskId,
-            status: ResponseStatus.COMPLETED,
-            message: 'Task completed after reassignment',
-            pullRequestUrl: result.pullRequestUrl,
-            workerStatus: 'waiting_for_review'
-          };
-        }
-      }
+      this.logger?.info('Task successfully reassigned to available worker', {
+        taskId: request.taskId,
+        workerId: availableWorker.id,
+        workerStatus: workerStatus
+      });
 
       return {
         taskId: request.taskId,

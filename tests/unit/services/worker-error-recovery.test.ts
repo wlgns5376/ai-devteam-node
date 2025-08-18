@@ -54,40 +54,45 @@ describe('Worker Error Recovery', () => {
   });
 
   describe('피드백 처리 중 에러 발생', () => {
-    it('피드백 처리 중 에러 발생 시 ERROR 상태로 변경되어야 함', async () => {
+    it('피드백 처리 중 에러 발생 시 WAITING 상태로 유지되어 재시도 가능해야 함', async () => {
       // Given: Worker에 피드백 작업 할당
       await worker.assignTask(mockTask);
       expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
 
-      // Mock 실행 중 에러 발생 설정
+      // Mock 실행 중 에러 발생 설정 (재시도 가능한 에러)
       mockDependencies.workspaceSetup.prepareWorkspace.mockRejectedValue(
-        new Error('Workspace preparation failed')
+        new Error('claude process exited with code 1')
       );
 
       // When: 작업 실행 시 에러 발생
       await expect(worker.startExecution()).rejects.toThrow(
-        'Failed to execute task task-1: Workspace preparation failed'
+        'Failed to execute task task-1: claude process exited with code 1'
       );
 
-      // Then: Worker 상태가 ERROR로 변경되어야 함
-      expect(worker.getStatus()).toBe(WorkerStatus.ERROR);
+      // Then: Worker 상태가 WAITING으로 유지되어야 함 (재시도 가능)
+      expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
       
       // 작업 정보는 유지되어야 함
       expect(worker.getCurrentTask()).toEqual(mockTask);
       
+      // 오류 카운트가 증가해야 함
+      expect(worker.errorCount).toBe(1);
+      expect(worker.consecutiveErrors).toBe(1);
+      
       // 경고 로그가 출력되어야 함
       expect(mockDependencies.logger.warn).toHaveBeenCalledWith(
-        'Worker marked as ERROR for retry',
+        'Worker marked as WAITING for retry',
         expect.objectContaining({
           workerId: 'worker-1',
           taskId: 'task-1',
           action: WorkerAction.PROCESS_FEEDBACK,
+          consecutiveErrors: 1,
           willRetry: true
         })
       );
     });
 
-    it('다른 작업 중 에러 발생 시 IDLE 상태로 초기화되어야 함', async () => {
+    it('재시도 불가능한 에러 발생 시 IDLE 상태로 초기화되어야 함', async () => {
       // Given: 새 작업으로 변경
       const newTask = {
         ...mockTask,
@@ -105,14 +110,14 @@ describe('Worker Error Recovery', () => {
       await worker.assignTask(newTask);
       expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
 
-      // Mock 실행 중 에러 발생 설정
+      // Mock 실행 중 재시도 불가능한 에러 발생 설정
       mockDependencies.workspaceSetup.prepareWorkspace.mockRejectedValue(
-        new Error('Workspace preparation failed')
+        new Error('Permission denied')
       );
 
       // When: 작업 실행 시 에러 발생
       await expect(worker.startExecution()).rejects.toThrow(
-        'Failed to execute task task-1: Workspace preparation failed'
+        'Failed to execute task task-1: Permission denied'
       );
 
       // Then: Worker 상태가 IDLE로 초기화되어야 함
@@ -122,15 +127,44 @@ describe('Worker Error Recovery', () => {
       expect(worker.getCurrentTask()).toBeNull();
     });
 
-    it('ERROR 상태의 Worker는 resumeExecution으로 WAITING 상태로 복구 가능해야 함', async () => {
-      // Given: ERROR 상태의 Worker
+    it('연속 오류가 한계에 도달하면 STOPPED 상태로 변경되어야 함', async () => {
+      // Given: Worker에 작업 할당
       await worker.assignTask(mockTask);
-      mockDependencies.workspaceSetup.prepareWorkspace.mockRejectedValue(
-        new Error('Temporary error')
-      );
       
-      await expect(worker.startExecution()).rejects.toThrow();
-      expect(worker.getStatus()).toBe(WorkerStatus.ERROR);
+      // Mock 실행 중 에러가 계속 발생하도록 설정
+      mockDependencies.workspaceSetup.prepareWorkspace.mockRejectedValue(
+        new Error('claude process exited with code 1')
+      );
+
+      // When: 연속으로 5번 오류 발생 (maxConsecutiveErrors)
+      for (let i = 0; i < 5; i++) {
+        await expect(worker.startExecution()).rejects.toThrow();
+        expect(worker.consecutiveErrors).toBe(i + 1);
+      }
+
+      // Then: Worker 상태가 STOPPED로 변경되어야 함
+      expect(worker.getStatus()).toBe(WorkerStatus.STOPPED);
+      
+      // 작업 정보는 유지되어야 함
+      expect(worker.getCurrentTask()).toEqual(mockTask);
+      
+      // 오류 로그가 출력되어야 함
+      expect(mockDependencies.logger.error).toHaveBeenCalledWith(
+        'Worker stopped due to consecutive errors',
+        expect.objectContaining({
+          workerId: 'worker-1',
+          taskId: 'task-1',
+          consecutiveErrors: 5,
+          maxAllowed: 5
+        })
+      );
+    });
+
+    it('STOPPED 상태의 Worker는 resumeExecution으로 WAITING 상태로 복구 가능해야 함', async () => {
+      // Given: Worker를 STOPPED 상태로 설정
+      await worker.assignTask(mockTask);
+      await worker.pauseExecution(); // STOPPED 상태로 변경
+      expect(worker.getStatus()).toBe(WorkerStatus.STOPPED);
 
       // When: resumeExecution 호출
       await worker.resumeExecution();
