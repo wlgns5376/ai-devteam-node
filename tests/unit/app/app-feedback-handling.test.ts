@@ -297,14 +297,15 @@ describe('AIDevTeamApp - Feedback Handling', () => {
       const taskId = 'PVTI_reassign_task';
       const availableWorker = TestDataFactory.createMockWorker({
         id: 'worker-reassign-test',
-        status: WorkerStatus.IDLE
+        status: WorkerStatus.WAITING
       });
 
       const mockWorkerInstance = {
         startExecution: jest.fn().mockResolvedValue({ 
           success: true, 
           pullRequestUrl: 'https://github.com/owner/repo/pull/456'
-        })
+        }),
+        getStatus: jest.fn().mockReturnValue('waiting') // idle이 아닌 waiting 상태로 설정
       } as any;
 
       mockWorkerPoolManager.getWorkerByTaskId.mockResolvedValue(null); // 기존 Worker 없음
@@ -320,10 +321,10 @@ describe('AIDevTeamApp - Feedback Handling', () => {
         boardItem: TestDataFactory.createMockBoardItem()
       });
 
-      // Then: Worker는 해제되지 않고 waiting_for_review 상태가 되어야 함
-      expect(result.status).toBe(ResponseStatus.COMPLETED);
-      expect(result.workerStatus).toBe('waiting_for_review');
-      expect(result.pullRequestUrl).toBe('https://github.com/owner/repo/pull/456');
+      // Then: Worker가 재할당되고 실행이 시작되어야 함
+      expect(result.status).toBe(ResponseStatus.IN_PROGRESS);
+      expect(result.workerStatus).toBe('reassigned');
+      expect(result.message).toBe('Task reassigned and execution resumed');
       
       // Worker가 해제되지 않았는지 확인
       expect(mockWorkerPoolManager.releaseWorker).not.toHaveBeenCalled();

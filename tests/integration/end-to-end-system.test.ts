@@ -27,6 +27,7 @@ class E2ETestSystem {
   private config: AppConfig;
   private tempWorkspaceRoot: string;
   private logger: Logger;
+  private gitLockService: GitLockService;
 
   constructor() {
     // 테스트용 임시 작업 디렉토리 설정
@@ -46,10 +47,10 @@ class E2ETestSystem {
       enableConsole: false
     });
     
-    const gitLockService = new GitLockService({ logger: this.logger });
+    this.gitLockService = new GitLockService({ logger: this.logger });
     this.mockGitService = new MockGitService({
       logger: this.logger,
-      gitLockService
+      gitLockService: this.gitLockService
     });
     
     // MockDeveloper 설정
@@ -178,6 +179,11 @@ class E2ETestSystem {
   }
 
   async cleanup(): Promise<void> {
+    // GitLockService 리소스 정리
+    if (this.gitLockService) {
+      this.gitLockService.destroy();
+    }
+    
     // 임시 디렉토리 정리
     if (fs.existsSync(this.tempWorkspaceRoot)) {
       fs.rmSync(this.tempWorkspaceRoot, { recursive: true, force: true });
@@ -243,7 +249,7 @@ class E2ETestSystem {
     while (Date.now() - startTime < timeoutMs) {
       try {
         const items = await this.mockProjectBoardService.getItems('test-board', expectedStatus);
-        const foundItem = items.find(item => item.id === taskId);
+        const foundItem = items.find((item: any) => item.id === taskId);
         
         if (foundItem) {
           return expectedStatus;
@@ -267,13 +273,13 @@ class E2ETestSystem {
         const reviewItems = await this.mockProjectBoardService.getItems('test-board', 'IN_REVIEW');
         const inProgressItems = await this.mockProjectBoardService.getItems('test-board', 'IN_PROGRESS');
         
-        if (doneItems.find(item => item.id === taskId)) {
+        if (doneItems.find((item: any) => item.id === taskId)) {
           return 'DONE';
         }
-        if (reviewItems.find(item => item.id === taskId)) {
+        if (reviewItems.find((item: any) => item.id === taskId)) {
           return 'IN_REVIEW';
         }
-        if (inProgressItems.find(item => item.id === taskId)) {
+        if (inProgressItems.find((item: any) => item.id === taskId)) {
           return 'IN_PROGRESS';
         }
         
@@ -318,7 +324,7 @@ class E2ETestSystem {
       const statuses = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE'];
       for (const status of statuses) {
         const items = await this.mockProjectBoardService.getItems('test-board', status);
-        const found = items.find(item => item.id === taskId);
+        const found = items.find((item: any) => item.id === taskId);
         if (found) {
           return true;
         }

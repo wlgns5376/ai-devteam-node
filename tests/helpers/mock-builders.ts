@@ -140,6 +140,9 @@ export class MockWorkerPoolManagerBuilder {
     this.methods.set('releaseWorker', jest.fn());
     this.methods.set('initializePool', jest.fn());
     this.methods.set('shutdown', jest.fn());
+    this.methods.set('storeTaskResult', jest.fn());
+    this.methods.set('getTaskResult', jest.fn());
+    this.methods.set('clearTaskResult', jest.fn());
   }
 
   withWorker(worker: Worker): this {

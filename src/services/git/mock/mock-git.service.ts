@@ -138,7 +138,7 @@ export class MockGitService implements GitServiceInterface {
     // Mock 환경에서도 실제 디렉토리 정리 (테스트를 위해)
     const fs = require('fs').promises;
     try {
-      await fs.rmdir(worktreePath, { recursive: true });
+      await fs.rm(worktreePath, { recursive: true, force: true });
       this.dependencies.logger.debug('Mock: Worktree directory removed', { worktreePath });
     } catch (error) {
       this.dependencies.logger.warn('Mock: Failed to remove worktree directory', { worktreePath, error });
