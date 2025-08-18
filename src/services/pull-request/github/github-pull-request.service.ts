@@ -138,25 +138,22 @@ export class GitHubPullRequestService implements PullRequestService {
 
   async isApproved(repoId: string, prNumber: number): Promise<boolean> {
     try {
-      const reviews = await this.getReviews(repoId, prNumber);
+      const { owner, repo } = this.parseRepoId(repoId);
       
-      // 최신 리뷰 상태를 사용자별로 확인
-      const latestReviewsByUser = new Map<string, PullRequestReview>();
-      
-      for (const review of [...reviews].reverse()) { // 최신순으로 정렬
-        if (!latestReviewsByUser.has(review.reviewer)) {
-          latestReviewsByUser.set(review.reviewer, review);
-        }
+      // GitHub PR의 reviewDecision 필드를 직접 확인
+      const { data: pr } = await this.octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: prNumber
+      });
+
+      // reviewDecision이 APPROVED인지 확인
+      if (pr.draft) {
+        return false; // 드래프트 PR은 승인될 수 없음
       }
 
-      // 최소 한 명의 승인이 있고, 요청된 변경사항이 없어야 함
-      const hasApproval = Array.from(latestReviewsByUser.values())
-        .some(review => review.state === ReviewState.APPROVED);
-      
-      const hasChangesRequested = Array.from(latestReviewsByUser.values())
-        .some(review => review.state === ReviewState.CHANGES_REQUESTED);
-
-      return hasApproval && !hasChangesRequested;
+      // GitHub의 reviewDecision 필드 사용 (APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED 등)
+      return (pr as any).review_decision === 'APPROVED';
     } catch (error) {
       this.logger.error('Failed to check approval status', {
         repoId,
