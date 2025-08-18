@@ -28,7 +28,8 @@ describe('GitHubPullRequestService - Comment Filtering', () => {
         issues: {
           listComments: jest.fn()
         }
-      }
+      },
+      paginate: jest.fn()
     };
 
     // Mock Octokit constructor
@@ -98,6 +99,20 @@ describe('GitHubPullRequestService - Comment Filtering', () => {
       mockOctokit.rest.issues.listComments.mockResolvedValue({ data: mockComments });
       mockOctokit.rest.pulls.listReviewComments.mockResolvedValue({ data: [] });
       mockOctokit.rest.pulls.listReviews.mockResolvedValue({ data: [] });
+      
+      // paginate 메서드 설정 - 각 API 호출에 맞는 데이터 반환
+      mockOctokit.paginate.mockImplementation((fn: any, options: any) => {
+        if (fn === mockOctokit.rest.issues.listComments) {
+          return Promise.resolve(mockComments);
+        }
+        if (fn === mockOctokit.rest.pulls.listReviewComments) {
+          return Promise.resolve([]);
+        }
+        if (fn === mockOctokit.rest.pulls.listReviews) {
+          return Promise.resolve([]);
+        }
+        return Promise.resolve([]);
+      });
     });
 
     it('should exclude PR author comments by default', async () => {

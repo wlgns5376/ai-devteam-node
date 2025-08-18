@@ -152,8 +152,54 @@ export class GitHubPullRequestService implements PullRequestService {
         return false; // 드래프트 PR은 승인될 수 없음
       }
 
-      // GitHub의 reviewDecision 필드 사용 (APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED 등)
-      return (pr as any).review_decision === 'APPROVED';
+      // 1차: GitHub의 reviewDecision 필드 사용 (APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED 등)
+      if ((pr as any).review_decision === 'APPROVED') {
+        this.logger.debug('PR approved via review_decision field', { repoId, prNumber });
+        return true;
+      }
+
+      // 2차: reviews API를 통해 실제 승인 상태 확인 (페이지네이션 포함)
+      const reviews = await this.octokit.paginate(this.octokit.rest.pulls.listReviews, {
+        owner,
+        repo,
+        pull_number: prNumber
+      });
+
+      // 리뷰어별 최신 리뷰 상태를 집계
+      const latestReviewsByUser = new Map<string, { state: string; submittedAt: string }>();
+      
+      for (const review of reviews) {
+        if (review.user && review.state && review.submitted_at) {
+          // 같은 유저의 최신 리뷰 상태만 유지
+          const existingReview = latestReviewsByUser.get(review.user.login);
+          if (!existingReview || new Date(review.submitted_at) > new Date(existingReview.submittedAt)) {
+            latestReviewsByUser.set(review.user.login, {
+              state: review.state,
+              submittedAt: review.submitted_at
+            });
+          }
+        }
+      }
+
+      // APPROVED 상태의 리뷰가 하나라도 있고, CHANGES_REQUESTED가 없으면 승인된 것으로 판단
+      const latestStates = Array.from(latestReviewsByUser.values()).map(review => review.state);
+      const hasApproval = latestStates.includes('APPROVED');
+      const hasChangesRequested = latestStates.includes('CHANGES_REQUESTED');
+      
+      const isApproved = hasApproval && !hasChangesRequested;
+      
+      this.logger.debug('PR approval status checked via reviews', {
+        repoId,
+        prNumber,
+        reviewDecision: (pr as any).review_decision,
+        totalReviews: reviews.length,
+        latestReviewStates: latestStates,
+        hasApproval,
+        hasChangesRequested,
+        isApproved
+      });
+
+      return isApproved;
     } catch (error) {
       this.logger.error('Failed to check approval status', {
         repoId,
@@ -168,7 +214,8 @@ export class GitHubPullRequestService implements PullRequestService {
     try {
       const { owner, repo } = this.parseRepoId(repoId);
       
-      const { data: reviews } = await this.octokit.rest.pulls.listReviews({
+      // 페이지네이션을 사용하여 모든 리뷰 조회
+      const reviews = await this.octokit.paginate(this.octokit.rest.pulls.listReviews, {
         owner,
         repo,
         pull_number: prNumber
@@ -201,22 +248,22 @@ export class GitHubPullRequestService implements PullRequestService {
     try {
       const { owner, repo } = this.parseRepoId(repoId);
       
-      // Issue comments (PR 전체 코멘트)
-      const { data: issueComments } = await this.octokit.rest.issues.listComments({
+      // Issue comments (PR 전체 코멘트) - 페이지네이션 적용
+      const issueComments = await this.octokit.paginate(this.octokit.rest.issues.listComments, {
         owner,
         repo,
         issue_number: prNumber
       });
 
-      // Review comments (코드 라인별 코멘트)
-      const { data: reviewComments } = await this.octokit.rest.pulls.listReviewComments({
+      // Review comments (코드 라인별 코멘트) - 페이지네이션 적용
+      const reviewComments = await this.octokit.paginate(this.octokit.rest.pulls.listReviewComments, {
         owner,
         repo,
         pull_number: prNumber
       });
 
-      // PR Reviews (리뷰 전체 코멘트)
-      const { data: reviews } = await this.octokit.rest.pulls.listReviews({
+      // PR Reviews (리뷰 전체 코멘트) - 페이지네이션 적용
+      const reviews = await this.octokit.paginate(this.octokit.rest.pulls.listReviews, {
         owner,
         repo,
         pull_number: prNumber
