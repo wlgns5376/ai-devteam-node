@@ -67,6 +67,7 @@ export interface WorkspaceManagerInterface {
   setupClaudeLocal(workspaceInfo: WorkspaceInfo): Promise<void>;
   cleanupWorkspace(taskId: string): Promise<void>;
   getWorkspaceInfo(taskId: string): Promise<WorkspaceInfo | null>;
+  isWorktreeValid(workspaceInfo: WorkspaceInfo): Promise<boolean>;
 }
 
 export interface RepositoryManagerInterface {

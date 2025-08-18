@@ -13,6 +13,7 @@ import { ResultProcessor } from '../worker/result-processor';
 import { DeveloperFactory } from '../developer/developer-factory';
 import { Logger } from '../logger';
 import { StateManager } from '../state-manager';
+import { TaskAssignmentValidator } from '../worker/task-assignment-validator';
 
 interface WorkerPoolManagerDependencies {
   readonly logger: Logger;
@@ -30,6 +31,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   private errors: ManagerError[] = [];
   private cleanupTimer: NodeJS.Timeout | null = null;
   private workerAllocationLock: Map<string, Promise<void>> = new Map();
+  private taskAssignmentValidator: TaskAssignmentValidator;
   
   // Worker 생명주기 설정
   private readonly lifecycleConfig: {
@@ -48,6 +50,12 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       cleanupIntervalMinutes: config.workerLifecycle?.cleanupIntervalMinutes ?? 60,
       minPersistentWorkers: config.workerLifecycle?.minPersistentWorkers ?? 1
     };
+
+    // TaskAssignmentValidator 초기화
+    this.taskAssignmentValidator = new TaskAssignmentValidator({
+      logger: this.dependencies.logger,
+      workspaceManager: this.dependencies.workspaceManager
+    });
   }
 
   async initializePool(): Promise<void> {
@@ -694,5 +702,64 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
    */
   clearTaskResult(taskId: string): void {
     this.completedTaskResults.delete(taskId);
+  }
+
+  /**
+   * 특정 작업을 위한 최적의 Worker를 선택합니다.
+   * workspace 존재 여부와 우선순위를 고려하여 선택합니다.
+   */
+  async getAvailableWorkerForTask(taskId: string, boardItem?: any): Promise<WorkerType | null> {
+    // 기존 가용 Worker 찾기
+    const availableWorker = await this.getAvailableWorker();
+    if (!availableWorker) {
+      return null;
+    }
+
+    // 작업에 대한 우선순위 평가
+    const priority = await this.taskAssignmentValidator.getTaskReassignmentPriority(taskId);
+    
+    this.dependencies.logger.debug('Worker selected for task with priority', {
+      taskId,
+      workerId: availableWorker.id,
+      priority,
+      hasValidWorkspace: priority >= 10
+    });
+
+    return availableWorker;
+  }
+
+  /**
+   * idle 상태의 Worker가 특정 작업에 할당 가능한지 확인합니다.
+   */
+  async canAssignIdleWorkerToTask(workerId: string, taskId: string, boardItem?: any): Promise<boolean> {
+    const worker = this.workers.get(workerId);
+    if (!worker) {
+      return false;
+    }
+
+    const workerInstance = this.workerInstances.get(workerId);
+    if (!workerInstance || workerInstance.getStatus() !== WorkerStatus.IDLE) {
+      return false;
+    }
+
+    // workspace 기반 할당 가능성 확인
+    const canAssign = await this.taskAssignmentValidator.canAssignToIdleWorker(taskId, workerId, boardItem);
+    
+    this.dependencies.logger.debug('Idle worker task assignment check', {
+      workerId,
+      taskId,
+      canAssign,
+      workerStatus: workerInstance.getStatus()
+    });
+
+    return canAssign;
+  }
+
+  /**
+   * WorkspaceManager 인스턴스를 반환합니다.
+   * TaskRequestHandler에서 workspace 검증을 위해 사용됩니다.
+   */
+  getWorkspaceManager(): WorkspaceManagerInterface | undefined {
+    return this.dependencies.workspaceManager;
   }
 }

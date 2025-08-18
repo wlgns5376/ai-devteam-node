@@ -7,15 +7,18 @@ import {
   TaskRequest, 
   TaskResponse, 
   ResponseStatus,
-  WorkerAction 
+  WorkerAction,
+  WorkspaceInfo 
 } from '@/types';
 import { WorkerPoolManager } from '../services/manager/worker-pool-manager';
 import { PullRequestService, ProjectBoardService } from '../types';
 import { Logger } from '../services/logger';
 import { WorkerTaskExecutor } from './WorkerTaskExecutor';
+import { TaskAssignmentValidator, TaskReassignmentCheck } from '../services/worker/task-assignment-validator';
 
 export class TaskRequestHandler {
   private readonly workerTaskExecutor: WorkerTaskExecutor;
+  private readonly taskAssignmentValidator: TaskAssignmentValidator;
 
   constructor(
     private readonly workerPoolManager: WorkerPoolManager,
@@ -25,6 +28,10 @@ export class TaskRequestHandler {
     private readonly extractRepositoryFromBoardItem?: (boardItem: any, pullRequestUrl?: string) => string
   ) {
     this.workerTaskExecutor = new WorkerTaskExecutor(this.workerPoolManager, this.logger);
+    this.taskAssignmentValidator = new TaskAssignmentValidator({
+      logger: this.logger || console as any,
+      workspaceManager: this.workerPoolManager.getWorkspaceManager()
+    });
   }
 
   async handleTaskRequest(request: TaskRequest): Promise<TaskResponse> {
@@ -339,6 +346,15 @@ export class TaskRequestHandler {
       taskId: request.taskId
     });
 
+    // 작업 재할당 가능성 검증
+    const canReassign = await this.taskAssignmentValidator.validateTaskReassignment(request.taskId, request.boardItem);
+    if (!canReassign.allowed) {
+      this.logger?.warn('Task cannot be reassigned', {
+        taskId: request.taskId,
+        reason: canReassign.reason
+      });
+    }
+
     // 사용 가능한 Worker 찾기 (idle 또는 waiting 상태)
     const availableWorker = await this.workerPoolManager.getAvailableWorker();
     if (!availableWorker) {
@@ -368,23 +384,33 @@ export class TaskRequestHandler {
       jsonStatus: availableWorker.status,
       instanceStatus: workerStatus,
       taskAction: WorkerAction.RESUME_TASK,
-      isStatusSynced: availableWorker.status === workerStatus
+      isStatusSynced: availableWorker.status === workerStatus,
+      hasWorkspace: canReassign.hasWorkspace
     });
 
-    // idle 상태인 Worker에는 resume_task 할당 불가
-    if (workerStatus === 'idle') {
-      this.logger?.error('Failed to reassign task', {
+    // workspace가 존재하지 않는 idle 상태인 Worker에는 resume_task 할당 불가
+    if (workerStatus === 'idle' && !canReassign.hasWorkspace) {
+      this.logger?.error('Failed to reassign task - no workspace found', {
         taskId: request.taskId,
         workerId: availableWorker.id,
-        error: `Worker ${availableWorker.id} is not available for ${WorkerAction.RESUME_TASK} (status: ${workerStatus})`
+        error: `Worker ${availableWorker.id} is idle and no workspace exists for task ${request.taskId}`
       });
       
       return {
         taskId: request.taskId,
         status: ResponseStatus.ERROR,
-        message: 'Failed to reassign task',
+        message: 'Failed to reassign task - no workspace found',
         workerStatus: 'error'
       };
+    }
+
+    // workspace가 존재하는 경우 idle Worker에도 재할당 허용
+    if (workerStatus === 'idle' && canReassign.hasWorkspace) {
+      this.logger?.info('Allowing task reassignment to idle worker with existing workspace', {
+        taskId: request.taskId,
+        workerId: availableWorker.id,
+        workspaceDir: canReassign.workspaceInfo?.workspaceDir
+      });
     }
 
     // 작업 재할당 (RESUME_TASK 액션으로)
@@ -504,4 +530,5 @@ export class TaskRequestHandler {
       });
     }
   }
+
 }

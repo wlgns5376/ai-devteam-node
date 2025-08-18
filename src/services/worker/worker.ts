@@ -82,7 +82,16 @@ export class Worker implements WorkerInterface {
       throw new Error('Worker is already assigned to a task');
     }
     
-    if ((isFeedbackAction || isResumeAction || isMergeAction) && 
+    // RESUME_TASK는 idle 상태에서도 허용 (workspace 존재하는 경우)
+    if (isResumeAction && 
+        this._status !== WorkerStatus.WAITING && 
+        this._status !== WorkerStatus.ERROR && 
+        this._status !== WorkerStatus.IDLE) {
+      throw new Error(`Worker cannot process ${task.action} in status: ${this._status}`);
+    }
+    
+    // FEEDBACK 및 MERGE 작업은 기존 규칙 유지 (waiting 또는 error 상태에서만)
+    if ((isFeedbackAction || isMergeAction) && 
         this._status !== WorkerStatus.WAITING && this._status !== WorkerStatus.ERROR) {
       throw new Error(`Worker cannot process ${task.action} in status: ${this._status}`);
     }
@@ -95,20 +104,34 @@ export class Worker implements WorkerInterface {
       throw new Error('Worker is stopped');
     }
 
+    const previousStatus = this._status;
+    
+    // idle 상태에서 RESUME_TASK 할당에 대한 특별 로깅
+    if (isResumeAction && previousStatus === WorkerStatus.IDLE) {
+      this.dependencies.logger.info('Resuming task on idle worker (workspace should exist)', {
+        workerId: this.id,
+        taskId: task.taskId,
+        previousStatus: previousStatus,
+        action: task.action
+      });
+    }
+
     this._currentTask = task;
     this._status = WorkerStatus.WAITING;
     this._lastActiveAt = new Date();
     this._progress = {
       taskId: task.taskId,
       stage: WorkerStage.PREPARING_WORKSPACE,
-      message: '작업 준비 중',
+      message: isResumeAction && previousStatus === WorkerStatus.IDLE ? 
+        '기존 workspace에서 작업 재개 준비 중' : '작업 준비 중',
       timestamp: new Date()
     };
 
     this.dependencies.logger.info('Task assigned to worker', {
       workerId: this.id,
       taskId: task.taskId,
-      action: task.action
+      action: task.action,
+      previousStatus: previousStatus
     });
   }
 
