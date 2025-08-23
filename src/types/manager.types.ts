@@ -56,6 +56,7 @@ export interface WorkerPoolManagerInterface {
   releaseWorker(workerId: string): Promise<void>;
   updateWorkerStatus(workerId: string, status: WorkerStatus): Promise<void>;
   recoverStoppedWorkers(): Promise<void>;
+  recoverErrorWorkers(): Promise<void>;
   getPoolStatus(): WorkerPool;
   shutdown(): Promise<void>;
 }
@@ -66,6 +67,7 @@ export interface WorkspaceManagerInterface {
   setupClaudeLocal(workspaceInfo: WorkspaceInfo): Promise<void>;
   cleanupWorkspace(taskId: string): Promise<void>;
   getWorkspaceInfo(taskId: string): Promise<WorkspaceInfo | null>;
+  isWorktreeValid(workspaceInfo: WorkspaceInfo): Promise<boolean>;
 }
 
 export interface RepositoryManagerInterface {

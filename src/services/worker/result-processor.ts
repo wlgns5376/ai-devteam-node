@@ -215,7 +215,12 @@ export class ResultProcessor implements ResultProcessorInterface {
       'Pull Request',
       '✓.*tests? passed',
       '모든 테스트.*통과',
-      'Coverage:'
+      'Coverage:',
+      '병합.*성공적으로.*완료',
+      '작업을.*완료했습니다',
+      'merge.*successful',
+      'Everything up-to-date',
+      '모든 변경사항.*적용'
     ];
 
     const hasSuccessIndicator = successIndicators.some(pattern => 

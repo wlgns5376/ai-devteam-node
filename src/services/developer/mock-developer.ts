@@ -9,6 +9,8 @@ import {
   DeveloperErrorCode,
   Command
 } from '@/types/developer.types';
+import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
+import { ReviewState } from '@/types';
 
 export class MockDeveloper implements DeveloperInterface {
   readonly type: DeveloperType = 'mock';
@@ -18,7 +20,8 @@ export class MockDeveloper implements DeveloperInterface {
 
   constructor(
     private readonly config: DeveloperConfig,
-    private readonly dependencies: DeveloperDependencies
+    private readonly dependencies: DeveloperDependencies,
+    private readonly mockPullRequestService?: MockPullRequestService
   ) {
     this.currentScenario = config.mock?.defaultScenario || MockScenario.SUCCESS_WITH_PR;
     this.timeoutMs = config.timeoutMs;
@@ -43,6 +46,11 @@ export class MockDeveloper implements DeveloperInterface {
     // 시나리오 자동 선택
     const scenario = this.selectScenario(prompt);
 
+    this.dependencies.logger.debug('Executing Mock AI prompt', { 
+      prompt,
+      workspaceDir 
+    });
+
     // 응답 지연 시뮬레이션
     if (this.config.mock?.responseDelay) {
       await this.delay(this.config.mock.responseDelay);
@@ -58,6 +66,11 @@ export class MockDeveloper implements DeveloperInterface {
         duration: endTime.getTime() - startTime.getTime(),
         developerType: 'mock'
       };
+
+      this.dependencies.logger.debug('Mock AI execution completed', { 
+        output, 
+        scenario
+      });
 
       return output;
     } catch (error) {
@@ -87,13 +100,33 @@ export class MockDeveloper implements DeveloperInterface {
   private selectScenario(prompt: string): MockScenario {
     const lowerPrompt = prompt.toLowerCase();
 
+    if (lowerPrompt.includes('새로운 작업을 시작합니다')) {
+      return MockScenario.SUCCESS_WITH_PR;
+    }
+
     // 프롬프트 기반 시나리오 선택
+    if (lowerPrompt.includes('피드백') || lowerPrompt.includes('feedback') || lowerPrompt.includes('코멘트') || lowerPrompt.includes('comment')) {
+      // 긴 처리 시간이 필요한 피드백인지 확인
+      if (lowerPrompt.includes('long') || lowerPrompt.includes('긴') || lowerPrompt.includes('오래')) {
+        return MockScenario.LONG_FEEDBACK_PROCESSING;
+      }
+      return MockScenario.PR_FEEDBACK_APPLIED;
+    }
+
+    if (lowerPrompt.includes('merge') || lowerPrompt.includes('병합')) {
+      return MockScenario.SUCCESS_CODE_ONLY; // merge는 PR 없이 코드만 성공
+    }
+    
     if (lowerPrompt.includes('pr') || lowerPrompt.includes('pull request')) {
       return MockScenario.SUCCESS_WITH_PR;
     }
     
     if (lowerPrompt.includes('리팩토링') || lowerPrompt.includes('refactor')) {
       return MockScenario.SUCCESS_CODE_ONLY;
+    }
+
+    if (lowerPrompt.includes('리뷰') || lowerPrompt.includes('review')) {
+      return MockScenario.PR_FEEDBACK_APPLIED;
     }
 
     if (lowerPrompt.includes('에러') || lowerPrompt.includes('error')) {
@@ -114,10 +147,16 @@ export class MockDeveloper implements DeveloperInterface {
   ): Promise<DeveloperOutput> {
     switch (scenario) {
       case MockScenario.SUCCESS_WITH_PR:
-        return this.generateSuccessWithPr(prompt, workspaceDir);
+        return await this.generateSuccessWithPr(prompt, workspaceDir);
       
       case MockScenario.SUCCESS_CODE_ONLY:
         return this.generateSuccessCodeOnly(prompt, workspaceDir);
+      
+      case MockScenario.PR_FEEDBACK_APPLIED:
+        return await this.generatePRFeedbackApplied(prompt, workspaceDir);
+      
+      case MockScenario.LONG_FEEDBACK_PROCESSING:
+        return await this.generateLongFeedbackProcessing(prompt, workspaceDir);
       
       case MockScenario.ERROR:
         throw new DeveloperError(
@@ -135,6 +174,43 @@ export class MockDeveloper implements DeveloperInterface {
           'mock'
         );
       
+      case MockScenario.EXECUTION_FAILURE:
+        throw new DeveloperError(
+          'Developer execution failed',
+          DeveloperErrorCode.EXECUTION_FAILED,
+          'mock',
+          { prompt, workspaceDir }
+        );
+      
+      case MockScenario.INVALID_RESPONSE:
+        return this.generateInvalidResponse(prompt, workspaceDir);
+      
+      case MockScenario.PROCESS_CRASH:
+        // 프로세스 크래시 시뮬레이션
+        await this.delay(100);
+        throw new DeveloperError(
+          'Developer process crashed unexpectedly',
+          DeveloperErrorCode.PROCESS_CRASHED,
+          'mock',
+          { prompt, workspaceDir }
+        );
+      
+      case MockScenario.NETWORK_ERROR:
+        throw new DeveloperError(
+          'Network error during execution',
+          DeveloperErrorCode.EXECUTION_FAILED,
+          'mock',
+          { prompt, workspaceDir, errorType: 'NETWORK_ERROR' }
+        );
+      
+      case MockScenario.RESOURCE_EXHAUSTION:
+        throw new DeveloperError(
+          'Resource exhaustion: out of memory',
+          DeveloperErrorCode.EXECUTION_FAILED,
+          'mock',
+          { prompt, workspaceDir, errorType: 'RESOURCE_EXHAUSTION' }
+        );
+      
       default:
         throw new DeveloperError(
           `Unknown scenario: ${scenario}`,
@@ -144,11 +220,16 @@ export class MockDeveloper implements DeveloperInterface {
     }
   }
 
-  private generateSuccessWithPr(prompt: string, workspaceDir: string): DeveloperOutput {
+  private async generateSuccessWithPr(prompt: string, workspaceDir: string): Promise<DeveloperOutput> {
     const branchName = 'feature/user-auth';
     const commitHash = this.generateCommitHash();
     const prNumber = Math.floor(Math.random() * 1000) + 1;
-    const prLink = `https://github.com/user/repo/pull/${prNumber}`;
+    const prLink = `https://github.com/test-owner/test-repo/pull/${prNumber}`;
+
+    // MockPullRequestService에 PR 등록 (주입된 경우에만)
+    if (this.mockPullRequestService) {
+      await this.mockPullRequestService.setPullRequestState(prLink, ReviewState.CHANGES_REQUESTED);
+    }
 
     const commands: Command[] = [
       {
@@ -203,23 +284,56 @@ export class MockDeveloper implements DeveloperInterface {
 
   private generateSuccessCodeOnly(prompt: string, workspaceDir: string): DeveloperOutput {
     const commitHash = this.generateCommitHash();
+    const lowerPrompt = prompt.toLowerCase();
+    
+    // merge 작업인지 확인
+    const isMergeOperation = lowerPrompt.includes('merge') || lowerPrompt.includes('병합');
+    
+    const commands: Command[] = [];
+    
+    if (isMergeOperation) {
+      // merge 작업 시뮬레이션
+      commands.push(
+        {
+          command: 'git checkout main',
+          output: 'Switched to branch \'main\'',
+          exitCode: 0,
+          timestamp: new Date()
+        },
+        {
+          command: 'git merge --no-ff feature/user-auth',
+          output: `Merge made by the 'recursive' strategy.\n 3 files changed, 150 insertions(+)`,
+          exitCode: 0,
+          timestamp: new Date()
+        },
+        {
+          command: 'git push origin main',
+          output: 'Everything up-to-date',
+          exitCode: 0,
+          timestamp: new Date()
+        }
+      );
+    } else {
+      // 일반 코드 수정 작업
+      commands.push(
+        {
+          command: 'git add .',
+          output: '',
+          exitCode: 0,
+          timestamp: new Date()
+        },
+        {
+          command: 'git commit -m "Refactor code structure"',
+          output: `[main ${commitHash.substring(0, 7)}] Refactor code structure\n 5 files changed, 80 insertions(+), 120 deletions(-)`,
+          exitCode: 0,
+          timestamp: new Date()
+        }
+      );
+    }
 
-    const commands: Command[] = [
-      {
-        command: 'git add .',
-        output: '',
-        exitCode: 0,
-        timestamp: new Date()
-      },
-      {
-        command: 'git commit -m "Refactor code structure"',
-        output: `[main ${commitHash.substring(0, 7)}] Refactor code structure\n 5 files changed, 80 insertions(+), 120 deletions(-)`,
-        exitCode: 0,
-        timestamp: new Date()
-      }
-    ];
-
-    const rawOutput = this.generateRawOutput(commands, undefined, commitHash);
+    const rawOutput = isMergeOperation 
+      ? this.generateMergeRawOutput(commands, commitHash)
+      : this.generateRawOutput(commands, undefined, commitHash);
 
     return {
       rawOutput,
@@ -228,10 +342,9 @@ export class MockDeveloper implements DeveloperInterface {
         commitHash
       },
       executedCommands: commands,
-      modifiedFiles: [
-        'src/services/user.service.ts',
-        'src/utils/helpers.ts'
-      ],
+      modifiedFiles: isMergeOperation 
+        ? ['src/auth/auth.service.ts', 'src/auth/auth.controller.ts', 'src/auth/auth.module.ts']
+        : ['src/services/user.service.ts', 'src/utils/helpers.ts'],
       metadata: {
         startTime: new Date(),
         endTime: new Date(),
@@ -253,12 +366,96 @@ export class MockDeveloper implements DeveloperInterface {
     }
 
     if (prLink) {
-      output += `PR이 생성되었습니다: ${prLink}\n`;
+      output += `생성된 PR: ${prLink}\n`;
     }
 
     output += '\n작업을 완료했습니다!';
 
     return output;
+  }
+
+  private generateMergeRawOutput(commands: Command[], commitHash?: string): string {
+    let output = '🔄 병합 작업을 시작합니다...\n\n';
+
+    output += '📋 병합 준비 사항:\n';
+    output += '  - 타겟 브랜치: main\n';
+    output += '  - 소스 브랜치: feature/user-auth\n';
+    output += '  - 병합 방식: --no-ff (fast-forward 없이)\n\n';
+
+    for (const cmd of commands) {
+      output += `$ ${cmd.command}\n`;
+      if (cmd.output) {
+        output += `${cmd.output}\n`;
+      }
+      output += '\n';
+    }
+
+    output += '✅ 병합이 성공적으로 완료되었습니다!\n';
+    output += '📝 모든 변경사항이 메인 브랜치에 적용되었습니다.\n';
+    output += '🎉 기능 브랜치의 작업이 안전하게 통합되었습니다.';
+
+    return output;
+  }
+
+  private generateFeedbackRawOutput(commands: Command[], prLink?: string, commitHash?: string): string {
+    let output = 'PR 리뷰 피드백을 반영하고 있습니다...\n\n';
+
+    output += '📝 리뷰 코멘트 분석 완료\n';
+    output += '🔧 코드 수정 중...\n\n';
+
+    for (const cmd of commands) {
+      output += `$ ${cmd.command}\n`;
+      if (cmd.output) {
+        output += `${cmd.output}\n`;
+      }
+      output += '\n';
+    }
+
+    if (prLink) {
+      output += `✅ 피드백 반영 완료 - PR 업데이트됨: ${prLink}\n`;
+    }
+
+    output += '\n🎉 모든 리뷰 코멘트가 반영되었습니다!';
+
+    return output;
+  }
+
+  private generateInvalidResponse(prompt: string, workspaceDir: string): DeveloperOutput {
+    // 유효하지 않은 PR URL을 생성
+    const invalidPrLink = 'not-a-valid-url';
+    const commitHash = this.generateCommitHash();
+    
+    const commands: Command[] = [
+      {
+        command: 'git add .',
+        output: '',
+        exitCode: 0,
+        timestamp: new Date()
+      },
+      {
+        command: 'git commit -m "Test commit"',
+        output: `[main ${commitHash.substring(0, 7)}] Test commit`,
+        exitCode: 0,
+        timestamp: new Date()
+      }
+    ];
+    
+    return {
+      rawOutput: 'Invalid response simulation\n' + invalidPrLink,
+      result: {
+        success: true,
+        prLink: invalidPrLink, // 유효하지 않은 PR URL
+        commitHash
+      },
+      executedCommands: commands,
+      modifiedFiles: ['test.ts'],
+      metadata: {
+        startTime: new Date(),
+        endTime: new Date(),
+        duration: 0,
+        developerType: 'mock'
+      }
+    };
   }
 
   private generateCommitHash(): string {
@@ -277,5 +474,153 @@ export class MockDeveloper implements DeveloperInterface {
   private async simulateTimeout(): Promise<void> {
     // 설정된 타임아웃보다 더 오래 대기
     await this.delay(this.timeoutMs + 1000);
+  }
+
+  private async generatePRFeedbackApplied(prompt: string, workspaceDir: string): Promise<DeveloperOutput> {
+    const commitHash = this.generateCommitHash();
+    const prNumber = Math.floor(Math.random() * 1000) + 1;
+    const prLink = `https://github.com/test-owner/test-repo/pull/${prNumber}`;
+    const branchName = 'feature/user-auth';
+
+    // MockPullRequestService에 PR 상태를 approved로 변경 (주입된 경우에만)
+    if (this.mockPullRequestService) {
+      await this.mockPullRequestService.setPullRequestState(prLink, ReviewState.APPROVED);
+    }
+
+    const commands: Command[] = [
+      {
+        command: 'git add .',
+        output: '',
+        exitCode: 0,
+        timestamp: new Date()
+      },
+      {
+        command: 'git commit -m "Apply PR feedback: fix code review comments"',
+        output: `[${branchName} ${commitHash.substring(0, 7)}] Apply PR feedback: fix code review comments\n 2 files changed, 25 insertions(+), 10 deletions(-)`,
+        exitCode: 0,
+        timestamp: new Date()
+      },
+      {
+        command: `git push origin ${branchName}`,
+        output: `To github.com:test-owner/test-repo.git\n   abc1234..${commitHash.substring(0, 7)}  ${branchName} -> ${branchName}`,
+        exitCode: 0,
+        timestamp: new Date()
+      }
+    ];
+
+    const rawOutput = this.generateFeedbackRawOutput(commands, prLink, commitHash);
+
+    return {
+      rawOutput,
+      result: {
+        success: true,
+        prLink,
+        commitHash
+      },
+      executedCommands: commands,
+      modifiedFiles: [
+        'src/auth/auth.service.ts',
+        'src/auth/auth.controller.ts'
+      ],
+      metadata: {
+        startTime: new Date(),
+        endTime: new Date(),
+        duration: 0,
+        developerType: 'mock'
+      }
+    };
+  }
+
+  private async generateLongFeedbackProcessing(prompt: string, workspaceDir: string): Promise<DeveloperOutput> {
+    const commitHash = this.generateCommitHash();
+    const prNumber = Math.floor(Math.random() * 1000) + 1;
+    const prLink = `https://github.com/test-owner/test-repo/pull/${prNumber}`;
+    const branchName = 'feature/user-auth';
+
+    // 긴 피드백 처리 시간 시뮬레이션 (2-3초)
+    const longDelay = 2500;
+    await this.delay(longDelay);
+
+    // MockPullRequestService에 PR 상태를 approved로 변경 (주입된 경우에만)
+    if (this.mockPullRequestService) {
+      await this.mockPullRequestService.setPullRequestState(prLink, ReviewState.APPROVED);
+    }
+
+    const commands: Command[] = [
+      {
+        command: 'git add .',
+        output: '',
+        exitCode: 0,
+        timestamp: new Date()
+      },
+      {
+        command: 'git commit -m "Apply long feedback processing: comprehensive code review fixes"',
+        output: `[${branchName} ${commitHash.substring(0, 7)}] Apply long feedback processing: comprehensive code review fixes\n 5 files changed, 120 insertions(+), 45 deletions(-)`,
+        exitCode: 0,
+        timestamp: new Date()
+      },
+      {
+        command: `git push origin ${branchName}`,
+        output: `To github.com:test-owner/test-repo.git\n   abc1234..${commitHash.substring(0, 7)}  ${branchName} -> ${branchName}`,
+        exitCode: 0,
+        timestamp: new Date()
+      }
+    ];
+
+    const rawOutput = this.generateLongFeedbackRawOutput(commands, prLink, commitHash, longDelay);
+
+    return {
+      rawOutput,
+      result: {
+        success: true,
+        prLink,
+        commitHash
+      },
+      executedCommands: commands,
+      modifiedFiles: [
+        'src/auth/auth.service.ts',
+        'src/auth/auth.controller.ts',
+        'src/auth/auth.middleware.ts',
+        'src/auth/auth.validator.ts',
+        'src/utils/auth-helpers.ts'
+      ],
+      metadata: {
+        startTime: new Date(),
+        endTime: new Date(),
+        duration: longDelay,
+        developerType: 'mock'
+      }
+    };
+  }
+
+  private generateLongFeedbackRawOutput(commands: Command[], prLink?: string, commitHash?: string, duration?: number): string {
+    let output = '🔄 긴 피드백 처리를 시작합니다... (복잡한 리뷰 코멘트 반영)\n\n';
+
+    output += '📝 상세한 리뷰 코멘트 분석 중...\n';
+    output += '  - 코드 구조 개선 사항 검토\n';
+    output += '  - 보안 취약점 수정 방안 분석\n';
+    output += '  - 성능 최적화 요구사항 검토\n';
+    output += '  - 테스트 커버리지 개선 방안 분석\n\n';
+    
+    output += '🔧 복잡한 코드 수정 진행 중...\n';
+    if (duration) {
+      output += `⏱️  예상 처리 시간: ${duration}ms\n\n`;
+    }
+
+    for (const cmd of commands) {
+      output += `$ ${cmd.command}\n`;
+      if (cmd.output) {
+        output += `${cmd.output}\n`;
+      }
+      output += '\n';
+    }
+
+    if (prLink) {
+      output += `✅ 긴 피드백 처리 완료 - PR 업데이트됨: ${prLink}\n`;
+    }
+
+    output += '\n🎉 복잡한 리뷰 코멘트가 모두 반영되었습니다! (긴 처리 시간 소요됨)';
+
+    return output;
   }
 }

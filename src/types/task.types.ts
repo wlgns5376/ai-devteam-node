@@ -24,6 +24,9 @@ export interface Task {
   readonly prUrl?: string;
   readonly comments?: ReadonlyArray<string>;
   readonly processedCommentIds?: ReadonlyArray<string>;
+  readonly retryCount?: number;
+  readonly lastRetryAt?: Date;
+  readonly failureReasons?: ReadonlyArray<string>;
 }
 
 export interface TaskUpdate {

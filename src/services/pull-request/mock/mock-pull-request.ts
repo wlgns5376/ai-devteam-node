@@ -7,7 +7,7 @@ import {
   ReviewState,
   CommentFilterOptions,
   DEFAULT_ALLOWED_BOTS
-} from '../types';
+} from '@/types';
 
 export class MockPullRequestService implements PullRequestService {
   private pullRequests: Map<string, Map<number, PullRequest>> = new Map();
@@ -213,6 +213,11 @@ export class MockPullRequestService implements PullRequestService {
     
     // 기존 리뷰들을 모두 제거하고 새로운 리뷰만 설정
     this.reviews.set(key, [newReview]);
+  }
+
+  async approvePullRequest(prUrl: string): Promise<void> {
+    // PR을 승인 상태로 설정
+    await this.setPullRequestState(prUrl, ReviewState.APPROVED);
   }
 
   async setPullRequestToMerged(prUrl: string): Promise<void> {

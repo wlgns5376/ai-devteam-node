@@ -138,25 +138,68 @@ export class GitHubPullRequestService implements PullRequestService {
 
   async isApproved(repoId: string, prNumber: number): Promise<boolean> {
     try {
-      const reviews = await this.getReviews(repoId, prNumber);
+      const { owner, repo } = this.parseRepoId(repoId);
       
-      // 최신 리뷰 상태를 사용자별로 확인
-      const latestReviewsByUser = new Map<string, PullRequestReview>();
+      // GitHub PR의 reviewDecision 필드를 직접 확인
+      const { data: pr } = await this.octokit.rest.pulls.get({
+        owner,
+        repo,
+        pull_number: prNumber
+      });
+
+      // reviewDecision이 APPROVED인지 확인
+      if (pr.draft) {
+        return false; // 드래프트 PR은 승인될 수 없음
+      }
+
+      // 1차: GitHub의 reviewDecision 필드 사용 (APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED 등)
+      if ((pr as any).review_decision === 'APPROVED') {
+        this.logger.debug('PR approved via review_decision field', { repoId, prNumber });
+        return true;
+      }
+
+      // 2차: reviews API를 통해 실제 승인 상태 확인 (페이지네이션 포함)
+      const reviews = await this.octokit.paginate(this.octokit.rest.pulls.listReviews, {
+        owner,
+        repo,
+        pull_number: prNumber
+      });
+
+      // 리뷰어별 최신 리뷰 상태를 집계
+      const latestReviewsByUser = new Map<string, { state: string; submittedAt: string }>();
       
-      for (const review of [...reviews].reverse()) { // 최신순으로 정렬
-        if (!latestReviewsByUser.has(review.reviewer)) {
-          latestReviewsByUser.set(review.reviewer, review);
+      for (const review of reviews) {
+        if (review.user && review.state && review.submitted_at) {
+          // 같은 유저의 최신 리뷰 상태만 유지
+          const existingReview = latestReviewsByUser.get(review.user.login);
+          if (!existingReview || new Date(review.submitted_at) > new Date(existingReview.submittedAt)) {
+            latestReviewsByUser.set(review.user.login, {
+              state: review.state,
+              submittedAt: review.submitted_at
+            });
+          }
         }
       }
 
-      // 최소 한 명의 승인이 있고, 요청된 변경사항이 없어야 함
-      const hasApproval = Array.from(latestReviewsByUser.values())
-        .some(review => review.state === ReviewState.APPROVED);
+      // APPROVED 상태의 리뷰가 하나라도 있고, CHANGES_REQUESTED가 없으면 승인된 것으로 판단
+      const latestStates = Array.from(latestReviewsByUser.values()).map(review => review.state);
+      const hasApproval = latestStates.includes('APPROVED');
+      const hasChangesRequested = latestStates.includes('CHANGES_REQUESTED');
       
-      const hasChangesRequested = Array.from(latestReviewsByUser.values())
-        .some(review => review.state === ReviewState.CHANGES_REQUESTED);
+      const isApproved = hasApproval && !hasChangesRequested;
+      
+      this.logger.debug('PR approval status checked via reviews', {
+        repoId,
+        prNumber,
+        reviewDecision: (pr as any).review_decision,
+        totalReviews: reviews.length,
+        latestReviewStates: latestStates,
+        hasApproval,
+        hasChangesRequested,
+        isApproved
+      });
 
-      return hasApproval && !hasChangesRequested;
+      return isApproved;
     } catch (error) {
       this.logger.error('Failed to check approval status', {
         repoId,
@@ -171,7 +214,8 @@ export class GitHubPullRequestService implements PullRequestService {
     try {
       const { owner, repo } = this.parseRepoId(repoId);
       
-      const { data: reviews } = await this.octokit.rest.pulls.listReviews({
+      // 페이지네이션을 사용하여 모든 리뷰 조회
+      const reviews = await this.octokit.paginate(this.octokit.rest.pulls.listReviews, {
         owner,
         repo,
         pull_number: prNumber
@@ -204,22 +248,22 @@ export class GitHubPullRequestService implements PullRequestService {
     try {
       const { owner, repo } = this.parseRepoId(repoId);
       
-      // Issue comments (PR 전체 코멘트)
-      const { data: issueComments } = await this.octokit.rest.issues.listComments({
+      // Issue comments (PR 전체 코멘트) - 페이지네이션 적용
+      const issueComments = await this.octokit.paginate(this.octokit.rest.issues.listComments, {
         owner,
         repo,
         issue_number: prNumber
       });
 
-      // Review comments (코드 라인별 코멘트)
-      const { data: reviewComments } = await this.octokit.rest.pulls.listReviewComments({
+      // Review comments (코드 라인별 코멘트) - 페이지네이션 적용
+      const reviewComments = await this.octokit.paginate(this.octokit.rest.pulls.listReviewComments, {
         owner,
         repo,
         pull_number: prNumber
       });
 
-      // PR Reviews (리뷰 전체 코멘트)
-      const { data: reviews } = await this.octokit.rest.pulls.listReviews({
+      // PR Reviews (리뷰 전체 코멘트) - 페이지네이션 적용
+      const reviews = await this.octokit.paginate(this.octokit.rest.pulls.listReviews, {
         owner,
         repo,
         pull_number: prNumber
@@ -334,11 +378,11 @@ export class GitHubPullRequestService implements PullRequestService {
 
   async markCommentsAsProcessed(commentIds: string[]): Promise<void> {
     // GitHub API에는 코멘트 처리 상태를 직접 저장할 수 없으므로,
-    // 실제 구현에서는 로컬 상태 관리나 별도 저장소를 사용해야 함
+    // 로컬에서 상태를 관리하며 StateManager 통합은 별도 작업으로 처리
     this.logger.debug('Marking comments as processed', { commentIds });
     
-    // TODO: StateManager나 별도 저장소에 처리된 코멘트 ID 저장
-    // 현재는 로깅만 수행
+    // 현재는 로깅만 수행하며, StateManager 통합은 Worker와의 연동 시 구현
+    // Worker가 작업별로 처리된 코멘트를 관리하도록 설계됨
   }
 
   private parseRepoId(repoId: string): { owner: string; repo: string } {

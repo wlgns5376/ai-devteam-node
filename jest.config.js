@@ -56,10 +56,10 @@ module.exports = {
     '^@/services/(.*)$': '<rootDir>/src/services/$1',
     '^@/utils/(.*)$': '<rootDir>/src/utils/$1'
   },
-  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
-  setupFiles: ['<rootDir>/tests/jest.setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/tests/jest.setup.ts'],
   verbose: true,
   clearMocks: true,
   restoreMocks: true,
-  extensionsToTreatAsEsm: ['.ts']
+  extensionsToTreatAsEsm: ['.ts'],
+  forceExit: true      // 테스트 완료 후 강제 종료
 };

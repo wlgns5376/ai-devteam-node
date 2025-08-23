@@ -4,7 +4,7 @@ import {
   ManagerServiceConfig,
   ManagerError
 } from '@/types/manager.types';
-import { Worker as WorkerType, WorkerPool, WorkerStatus, WorkerUpdate } from '@/types/worker.types';
+import { Worker as WorkerType, WorkerPool, WorkerStatus, WorkerUpdate, WorkerAction } from '@/types/worker.types';
 import { DeveloperConfig, DeveloperType } from '@/types/developer.types';
 import { Worker } from '../worker/worker';
 import { WorkspaceSetup } from '../worker/workspace-setup';
@@ -13,20 +13,25 @@ import { ResultProcessor } from '../worker/result-processor';
 import { DeveloperFactory } from '../developer/developer-factory';
 import { Logger } from '../logger';
 import { StateManager } from '../state-manager';
+import { TaskAssignmentValidator } from '../worker/task-assignment-validator';
 
 interface WorkerPoolManagerDependencies {
   readonly logger: Logger;
   readonly stateManager: StateManager;
   readonly workspaceManager?: WorkspaceManagerInterface;
   readonly developerConfig: DeveloperConfig;
+  readonly developerFactory?: typeof DeveloperFactory;
 }
 
 export class WorkerPoolManager implements WorkerPoolManagerInterface {
   private workers: Map<string, WorkerType> = new Map();
   private workerInstances: Map<string, Worker> = new Map();
+  private completedTaskResults: Map<string, { success: boolean; pullRequestUrl?: string; completedAt: Date }> = new Map();
   private isInitialized = false;
   private errors: ManagerError[] = [];
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private workerAllocationLock: Map<string, Promise<void>> = new Map();
+  private taskAssignmentValidator: TaskAssignmentValidator;
   
   // Worker 생명주기 설정
   private readonly lifecycleConfig: {
@@ -45,6 +50,12 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       cleanupIntervalMinutes: config.workerLifecycle?.cleanupIntervalMinutes ?? 60,
       minPersistentWorkers: config.workerLifecycle?.minPersistentWorkers ?? 1
     };
+
+    // TaskAssignmentValidator 초기화
+    this.taskAssignmentValidator = new TaskAssignmentValidator({
+      logger: this.dependencies.logger,
+      workspaceManager: this.dependencies.workspaceManager
+    });
   }
 
   async initializePool(): Promise<void> {
@@ -132,31 +143,73 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   }
 
   async getAvailableWorker(): Promise<WorkerType | null> {
-    // Worker 인스턴스의 상태를 신뢰할 수 있는 소스로 사용
-    const availableWorkers: WorkerType[] = [];
+    // Worker 할당 동시성 문제를 방지하기 위한 락 메커니즘
+    const lockKey = 'worker_allocation';
     
-    for (const [workerId, worker] of this.workers) {
-      const workerInstance = this.workerInstances.get(workerId);
-      if (workerInstance && workerInstance.getStatus() === WorkerStatus.IDLE) {
-        availableWorkers.push(worker);
-      }
+    // 이미 락이 걸린 경우 해당 락이 해제될 때까지 대기
+    while (this.workerAllocationLock.has(lockKey)) {
+      await this.workerAllocationLock.get(lockKey);
     }
-
-    if (availableWorkers.length === 0) {
-      // 최대 Worker 수 미만이면 새 Worker 생성 시도
-      if (this.workers.size < this.config.maxWorkers) {
-        const newWorker = this.createWorker();
-        const newWorkerInstance = this.createWorkerInstance(newWorker);
-        
-        this.workers.set(newWorker.id, newWorker);
-        this.workerInstances.set(newWorker.id, newWorkerInstance);
-        await this.dependencies.stateManager.saveWorker(newWorker);
-        return newWorker;
+    
+    // 새로운 락 생성
+    let resolveLock: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      resolveLock = resolve;
+    });
+    this.workerAllocationLock.set(lockKey, lockPromise);
+    
+    try {
+      // Worker 인스턴스의 상태를 신뢰할 수 있는 소스로 사용
+      const availableWorkers: WorkerType[] = [];
+      
+      for (const [workerId, worker] of this.workers) {
+        const workerInstance = this.workerInstances.get(workerId);
+        if (workerInstance && workerInstance.getStatus() === WorkerStatus.IDLE) {
+          availableWorkers.push(worker);
+        }
       }
-      return null;
-    }
 
-    return availableWorkers[0] || null;
+      if (availableWorkers.length === 0) {
+        // 최대 Worker 수 미만이면 새 Worker 생성 시도
+        if (this.workers.size < this.config.maxWorkers) {
+          this.dependencies.logger.debug('Creating new worker for concurrent request', {
+            currentWorkerCount: this.workers.size,
+            maxWorkers: this.config.maxWorkers
+          });
+          
+          const newWorker = this.createWorker();
+          const newWorkerInstance = this.createWorkerInstance(newWorker);
+          
+          this.workers.set(newWorker.id, newWorker);
+          this.workerInstances.set(newWorker.id, newWorkerInstance);
+          await this.dependencies.stateManager.saveWorker(newWorker);
+          
+          this.dependencies.logger.info('New worker created for concurrent processing', {
+            workerId: newWorker.id,
+            totalWorkers: this.workers.size
+          });
+          
+          return newWorker;
+        }
+        return null;
+      }
+
+      const selectedWorker = availableWorkers[0] || null;
+      
+      if (selectedWorker) {
+        this.dependencies.logger.debug('Worker allocated with concurrency protection', {
+          workerId: selectedWorker.id,
+          availableWorkersCount: availableWorkers.length
+        });
+      }
+      
+      return selectedWorker;
+      
+    } finally {
+      // 락 해제
+      this.workerAllocationLock.delete(lockKey);
+      resolveLock!();
+    }
   }
 
   async assignWorker(workerId: string, taskId: string): Promise<void> {
@@ -191,8 +244,48 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
 
     // Worker 인스턴스의 현재 상태 확인
     const currentStatus = workerInstance.getStatus();
-    if (currentStatus !== WorkerStatus.IDLE) {
-      throw new Error(`Worker ${workerId} is not available (status: ${currentStatus})`);
+    const jsonStatus = worker.status;
+    
+    // 상태 동기화 검증 및 로깅
+    this.dependencies.logger.debug('Worker status verification', {
+      workerId,
+      jsonStatus,
+      instanceStatus: currentStatus,
+      taskAction: task.action,
+      isStatusSynced: jsonStatus === currentStatus
+    });
+    
+    // 상태 불일치 감지 시 경고
+    if (jsonStatus !== currentStatus) {
+      this.dependencies.logger.warn('Worker state mismatch detected', {
+        workerId,
+        jsonStatus,
+        instanceStatus: currentStatus,
+        taskAction: task.action
+      });
+    }
+    
+    // 작업 액션에 따른 상태 검증
+    const isNewTaskAction = task.action === WorkerAction.START_NEW_TASK;
+    const isFeedbackAction = task.action === WorkerAction.PROCESS_FEEDBACK;
+    const isResumeAction = task.action === WorkerAction.RESUME_TASK;
+    const isMergeAction = task.action === WorkerAction.MERGE_REQUEST;
+    
+    if (isNewTaskAction && currentStatus !== WorkerStatus.IDLE) {
+      throw new Error(`Worker ${workerId} is not available for new task (status: ${currentStatus})`);
+    }
+    
+    if ((isFeedbackAction || isResumeAction || isMergeAction) && 
+        currentStatus !== WorkerStatus.WAITING) {
+      throw new Error(`Worker ${workerId} is not available for ${task.action} (status: ${currentStatus})`);
+    }
+    
+    if (currentStatus === WorkerStatus.WORKING) {
+      throw new Error(`Worker ${workerId} is currently working (status: ${currentStatus})`);
+    }
+    
+    if (currentStatus === WorkerStatus.STOPPED) {
+      throw new Error(`Worker ${workerId} is stopped (status: ${currentStatus})`);
     }
 
     // 이전 상태 백업 (롤백용)
@@ -357,6 +450,53 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     }
   }
 
+  async recoverErrorWorkers(): Promise<void> {
+    const errorWorkers = Array.from(this.workers.values())
+      .filter(worker => worker.status === WorkerStatus.ERROR);
+
+    const now = Date.now();
+    const recoveredWorkers: string[] = [];
+
+    for (const worker of errorWorkers) {
+      const timeSinceLastActive = now - worker.lastActiveAt.getTime();
+      
+      // ERROR 상태 복구는 더 짧은 시간 후에 시도 (기본값의 절반)
+      const recoveryTimeout = this.config.workerRecoveryTimeoutMs / 2;
+      
+      if (timeSinceLastActive >= recoveryTimeout) {
+        // Worker 인스턴스도 함께 업데이트
+        const workerInstance = this.workerInstances.get(worker.id);
+        if (workerInstance) {
+          await workerInstance.resumeExecution();
+        }
+
+        const updatedWorker: WorkerType = {
+          ...worker,
+          status: WorkerStatus.WAITING,
+          lastActiveAt: new Date()
+        };
+
+        this.workers.set(worker.id, updatedWorker);
+        await this.dependencies.stateManager.saveWorker(updatedWorker);
+        
+        recoveredWorkers.push(worker.id);
+        
+        this.dependencies.logger.info('Worker recovered from error state', {
+          workerId: worker.id,
+          taskId: worker.currentTask?.taskId,
+          recoveryTimeout
+        });
+      }
+    }
+
+    if (recoveredWorkers.length > 0) {
+      this.dependencies.logger.info('Error worker recovery completed', {
+        recoveredCount: recoveredWorkers.length,
+        recoveredWorkers
+      });
+    }
+  }
+
   getPoolStatus(): WorkerPool {
     const workers = Array.from(this.workers.values());
     const activeWorkers = workers.filter(
@@ -368,6 +508,9 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     const stoppedWorkers = workers.filter(
       worker => worker.status === WorkerStatus.STOPPED
     ).length;
+    const errorWorkers = workers.filter(
+      worker => worker.status === WorkerStatus.ERROR
+    ).length;
 
     return {
       workers,
@@ -376,6 +519,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       activeWorkers,
       idleWorkers,
       stoppedWorkers,
+      errorWorkers,
       totalWorkers: workers.length
     };
   }
@@ -388,9 +532,18 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     
     const intervalMs = this.lifecycleConfig.cleanupIntervalMinutes * 60 * 1000;
     this.cleanupTimer = setInterval(() => {
-      this.cleanupExpiredWorkers().catch(error => {
-        this.dependencies.logger.error('Failed to cleanup expired workers', { error });
-      });
+      // 정리 작업과 복구 작업을 함께 수행
+      Promise.all([
+        this.cleanupExpiredWorkers().catch(error => {
+          this.dependencies.logger.error('Failed to cleanup expired workers', { error });
+        }),
+        this.recoverStoppedWorkers().catch(error => {
+          this.dependencies.logger.error('Failed to recover stopped workers', { error });
+        }),
+        this.recoverErrorWorkers().catch(error => {
+          this.dependencies.logger.error('Failed to recover error workers', { error });
+        })
+      ]);
     }, intervalMs);
     
     this.dependencies.logger.debug('Cleanup timer started', {
@@ -443,21 +596,21 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       this.cleanupTimer = null;
     }
     
-    // 모든 Worker 인스턴스 정리
-    for (const [workerId, workerInstance] of this.workerInstances) {
-      try {
-        await workerInstance.cleanup();
-      } catch (error) {
-        this.dependencies.logger.warn('Failed to cleanup worker instance', {
-          workerId,
-          error
-        });
-      }
-    }
+    // // 모든 Worker 인스턴스 정리
+    // for (const [workerId, workerInstance] of this.workerInstances) {
+    //   try {
+    //     await workerInstance.cleanup();
+    //   } catch (error) {
+    //     this.dependencies.logger.warn('Failed to cleanup worker instance', {
+    //       workerId,
+    //       error
+    //     });
+    //   }
+    // }
     
-    // 모든 Worker 정리
-    this.workers.clear();
-    this.workerInstances.clear();
+    // // 모든 Worker 정리
+    // this.workers.clear();
+    // this.workerInstances.clear();
     this.isInitialized = false;
     
     this.dependencies.logger.info('Worker pool shutdown completed');
@@ -479,7 +632,8 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
 
   private createWorkerInstance(worker: WorkerType): Worker {
     // 실제 Developer 인스턴스 생성
-    const developer = DeveloperFactory.create(
+    const factory = this.dependencies.developerFactory || DeveloperFactory;
+    const developer = factory.create(
       worker.developerType,
       this.dependencies.developerConfig,
       { logger: this.dependencies.logger }
@@ -501,11 +655,16 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       developer
     };
 
+    // Worker 상태를 WorkerStatus enum으로 변환
+    const workerStatus = worker.status as WorkerStatus;
+    
     return new Worker(
       worker.id,
       worker.workspaceDir,
       worker.developerType,
-      dependencies
+      dependencies,
+      workerStatus,
+      worker.currentTask || null
     );
   }
 
@@ -513,5 +672,94 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 8);
     return `worker-${timestamp}-${random}`;
+  }
+
+  /**
+   * 완료된 작업 결과 저장
+   */
+  storeTaskResult(taskId: string, result: { success: boolean; pullRequestUrl?: string }): void {
+    this.completedTaskResults.set(taskId, {
+      ...result,
+      completedAt: new Date()
+    });
+    
+    this.dependencies.logger.debug('Task result stored', {
+      taskId,
+      success: result.success,
+      pullRequestUrl: result.pullRequestUrl
+    });
+  }
+
+  /**
+   * 완료된 작업 결과 조회
+   */
+  getTaskResult(taskId: string): { success: boolean; pullRequestUrl?: string; completedAt: Date } | null {
+    return this.completedTaskResults.get(taskId) || null;
+  }
+
+  /**
+   * 완료된 작업 결과 제거
+   */
+  clearTaskResult(taskId: string): void {
+    this.completedTaskResults.delete(taskId);
+  }
+
+  /**
+   * 특정 작업을 위한 최적의 Worker를 선택합니다.
+   * workspace 존재 여부와 우선순위를 고려하여 선택합니다.
+   */
+  async getAvailableWorkerForTask(taskId: string, boardItem?: any): Promise<WorkerType | null> {
+    // 기존 가용 Worker 찾기
+    const availableWorker = await this.getAvailableWorker();
+    if (!availableWorker) {
+      return null;
+    }
+
+    // 작업에 대한 우선순위 평가
+    const priority = await this.taskAssignmentValidator.getTaskReassignmentPriority(taskId);
+    
+    this.dependencies.logger.debug('Worker selected for task with priority', {
+      taskId,
+      workerId: availableWorker.id,
+      priority,
+      hasValidWorkspace: priority >= 10
+    });
+
+    return availableWorker;
+  }
+
+  /**
+   * idle 상태의 Worker가 특정 작업에 할당 가능한지 확인합니다.
+   */
+  async canAssignIdleWorkerToTask(workerId: string, taskId: string, boardItem?: any): Promise<boolean> {
+    const worker = this.workers.get(workerId);
+    if (!worker) {
+      return false;
+    }
+
+    const workerInstance = this.workerInstances.get(workerId);
+    if (!workerInstance || workerInstance.getStatus() !== WorkerStatus.IDLE) {
+      return false;
+    }
+
+    // workspace 기반 할당 가능성 확인
+    const canAssign = await this.taskAssignmentValidator.canAssignToIdleWorker(taskId, workerId, boardItem);
+    
+    this.dependencies.logger.debug('Idle worker task assignment check', {
+      workerId,
+      taskId,
+      canAssign,
+      workerStatus: workerInstance.getStatus()
+    });
+
+    return canAssign;
+  }
+
+  /**
+   * WorkspaceManager 인스턴스를 반환합니다.
+   * TaskRequestHandler에서 workspace 검증을 위해 사용됩니다.
+   */
+  getWorkspaceManager(): WorkspaceManagerInterface | undefined {
+    return this.dependencies.workspaceManager;
   }
 }

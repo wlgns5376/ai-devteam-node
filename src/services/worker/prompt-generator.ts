@@ -148,6 +148,20 @@ ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현
       return prompt;
     }
 
+    // 리뷰어들의 username을 수집하여 중복 제거
+    const reviewers = new Set<string>();
+    comments.forEach(comment => {
+      if (comment.author && comment.author !== 'unknown') {
+        reviewers.add(comment.author);
+      }
+    });
+    
+    // 리뷰어 태그 문자열 생성
+    const reviewerTags = Array.from(reviewers).map(username => `@${username}`).join(' ');
+    const commentMessage = reviewerTags 
+      ? `${reviewerTags} 리뷰 피드백이 반영되었습니다. 재검토 부탁드립니다.`
+      : '리뷰 피드백이 반영되었습니다. 재검토 부탁드립니다.';
+
     const commentsSection = comments.map((comment, index) => `
 ### 코멘트 ${index + 1}
 - **작성자**: ${comment.author}
@@ -176,7 +190,7 @@ ${commentsSection}
 피드백 처리 완료 후 다음 단계를 수행해주세요:
 1. **커밋**: \`git add .\` && \`git commit -m "fix(이슈 번호): 리뷰 피드백 반영"\`
 2. **푸시**: \`git push origin ${task.taskId}\`
-3. **댓글 작성**: \`gh pr comment ${prNumber} --body "리뷰 피드백이 반영되었습니다. 재검토 부탁드립니다."\`
+3. **댓글 작성**: \`gh pr comment ${prNumber} --body "${commentMessage}"\`
 
 ## 완료 요청
 모든 피드백을 처리한 후 다음을 포함하여 응답해주세요:
@@ -190,6 +204,7 @@ ${commentsSection}
     this.dependencies.logger.debug('Generated feedback processing prompt', {
       taskId: task.taskId,
       commentCount: comments.length,
+      reviewerCount: reviewers.size,
       promptLength: prompt.length
     });
 

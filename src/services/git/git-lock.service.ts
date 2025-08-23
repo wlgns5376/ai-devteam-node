@@ -9,6 +9,7 @@ interface GitLockServiceDependencies {
 export class GitLockService {
   private readonly locks: Map<string, GitOperationLock> = new Map();
   private readonly lockTimeoutMs: number;
+  private readonly cleanupInterval: NodeJS.Timeout;
 
   constructor(
     private readonly dependencies: GitLockServiceDependencies
@@ -16,7 +17,7 @@ export class GitLockService {
     this.lockTimeoutMs = dependencies.lockTimeoutMs || 5 * 60 * 1000; // 기본 5분
     
     // 주기적으로 만료된 락 정리
-    setInterval(() => this.cleanupExpiredLocks(), 60000); // 1분마다
+    this.cleanupInterval = setInterval(() => this.cleanupExpiredLocks(), 60000); // 1분마다
   }
 
   async acquireLock(
@@ -156,5 +157,13 @@ export class GitLockService {
     if (lockCount > 0) {
       this.dependencies.logger.warn('All git locks cleared manually', { lockCount });
     }
+  }
+
+  // 리소스 정리 메서드
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+    this.clearAllLocks();
   }
 }

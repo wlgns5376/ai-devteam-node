@@ -3,24 +3,18 @@ import path from 'path';
 import { Task, TaskStatus, Worker, WorkerStatus, WorkspaceInfo } from '@/types';
 import { RepositoryState } from '@/types/manager.types';
 
-export interface PlannerState {
-  lastSyncTime?: Date;
-}
-
 export class StateManager {
   private readonly dataDir: string;
   private readonly tasksFile: string;
   private readonly workersFile: string;
   private readonly workspacesFile: string;
   private readonly repositoriesFile: string;
-  private readonly plannerStateFile: string;
   private readonly lockFile: string;
 
   private tasks: Map<string, Task> = new Map();
   private workers: Map<string, Worker> = new Map();
   private workspaces: Map<string, WorkspaceInfo> = new Map();
   private repositories: Map<string, RepositoryState> = new Map();
-  private plannerState: PlannerState = {};
 
   constructor(dataDir: string) {
     this.dataDir = dataDir;
@@ -28,7 +22,6 @@ export class StateManager {
     this.workersFile = path.join(dataDir, 'workers.json');
     this.workspacesFile = path.join(dataDir, 'workspaces.json');
     this.repositoriesFile = path.join(dataDir, 'repositories.json');
-    this.plannerStateFile = path.join(dataDir, 'planner-state.json');
     this.lockFile = path.join(dataDir, '.lock');
   }
 
@@ -42,7 +35,6 @@ export class StateManager {
       await this.loadWorkers();
       await this.loadWorkspaces();
       await this.loadRepositories();
-      await this.loadPlannerState();
     } catch (error) {
       throw new Error(`Failed to initialize StateManager: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -179,6 +171,57 @@ export class StateManager {
     });
   }
 
+  // Worker Task lastSyncTime 관리 메서드들
+  async getWorkerByTaskId(taskId: string): Promise<Worker | null> {
+    for (const worker of this.workers.values()) {
+      if (worker.currentTask?.taskId === taskId) {
+        return worker;
+      }
+    }
+    return null;
+  }
+
+  async getTaskLastSyncTime(taskId: string): Promise<Date | null> {
+    const worker = await this.getWorkerByTaskId(taskId);
+    const lastSyncTime = worker?.currentTask?.lastSyncTime;
+    
+    if (!lastSyncTime) {
+      return null;
+    }
+    
+    // 문자열로 저장된 경우 Date 객체로 변환
+    if (typeof lastSyncTime === 'string') {
+      return new Date(lastSyncTime);
+    }
+    
+    // 이미 Date 객체인 경우 그대로 반환
+    if (lastSyncTime instanceof Date) {
+      return lastSyncTime;
+    }
+    
+    return null;
+  }
+
+  async updateTaskLastSyncTime(taskId: string, lastSyncTime: Date): Promise<void> {
+    await this.withLock(async () => {
+      for (const [workerId, worker] of this.workers.entries()) {
+        if (worker.currentTask?.taskId === taskId) {
+          const updatedWorker: Worker = {
+            ...worker,
+            currentTask: {
+              ...worker.currentTask,
+              lastSyncTime
+            },
+            lastActiveAt: new Date()
+          };
+          this.workers.set(workerId, updatedWorker);
+          await this.persistWorkers();
+          break;
+        }
+      }
+    });
+  }
+
   // Workspace 관리 메서드들
   async saveWorkspaceInfo(workspaceInfo: WorkspaceInfo): Promise<void> {
     await this.withLock(async () => {
@@ -225,37 +268,67 @@ export class StateManager {
     return Array.from(this.repositories.values());
   }
 
-  // 플래너 상태 관리 메서드들
-  async savePlannerState(state: Partial<PlannerState>): Promise<void> {
+
+  // 레거시 메서드 - 이제 작업별 lastSyncTime은 Worker에서 관리됨
+  async updateLastSyncTime(_time: Date): Promise<void> {
+    // 호환성을 위해 빈 구현으로 유지
+  }
+
+
+  // Task별 재시도 관리 메서드들
+  async getTaskRetryCount(taskId: string): Promise<number> {
+    const task = this.tasks.get(taskId);
+    return task?.retryCount || 0;
+  }
+
+  async incrementTaskRetryCount(taskId: string): Promise<void> {
     await this.withLock(async () => {
-      this.plannerState = { ...this.plannerState, ...state };
-      await this.persistPlannerState();
+      const task = this.tasks.get(taskId);
+      if (task) {
+        const updatedTask: Task = {
+          ...task,
+          retryCount: (task.retryCount || 0) + 1,
+          lastRetryAt: new Date(),
+          updatedAt: new Date()
+        };
+        this.tasks.set(taskId, updatedTask);
+        await this.persistTasks();
+      }
     });
   }
 
-  async getPlannerState(): Promise<PlannerState> {
-    return { ...this.plannerState };
+  async resetTaskRetryCount(taskId: string): Promise<void> {
+    await this.withLock(async () => {
+      const task = this.tasks.get(taskId);
+      if (task) {
+        const { lastRetryAt, ...taskWithoutLastRetryAt } = task;
+        const updatedTask: Task = {
+          ...taskWithoutLastRetryAt,
+          retryCount: 0,
+          updatedAt: new Date()
+        };
+        this.tasks.set(taskId, updatedTask);
+        await this.persistTasks();
+      }
+    });
   }
 
-  async updateLastSyncTime(time: Date): Promise<void> {
-    await this.savePlannerState({ lastSyncTime: time });
-  }
-
-  /**
-   * @deprecated Use addProcessedCommentsToTask() instead
-   */
-  async addProcessedComment(_commentId: string): Promise<void> {
-    // Legacy method - no longer functional after processedComments removal
-    console.warn('addProcessedComment is deprecated. Use addProcessedCommentsToTask() instead.');
-  }
-
-  /**
-   * @deprecated Use isCommentProcessedForTask() instead
-   */
-  async isCommentProcessed(_commentId: string): Promise<boolean> {
-    // Legacy method - no longer functional after processedComments removal
-    console.warn('isCommentProcessed is deprecated. Use isCommentProcessedForTask() instead.');
-    return false;
+  async addTaskFailureReason(taskId: string, reason: string): Promise<void> {
+    await this.withLock(async () => {
+      const task = this.tasks.get(taskId);
+      if (task) {
+        const failureReasons = task.failureReasons ? [...task.failureReasons] : [];
+        failureReasons.push(`${new Date().toISOString()}: ${reason}`);
+        
+        const updatedTask: Task = {
+          ...task,
+          failureReasons,
+          updatedAt: new Date()
+        };
+        this.tasks.set(taskId, updatedTask);
+        await this.persistTasks();
+      }
+    });
   }
 
   // Task별 코멘트 관리 메서드들
@@ -342,6 +415,14 @@ export class StateManager {
   private async loadWorkers(): Promise<void> {
     try {
       const workersContent = await fs.readFile(this.workersFile, 'utf-8');
+      
+      // 빈 파일이나 잘못된 JSON 처리
+      if (!workersContent.trim()) {
+        this.workers.clear();
+        await this.persistWorkers();
+        return;
+      }
+      
       const workersArray: Worker[] = JSON.parse(workersContent, this.dateReviver);
       
       this.workers.clear();
@@ -351,6 +432,10 @@ export class StateManager {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         // 파일이 없으면 빈 배열로 초기화
+        this.workers.clear();
+        await this.persistWorkers();
+      } else if (error instanceof SyntaxError) {
+        // JSON 파싱 오류 시 빈 상태로 초기화
         this.workers.clear();
         await this.persistWorkers();
       } else {
@@ -423,25 +508,6 @@ export class StateManager {
     await fs.writeFile(this.repositoriesFile, repositoriesContent, 'utf-8');
   }
 
-  private async loadPlannerState(): Promise<void> {
-    try {
-      const plannerStateContent = await fs.readFile(this.plannerStateFile, 'utf-8');
-      this.plannerState = JSON.parse(plannerStateContent, this.dateReviver);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        // 파일이 없으면 기본값으로 초기화
-        this.plannerState = {};
-        await this.persistPlannerState();
-      } else {
-        throw new Error(`Failed to load planner state: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
-  }
-
-  private async persistPlannerState(): Promise<void> {
-    const plannerStateContent = JSON.stringify(this.plannerState, null, 2);
-    await fs.writeFile(this.plannerStateFile, plannerStateContent, 'utf-8');
-  }
 
   private async withLock<T>(operation: () => Promise<T>): Promise<T> {
     // 간단한 파일 기반 락 구현

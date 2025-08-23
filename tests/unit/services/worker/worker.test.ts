@@ -197,7 +197,7 @@ describe('Worker', () => {
       };
     });
 
-    it('성공적인 작업 실행을 완료해야 한다', async () => {
+    it('성공적인 작업 실행을 완료한 후 리뷰 대기 상태가 되어야 한다', async () => {
       // Given: 성공적인 실행을 위한 Mock 설정
       await worker.assignTask(task);
       
@@ -228,10 +228,10 @@ describe('Worker', () => {
       // When: 작업 실행
       const result = await worker.startExecution();
 
-      // Then: 성공적인 실행 완료
+      // Then: PR 생성 완료 후 리뷰 대기 상태
       expect(result).toEqual(expectedResult);
-      expect(worker.getStatus()).toBe(WorkerStatus.IDLE);
-      expect(worker.getCurrentTask()).toBeNull();
+      expect(worker.getStatus()).toBe(WorkerStatus.WAITING); // PR 생성 완료, 리뷰 대기 중
+      expect(worker.getCurrentTask()).toEqual(task); // 워크플로우 완료까지 task 유지
       
       // 각 단계별 호출 확인
       expect(mockWorkspaceSetup.prepareWorkspace).toHaveBeenCalledWith(task);
@@ -247,51 +247,81 @@ describe('Worker', () => {
     });
 
     it('워크스페이스 준비 실패 시 적절히 처리해야 한다', async () => {
-      // Given: 워크스페이스 준비 실패
+      // Given: 워크스페이스 준비 실패 (재시도 가능한 오류)
       await worker.assignTask(task);
       
-      const error = new Error('Workspace preparation failed');
+      const error = new Error('claude process exited with code 1');
       mockWorkspaceSetup.prepareWorkspace.mockRejectedValue(error);
 
       // When & Then: 실행 실패
       await expect(worker.startExecution()).rejects.toThrow(
-        'Failed to execute task task-execute: Workspace preparation failed'
+        'Failed to execute task task-execute: claude process exited with code 1'
       );
       
-      expect(worker.getStatus()).toBe(WorkerStatus.IDLE);
-      expect(worker.getCurrentTask()).toBeNull();
+      // 재시도 가능한 오류이므로 WAITING 상태 유지
+      expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
+      expect(worker.getCurrentTask()).not.toBeNull();
+      expect(worker.errorCount).toBe(1);
+      expect(worker.consecutiveErrors).toBe(1);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Task execution failed',
-        { workerId: worker.id, taskId: task.taskId, stage: WorkerStage.PREPARING_WORKSPACE, error }
+        expect.objectContaining({ 
+          workerId: worker.id, 
+          taskId: task.taskId, 
+          action: task.action, 
+          stage: WorkerStage.PREPARING_WORKSPACE, 
+          error,
+          errorCount: 1,
+          consecutiveErrors: 1
+        })
       );
     });
 
     it('Developer 실행 실패 시 적절히 처리해야 한다', async () => {
-      // Given: Developer 실행 실패
+      // Given: Developer 실행 실패 (재시도 가능한 오류)
       await worker.assignTask(task);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
       mockPromptGenerator.generateNewTaskPrompt.mockResolvedValue('Generated prompt');
       
-      const error = new Error('Developer execution failed');
+      const error = new Error('claude process exited with code 1');
       mockDeveloper.executePrompt.mockRejectedValue(error);
 
       // When & Then: 실행 실패
       await expect(worker.startExecution()).rejects.toThrow(
-        'Failed to execute task task-execute: Developer execution failed'
+        'Failed to execute task task-execute: claude process exited with code 1'
       );
       
-      expect(worker.getStatus()).toBe(WorkerStatus.IDLE);
+      // 재시도 가능한 오류이므로 WAITING 상태 유지
+      expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
+      expect(worker.getCurrentTask()).not.toBeNull();
+      expect(worker.errorCount).toBe(1);
+      expect(worker.consecutiveErrors).toBe(1);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Task execution failed',
-        { workerId: worker.id, taskId: task.taskId, stage: WorkerStage.EXECUTING_TASK, error }
+        expect.objectContaining({ 
+          workerId: worker.id, 
+          taskId: task.taskId, 
+          action: task.action, 
+          stage: WorkerStage.EXECUTING_TASK, 
+          error,
+          errorCount: 1,
+          consecutiveErrors: 1
+        })
       );
     });
   });
 
   describe('다양한 작업 유형', () => {
     it('재개 작업을 처리할 수 있어야 한다', async () => {
-      // Given: 재개 작업
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 재개 작업으로 전환
+      const initialTask: WorkerTask = {
+        taskId: 'task-resume',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const resumeTask: WorkerTask = {
         taskId: 'task-resume',
         action: WorkerAction.RESUME_TASK,
@@ -309,6 +339,9 @@ describe('Worker', () => {
         createdAt: new Date()
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 재개 작업으로 변경
       await worker.assignTask(resumeTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
@@ -343,7 +376,14 @@ describe('Worker', () => {
     });
 
     it('피드백 처리 작업을 처리할 수 있어야 한다', async () => {
-      // Given: 피드백 처리 작업
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 피드백 처리 작업으로 전환
+      const initialTask: WorkerTask = {
+        taskId: 'task-feedback',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const feedbackTask: WorkerTask = {
         taskId: 'task-feedback',
         action: WorkerAction.PROCESS_FEEDBACK,
@@ -354,6 +394,9 @@ describe('Worker', () => {
         ]
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 피드백 처리 작업으로 변경
       await worker.assignTask(feedbackTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue({} as WorkspaceInfo);
@@ -390,7 +433,14 @@ describe('Worker', () => {
     });
 
     it('병합 작업 성공 시 워크스페이스를 정리해야 한다', async () => {
-      // Given: 병합 작업
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 병합 작업으로 전환
+      const initialTask: WorkerTask = {
+        taskId: 'task-merge',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const mergeTask: WorkerTask = {
         taskId: 'task-merge',
         action: WorkerAction.MERGE_REQUEST,
@@ -409,6 +459,9 @@ describe('Worker', () => {
         createdAt: new Date()
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 병합 작업으로 변경
       await worker.assignTask(mergeTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
@@ -449,7 +502,14 @@ describe('Worker', () => {
     });
 
     it('병합 작업 실패 시 워크스페이스 정리를 하지 않아야 한다', async () => {
-      // Given: 병합 작업이 실패하는 경우
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 병합 작업으로 전환 (실패 케이스)
+      const initialTask: WorkerTask = {
+        taskId: 'task-merge-fail',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const mergeTask: WorkerTask = {
         taskId: 'task-merge-fail',
         action: WorkerAction.MERGE_REQUEST,
@@ -468,6 +528,9 @@ describe('Worker', () => {
         createdAt: new Date()
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 병합 작업으로 변경
       await worker.assignTask(mergeTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
@@ -502,7 +565,14 @@ describe('Worker', () => {
     });
 
     it('병합 작업 성공 후 워크스페이스 정리 실패 시 경고 로그를 남겨야 한다', async () => {
-      // Given: 병합 성공 후 워크스페이스 정리 실패
+      // Given: 먼저 새 작업을 할당하여 WAITING 상태로 만든 후 병합 작업으로 전환 (정리 실패 케이스)
+      const initialTask: WorkerTask = {
+        taskId: 'task-merge-cleanup-fail',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date()
+      };
+
       const mergeTask: WorkerTask = {
         taskId: 'task-merge-cleanup-fail',
         action: WorkerAction.MERGE_REQUEST,
@@ -521,6 +591,9 @@ describe('Worker', () => {
         createdAt: new Date()
       };
 
+      // 먼저 새 작업으로 할당하여 WAITING 상태로 만듦
+      await worker.assignTask(initialTask);
+      // 그 다음 병합 작업으로 변경
       await worker.assignTask(mergeTask);
       
       mockWorkspaceSetup.prepareWorkspace.mockResolvedValue(workspaceInfo);
@@ -608,7 +681,7 @@ describe('Worker', () => {
       expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Worker execution resumed',
-        { workerId: worker.id, taskId: task.taskId }
+        { workerId: worker.id, taskId: task.taskId, previousStatus: 'stopped' }
       );
     });
 

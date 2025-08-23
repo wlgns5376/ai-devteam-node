@@ -1,6 +1,6 @@
 import { Planner } from '@/services/planner';
-import { MockProjectBoardService } from '@/services/mock-project-board';
-import { MockPullRequestService } from '@/services/mock-pull-request';
+import { MockProjectBoardService } from '@/services/project-board/mock/mock-project-board';
+import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
 import { Logger } from '@/services/logger';
 import { 
   PlannerServiceConfig,
@@ -93,17 +93,15 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       getWorkspace: jest.fn().mockResolvedValue(undefined),
       removeWorkspace: jest.fn().mockResolvedValue(undefined),
       updateLastSyncTime: jest.fn().mockResolvedValue(undefined),
-      getPlannerState: jest.fn().mockResolvedValue({
-        lastSyncTime: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24시간 전
-        processedTasks: [],
-        activeTasks: []
-      }),
       addProcessedCommentsToTask: jest.fn().mockResolvedValue(undefined),
-      setPlannerLastSyncTime: function(time: Date) {
-        this.getPlannerState = jest.fn().mockResolvedValue({
-          lastSyncTime: time,
-          processedTasks: [],
-          activeTasks: []
+      // 새로운 작업별 lastSyncTime 메서드들 (모든 작업이 새 작업으로 처리되도록 null 반환)
+      getTaskLastSyncTime: jest.fn().mockResolvedValue(null), // 기본적으로 null 반환 (7일 전 기본값 사용)
+      updateTaskLastSyncTime: jest.fn().mockResolvedValue(undefined),
+      getWorkerByTaskId: jest.fn().mockResolvedValue(null),
+      // 작업별 lastSyncTime 설정을 위한 헬퍼 메서드
+      setTaskLastSyncTime: function(taskId: string, time: Date | null) {
+        this.getTaskLastSyncTime = jest.fn().mockImplementation((id: string) => {
+          return Promise.resolve(id === taskId ? time : null);
         });
       }
     } as any;
@@ -143,9 +141,8 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       // PR을 CHANGES_REQUESTED 상태로 설정
       await mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/1', ReviewState.CHANGES_REQUESTED);
       
-      // lastSyncTime을 과거로 설정하여 새로운 코멘트가 감지되도록 함
-      const pastTime = new Date(Date.now() - 60 * 60 * 1000); // 1시간 전
-      mockStateManager.setPlannerLastSyncTime(pastTime);
+      // 작업별 lastSyncTime을 null로 설정하여 새로운 작업으로 처리 (7일 전 기본값 사용)
+      mockStateManager.setTaskLastSyncTime('board-1-item-2', null);
       
       // 새로운 코멘트 추가 (현재 시간)
       const newComment: PullRequestComment = {
@@ -184,9 +181,8 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       // PR을 CHANGES_REQUESTED 상태로 설정 (setPullRequestState를 사용)
       await mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/2', ReviewState.CHANGES_REQUESTED);
       
-      // lastSyncTime을 과거로 설정
-      const pastTime = new Date(Date.now() - 60 * 60 * 1000);
-      mockStateManager.setPlannerLastSyncTime(pastTime);
+      // 작업별 lastSyncTime을 null로 설정 (7일 전 기본값 사용)
+      mockStateManager.setTaskLastSyncTime('board-1-item-3', null);
       
       const comments: PullRequestComment[] = [
         {
@@ -241,9 +237,8 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       
       await mockPullRequestService.setPullRequestState('https://github.com/wlgns5376/ai-devteam-test/pull/3', ReviewState.CHANGES_REQUESTED);
 
-      // lastSyncTime을 과거로 설정하여 모든 코멘트가 "새로운" 것으로 간주되도록 함
-      const pastTime = new Date(Date.now() - 2 * 86400000); // 2일 전
-      mockStateManager.setPlannerLastSyncTime(pastTime);
+      // 작업별 lastSyncTime을 null로 설정 (7일 전 기본값 사용)
+      mockStateManager.setTaskLastSyncTime('board-1-item-4', null);
 
       // 이전 코멘트 (이미 처리됨으로 표시)
       const oldComment: PullRequestComment = {
@@ -495,14 +490,27 @@ describe('피드백 처리 통합 플로우 테스트', () => {
         message: 'Feedback processing failed due to technical issues'
       });
 
+      // StateManager의 재시도 관련 메서드들을 mock으로 설정
+      mockStateManager.getTaskRetryCount = jest.fn().mockResolvedValue(0);
+      mockStateManager.incrementTaskRetryCount = jest.fn().mockResolvedValue(undefined);
+      mockStateManager.addTaskFailureReason = jest.fn().mockResolvedValue(undefined);
+      mockStateManager.resetTaskRetryCount = jest.fn().mockResolvedValue(undefined);
+
       const loggerErrorSpy = jest.spyOn(mockLogger, 'error');
+      const loggerWarnSpy = jest.spyOn(mockLogger, 'warn');
 
       // When: 피드백 처리를 시도하면
       await planner.handleReviewTasks();
 
-      // Then: 에러가 로깅되고 작업이 IN_REVIEW 상태를 유지해야 함
-      const status = planner.getStatus();
-      expect(status.errors.length).toBeGreaterThan(0);
+      // Then: 에러가 로깅되어야 함 (warn 또는 error 중 하나라도)
+      const errorCalled = loggerErrorSpy.mock.calls.length > 0;
+      const warnCalled = loggerWarnSpy.mock.calls.length > 0;
+      
+      expect(errorCalled || warnCalled).toBe(true);
+      
+      // 재시도 카운트가 증가했는지 확인
+      expect(mockStateManager.incrementTaskRetryCount).toHaveBeenCalledWith('board-1-item-9');
+      expect(mockStateManager.addTaskFailureReason).toHaveBeenCalledWith('board-1-item-9', 'Feedback processing failed due to technical issues');
       
       const reviewItems = await mockProjectBoardService.getItems('board-1', 'IN_REVIEW');
       const failedItem = reviewItems.find(item => item.id === 'board-1-item-9');

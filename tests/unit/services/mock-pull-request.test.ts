@@ -1,4 +1,4 @@
-import { MockPullRequestService } from '@/services/mock-pull-request';
+import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
 import { PullRequest, PullRequestService, PullRequestComment, PullRequestState } from '@/types';
 
 describe('MockPullRequestService', () => {

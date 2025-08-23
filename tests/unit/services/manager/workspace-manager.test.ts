@@ -349,6 +349,9 @@ describe('WorkspaceManager', () => {
       mockRepositoryManager.ensureRepository.mockResolvedValue(repositoryPath);
       mockRepositoryManager.addWorktree.mockResolvedValue(undefined);
       mockGitService.createWorktree.mockResolvedValue(undefined);
+      
+      // Mock isWorktreeValid가 false를 반환하도록 설정 (워크트리가 없음을 의미)
+      jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not found'));
 
       // When: Worktree 설정
       await workspaceManager.setupWorktree(workspaceInfo);
@@ -382,6 +385,9 @@ describe('WorkspaceManager', () => {
       mockRepositoryManager.ensureRepository.mockResolvedValue(repositoryPath);
       const gitError = new Error('Git worktree creation failed');
       mockGitService.createWorktree.mockRejectedValue(gitError);
+      
+      // Mock isWorktreeValid가 false를 반환하도록 설정 (워크트리가 없어서 새로 생성해야 함)
+      jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not found'));
 
       // When & Then: 에러 발생
       await expect(

@@ -1,4 +1,4 @@
-import { MockProjectBoardService } from '@/services/mock-project-board';
+import { MockProjectBoardService } from '@/services/project-board/mock/mock-project-board';
 import { ProjectBoard, ProjectBoardItem, ProjectBoardService } from '@/types';
 
 describe('MockProjectBoardService', () => {

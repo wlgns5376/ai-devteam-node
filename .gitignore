@@ -49,11 +49,17 @@ coverage/
 
 # AI DevTeam specific
 workspaces/
+workspace/
 *.workspace
+.test-workspace/
 
 # Temporary files
 tmp/
 temp/
+temp-test/
+test-logs/
+test-logs-*/
+temp-state/
 
 # Task files
 # tasks.json

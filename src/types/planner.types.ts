@@ -14,7 +14,7 @@ export interface PlannerServiceConfig {
 
 export interface PlannerStatus {
   readonly isRunning: boolean;
-  readonly lastSyncTime?: Date | undefined;
+  readonly lastSyncTime?: Date | undefined; // 레거시 호환성을 위해 유지, 실제로는 작업별로 관리됨
   readonly totalTasksProcessed: number;
   readonly activeTasks: number;
   readonly errors: PlannerError[];
@@ -32,7 +32,8 @@ export enum TaskAction {
   CHECK_STATUS = 'check_status', 
   PROCESS_FEEDBACK = 'process_feedback',
   REQUEST_MERGE = 'request_merge',
-  RESUME_TASK = 'resume_task'
+  RESUME_TASK = 'resume_task',
+  RELEASE_WORKER = 'release_worker' // 워크플로우 완료 시 Worker 해제
 }
 
 export enum ResponseStatus {
@@ -65,7 +66,7 @@ export interface ManagerCommunicator {
 }
 
 export interface WorkflowState {
-  lastSyncTime?: Date | undefined;
+  lastSyncTime?: Date | undefined; // 레거시 호환성을 위해 유지, 실제로는 작업별로 관리됨
   processedTasks: Set<string>;
   processedComments: Set<string>;
   activeTasks: Map<string, TaskInfo>;

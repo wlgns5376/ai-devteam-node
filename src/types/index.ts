@@ -35,13 +35,17 @@ export interface SystemStatus {
   readonly uptime?: number;
 }
 
-// Common utility types
-export type Result<T, E = Error> = {
-  readonly success: true;
-  readonly data: T;
-} | {
-  readonly success: false;
-  readonly error: E;
-};
+// Import types for ExternalServices
+import type { ProjectBoardService } from './project-board.types';
+import type { PullRequestService } from './pull-request.types';
 
-export type AsyncResult<T, E = Error> = Promise<Result<T, E>>;
+// External Services for dependency injection
+export interface ExternalServices {
+  readonly projectBoardService?: ProjectBoardService;
+  readonly pullRequestService?: PullRequestService;
+  readonly gitService?: any; // GitService type
+  readonly repositoryManager?: any; // RepositoryManager type
+  readonly developerFactory?: any; // DeveloperFactory type
+  readonly developer?: any; // Developer type for testing
+}
+

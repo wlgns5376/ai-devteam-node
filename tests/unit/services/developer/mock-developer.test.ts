@@ -105,6 +105,43 @@ describe('MockDeveloper', () => {
         expect(output.executedCommands).toHaveLength(2);
         expect(output.modifiedFiles.length).toBeGreaterThan(0);
       });
+
+      it('PR 피드백을 반영해야 한다', async () => {
+        // Given: PR 피드백 반영 시나리오
+        mockDeveloper.setScenario(MockScenario.PR_FEEDBACK_APPLIED);
+        const prompt = 'PR 피드백을 반영해주세요';
+        const workspaceDir = '/tmp/test-workspace';
+
+        // When: 프롬프트 실행
+        const output = await mockDeveloper.executePrompt(prompt, workspaceDir);
+
+        // Then: 성공 결과 확인
+        expect(output.result.success).toBe(true);
+        expect(output.result.prLink).toMatch(/https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+/);
+        expect(output.result.commitHash).toMatch(/^[0-9a-f]{40}$/);
+        expect(output.result.error).toBeUndefined();
+        
+        // 실행된 명령어 확인 (피드백 반영은 3개 명령어)
+        expect(output.executedCommands).toHaveLength(3);
+        expect(output.executedCommands[0]?.command).toBe('git add .');
+        expect(output.executedCommands[1]?.command).toBe('git commit -m "Apply PR feedback: fix code review comments"');
+        expect(output.executedCommands[2]?.command).toContain('git push origin feature/user-auth');
+        
+        // 수정된 파일 확인
+        expect(output.modifiedFiles).toContain('src/auth/auth.service.ts');
+        expect(output.modifiedFiles).toContain('src/auth/auth.controller.ts');
+        
+        // rawOutput에 피드백 관련 메시지 포함 확인
+        expect(output.rawOutput).toContain('PR 리뷰 피드백을 반영하고 있습니다');
+        expect(output.rawOutput).toContain('📝 리뷰 코멘트 분석 완료');
+        expect(output.rawOutput).toContain('🔧 코드 수정 중');
+        expect(output.rawOutput).toContain('✅ 피드백 반영 완료 - PR 업데이트됨');
+        expect(output.rawOutput).toContain('🎉 모든 리뷰 코멘트가 반영되었습니다');
+        
+        // 메타데이터 확인
+        expect(output.metadata.developerType).toBe('mock');
+        expect(output.metadata.duration).toBeGreaterThanOrEqual(0);
+      });
     });
 
     describe('실패 시나리오', () => {
@@ -227,6 +264,15 @@ describe('MockDeveloper', () => {
       );
       expect(refactorOutput.result.prLink).toBeUndefined();
       expect(refactorOutput.result.success).toBe(true);
+
+      // When & Then: 피드백 반영 요청
+      const feedbackOutput = await mockDeveloper.executePrompt(
+        '리뷰 피드백을 반영해주세요',
+        '/tmp/workspace'
+      );
+      expect(feedbackOutput.result.prLink).toBeDefined();
+      expect(feedbackOutput.result.success).toBe(true);
+      expect(feedbackOutput.rawOutput).toContain('PR 리뷰 피드백을 반영하고 있습니다');
     });
   });
 });

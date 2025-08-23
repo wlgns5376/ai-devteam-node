@@ -171,6 +171,15 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
 
   async setupClaudeLocal(workspaceInfo: WorkspaceInfo): Promise<void> {
     try {
+      // 워크스페이스 디렉토리가 존재하는지 먼저 확인하고, 없으면 생성
+      await fs.access(workspaceInfo.workspaceDir).catch(async () => {
+        await fs.mkdir(workspaceInfo.workspaceDir, { recursive: true });
+        this.dependencies.logger.info('Created missing workspace directory for CLAUDE.local.md', {
+          taskId: workspaceInfo.taskId,
+          workspaceDir: workspaceInfo.workspaceDir
+        });
+      });
+
       const claudeLocalContent = this.generateClaudeLocalContent(workspaceInfo);
       
       await fs.writeFile(workspaceInfo.claudeLocalPath, claudeLocalContent, 'utf-8');
@@ -385,17 +394,19 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
   }
 
   /**
-   * 워크스페이스 디렉토리가 유효한 Git worktree인지 확인합니다.
+   * 워크스페이스 디렉토리가 유효한지 확인합니다.
+   * 디렉토리가 존재하면 기본적으로 유효한 것으로 간주합니다.
    */
-  private async isWorktreeValid(workspaceInfo: WorkspaceInfo): Promise<boolean> {
+  async isWorktreeValid(workspaceInfo: WorkspaceInfo): Promise<boolean> {
     try {
-      // 디렉토리 존재 확인
+      // 디렉토리 존재 확인 - 이것이 가장 중요한 검증
       const directoryExists = await this.checkDirectoryExists(workspaceInfo.workspaceDir);
       if (!directoryExists) {
         return false;
       }
 
-      // Git 워크트리 확인: .git 파일이 존재하고 적절한 내용을 가지는지 확인
+      // 디렉토리가 있으면 기본적으로 유효한 것으로 간주
+      // Git 워크트리 세부 검증은 선택적으로 수행
       const gitPath = path.join(workspaceInfo.workspaceDir, '.git');
       try {
         const gitContent = await fs.readFile(gitPath, 'utf-8');
@@ -410,13 +421,25 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
           gitContent: gitContent.substring(0, 100) // 첫 100자만 로그
         });
 
-        return isWorktree;
+        // Git worktree가 아니어도 디렉토리가 있으면 재사용 가능
+        if (!isWorktree) {
+          this.dependencies.logger.info('Directory exists but not a valid worktree, will be reused anyway', {
+            taskId: workspaceInfo.taskId,
+            workspaceDir: workspaceInfo.workspaceDir
+          });
+        }
+
+        return true; // 디렉토리가 있으면 항상 유효
       } catch {
-        // .git 파일이 없거나 읽을 수 없으면 worktree가 아님
-        return false;
+        // .git 파일이 없어도 디렉토리가 있으면 사용 가능
+        this.dependencies.logger.debug('.git file not found, but directory exists and will be reused', {
+          taskId: workspaceInfo.taskId,
+          workspaceDir: workspaceInfo.workspaceDir
+        });
+        return true;
       }
     } catch (error) {
-      this.dependencies.logger.error('Error validating worktree', {
+      this.dependencies.logger.error('Error validating workspace directory', {
         taskId: workspaceInfo.taskId,
         workspaceDir: workspaceInfo.workspaceDir,
         error

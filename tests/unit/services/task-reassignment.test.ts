@@ -1,7 +1,7 @@
 import { Planner } from '@/services/planner';
 import { WorkerPoolManager } from '@/services/manager/worker-pool-manager';
-import { MockProjectBoardService } from '@/services/mock-project-board';
-import { MockPullRequestService } from '@/services/mock-pull-request';
+import { MockProjectBoardService } from '@/services/project-board/mock/mock-project-board';
+import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
 import { Logger } from '@/services/logger';
 import { 
   PlannerServiceConfig,
@@ -83,12 +83,7 @@ describe('작업 재할당 시나리오', () => {
       saveWorkspace: jest.fn().mockResolvedValue(undefined),
       getWorkspace: jest.fn().mockResolvedValue(undefined),
       removeWorkspace: jest.fn().mockResolvedValue(undefined),
-      updateLastSyncTime: jest.fn().mockResolvedValue(undefined),
-      getPlannerState: jest.fn().mockResolvedValue({
-        lastSyncTime: new Date(),
-        processedTasks: [],
-        activeTasks: []
-      })
+      updateLastSyncTime: jest.fn().mockResolvedValue(undefined)
     } as any;
     
     mockLogger = Logger.createConsoleLogger();

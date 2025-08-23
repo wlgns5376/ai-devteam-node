@@ -26,8 +26,8 @@ export class DeveloperFactory {
         if (!config.gemini?.apiKey) {
           throw new Error('Gemini API key is required');
         }
-        // TODO: GeminiDeveloper 구현 후 실제 인스턴스 반환
-        // 임시로 Mock Developer 반환
+        // GeminiDeveloper 구현 전까지 Mock Developer 사용
+        // 향후 GeminiDeveloper 클래스 구현 필요
         return new MockDeveloper(config, dependencies);
       
       default:

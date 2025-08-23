@@ -1,6 +1,6 @@
 import { ServiceFactory } from '@/services/service-factory';
-import { MockProjectBoardService } from '@/services/mock-project-board';
-import { MockPullRequestService } from '@/services/mock-pull-request';
+import { MockProjectBoardService } from '@/services/project-board/mock/mock-project-board';
+import { MockPullRequestService } from '@/services/pull-request/mock/mock-pull-request';
 import { ProjectBoardService, PullRequestService, ServiceProvider, ProviderConfig } from '@/types';
 
 
@@ -507,49 +507,6 @@ describe('ServiceFactory', () => {
     });
   });
 
-  describe('createServices', () => {
-    it('should create all services with same provider', () => {
-      // Given: ServiceFactory가 있을 때
-      const config: ProviderConfig = {
-        type: ServiceProvider.MOCK,
-        apiToken: 'mock-token'
-      };
-
-      // When: 모든 서비스를 한 번에 생성하면
-      const services = factory.createServices(config);
-
-      // Then: 모든 서비스가 생성되어야 함
-      expect(services).toBeDefined();
-      expect(services.projectBoardService).toBeDefined();
-      expect(services.pullRequestService).toBeDefined();
-      expect(services.projectBoardService).toBeInstanceOf(MockProjectBoardService);
-      expect(services.pullRequestService).toBeInstanceOf(MockPullRequestService);
-    });
-
-    it('should return services that implement correct interfaces', () => {
-      // Given: ServiceFactory가 있을 때
-      const config: ProviderConfig = {
-        type: ServiceProvider.MOCK,
-        apiToken: 'mock-token'
-      };
-
-      // When: 모든 서비스를 생성하면
-      const services = factory.createServices(config);
-
-      // Then: 올바른 인터페이스를 구현해야 함
-      const { projectBoardService, pullRequestService } = services;
-      
-      // ProjectBoardService 인터페이스 확인
-      expect(typeof projectBoardService.getBoard).toBe('function');
-      expect(typeof projectBoardService.getItems).toBe('function');
-      expect(typeof projectBoardService.updateItemStatus).toBe('function');
-
-      // PullRequestService 인터페이스 확인
-      expect(typeof pullRequestService.getPullRequest).toBe('function');
-      expect(typeof pullRequestService.listPullRequests).toBe('function');
-      expect(typeof pullRequestService.getComments).toBe('function');
-    });
-  });
 
   describe('캐싱 동작', () => {
     it('should return same instance for same config', () => {

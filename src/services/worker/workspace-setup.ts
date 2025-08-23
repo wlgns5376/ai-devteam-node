@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 
 interface WorkspaceSetupDependencies {
   readonly logger: Logger;
-  readonly workspaceManager: any; // WorkspaceManager interface
+  readonly workspaceManager: any; // WorkspaceManager interface with isWorktreeValid method
 }
 
 export class WorkspaceSetup implements WorkspaceSetupInterface {
@@ -91,7 +91,7 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
 
   async validateEnvironment(workspaceInfo: WorkspaceInfo): Promise<boolean> {
     try {
-      // 워크스페이스 디렉토리 존재 확인
+      // 기본 디렉토리 존재 확인
       await fs.access(workspaceInfo.workspaceDir);
       
       // 디렉토리인지 확인
@@ -100,8 +100,32 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
         throw new Error('Workspace path is not a directory');
       }
 
-      // CLAUDE.local.md 파일 존재 확인
-      await fs.access(workspaceInfo.claudeLocalPath);
+      // CLAUDE.local.md 파일 존재 확인 - 없으면 생성할 수 있으므로 선택적으로 확인
+      try {
+        await fs.access(workspaceInfo.claudeLocalPath);
+      } catch {
+        this.dependencies.logger.debug('CLAUDE.local.md not found, but workspace directory is valid', {
+          taskId: workspaceInfo.taskId
+        });
+      }
+
+      // Git worktree 검증은 선택적으로 수행 - 실패해도 디렉토리가 있으면 재사용
+      if (this.dependencies.workspaceManager && typeof this.dependencies.workspaceManager.isWorktreeValid === 'function') {
+        try {
+          const isWorktreeValid = await this.dependencies.workspaceManager.isWorktreeValid(workspaceInfo);
+          if (!isWorktreeValid) {
+            this.dependencies.logger.info('Git worktree validation failed, but reusing existing directory', {
+              taskId: workspaceInfo.taskId,
+              reason: 'Directory exists and will be reused'
+            });
+          }
+        } catch (worktreeError) {
+          this.dependencies.logger.debug('Git worktree validation error, but continuing with existing directory', {
+            taskId: workspaceInfo.taskId,
+            error: worktreeError
+          });
+        }
+      }
 
       this.dependencies.logger.debug('Workspace environment validation passed', {
         taskId: workspaceInfo.taskId
@@ -112,7 +136,8 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
     } catch (error) {
       this.dependencies.logger.warn('Workspace environment validation failed', {
         taskId: workspaceInfo.taskId,
-        reason: 'Directory or files missing'
+        reason: 'Directory not accessible',
+        error: error instanceof Error ? error.message : String(error)
       });
 
       return false;

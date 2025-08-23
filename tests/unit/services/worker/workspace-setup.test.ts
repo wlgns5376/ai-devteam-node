@@ -204,22 +204,37 @@ describe('WorkspaceSetup', () => {
       expect(isValid).toBe(false);
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'Workspace environment validation failed',
-        { taskId: workspaceInfo.taskId, reason: 'Directory or files missing' }
+        { 
+          taskId: workspaceInfo.taskId, 
+          reason: 'Directory not accessible',
+          error: 'ENOENT'
+        }
       );
     });
 
-    it('CLAUDE.local.md 파일이 없으면 유효하지 않아야 한다', async () => {
+    it('CLAUDE.local.md 파일이 없어도 워크스페이스 디렉토리가 있으면 유효해야 한다', async () => {
       // Given: 워크스페이스는 있지만 CLAUDE.local.md가 없음
       const fs = require('fs/promises');
       jest.spyOn(fs, 'access')
         .mockResolvedValueOnce(undefined) // 워크스페이스 디렉토리 확인 성공
         .mockRejectedValueOnce(new Error('ENOENT')); // CLAUDE.local.md 확인 실패
+      jest.spyOn(fs, 'stat').mockResolvedValue({
+        isDirectory: () => true
+      });
 
       // When: 환경 검증
       const isValid = await workspaceSetup.validateEnvironment(workspaceInfo);
 
-      // Then: 유효하지 않음
-      expect(isValid).toBe(false);
+      // Then: 유효함 (디렉토리만 있으면 재사용 가능)
+      expect(isValid).toBe(true);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'CLAUDE.local.md not found, but workspace directory is valid',
+        { taskId: workspaceInfo.taskId }
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Workspace environment validation passed',
+        { taskId: workspaceInfo.taskId }
+      );
     });
   });
 

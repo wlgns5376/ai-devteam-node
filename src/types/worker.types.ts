@@ -2,7 +2,8 @@ export enum WorkerStatus {
   IDLE = 'idle',
   WAITING = 'waiting',
   WORKING = 'working',
-  STOPPED = 'stopped'
+  STOPPED = 'stopped',
+  ERROR = 'error'
 }
 
 export enum WorkerAction {
@@ -17,7 +18,8 @@ export enum WorkerStage {
   GENERATING_PROMPT = 'generating_prompt',
   EXECUTING_TASK = 'executing_task',
   PROCESSING_RESULT = 'processing_result',
-  COMPLETING_TASK = 'completing_task'
+  COMPLETING_TASK = 'completing_task',
+  TASK_COMPLETED = 'task_completed' // 작업 수행 완료, 워크플로우 대기
 }
 
 export interface Worker {
@@ -38,6 +40,7 @@ export interface WorkerPool {
   readonly activeWorkers: number;
   readonly idleWorkers: number;
   readonly stoppedWorkers: number;
+  readonly errorWorkers: number;
   readonly totalWorkers: number;
 }
 
@@ -55,6 +58,7 @@ export interface WorkerTask {
   readonly assignedAt: Date;
   readonly repositoryId: string;
   readonly pullRequestUrl?: string; // For merge request actions
+  readonly lastSyncTime?: Date; // 이 작업에 대한 마지막 동기화 시간 (PR 코멘트 확인 시점)
 }
 
 export interface WorkerProgress {
