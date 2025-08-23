@@ -275,7 +275,16 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       throw new Error(`Worker ${workerId} is not available for new task (status: ${currentStatus})`);
     }
     
-    if ((isFeedbackAction || isResumeAction || isMergeAction) && 
+    // RESUME_TASK는 IDLE 또는 WAITING 상태에서 허용 (Worker 클래스와 일치)
+    if (isResumeAction && 
+        currentStatus !== WorkerStatus.WAITING && 
+        currentStatus !== WorkerStatus.ERROR && 
+        currentStatus !== WorkerStatus.IDLE) {
+      throw new Error(`Worker ${workerId} is not available for ${task.action} (status: ${currentStatus})`);
+    }
+    
+    // FEEDBACK 및 MERGE 작업은 WAITING 상태에서만 허용
+    if ((isFeedbackAction || isMergeAction) && 
         currentStatus !== WorkerStatus.WAITING) {
       throw new Error(`Worker ${workerId} is not available for ${task.action} (status: ${currentStatus})`);
     }
