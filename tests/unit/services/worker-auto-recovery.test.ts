@@ -81,7 +81,8 @@ describe('Worker 자동 복구 시나리오', () => {
       setupWorktree: jest.fn().mockResolvedValue(undefined),
       setupClaudeLocal: jest.fn().mockResolvedValue(undefined),
       cleanupWorkspace: jest.fn().mockResolvedValue(undefined),
-      getWorkspaceInfo: jest.fn().mockResolvedValue(null)
+      getWorkspaceInfo: jest.fn().mockResolvedValue(null),
+      isWorktreeValid: jest.fn().mockResolvedValue(true)
     };
 
     // WorkerPoolManager 설정
@@ -138,7 +139,7 @@ describe('Worker 자동 복구 시나리오', () => {
 
       // Then: 상태가 업데이트되어야 함
       const updatedPoolStatus = workerPoolManager.getPoolStatus();
-      const updatedWorker = updatedPoolStatus.workers.find(w => w.id === workerId);
+      const updatedWorker = updatedPoolStatus.workers.find((w: WorkerType) => w.id === workerId);
       expect(updatedWorker?.status).toBe(WorkerStatus.STOPPED);
     });
   });
@@ -180,7 +181,7 @@ describe('Worker 자동 복구 시나리오', () => {
       // 복구된 Worker는 WAITING 상태가 됨
       expect(recoveredPoolStatus.stoppedWorkers).toBe(0);
       
-      const recoveredWorker = recoveredPoolStatus.workers.find(w => w.id === workerId);
+      const recoveredWorker = recoveredPoolStatus.workers.find((w: WorkerType) => w.id === workerId);
       expect(recoveredWorker?.status).toBe(WorkerStatus.WAITING);
     });
 
@@ -206,7 +207,7 @@ describe('Worker 자동 복구 시나리오', () => {
       const poolStatusAfterRecovery = workerPoolManager.getPoolStatus();
       expect(poolStatusAfterRecovery.stoppedWorkers).toBe(1);
       
-      const stoppedWorker = poolStatusAfterRecovery.workers.find(w => w.id === workerId);
+      const stoppedWorker = poolStatusAfterRecovery.workers.find((w: WorkerType) => w.id === workerId);
       expect(stoppedWorker?.status).toBe(WorkerStatus.STOPPED);
     });
   });

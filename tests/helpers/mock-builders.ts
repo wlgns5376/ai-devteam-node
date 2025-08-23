@@ -143,6 +143,13 @@ export class MockWorkerPoolManagerBuilder {
     this.methods.set('storeTaskResult', jest.fn());
     this.methods.set('getTaskResult', jest.fn());
     this.methods.set('clearTaskResult', jest.fn());
+    this.methods.set('getWorkspaceManager', jest.fn(() => ({
+      // 기본 WorkspaceManager mock
+      getWorkerWorkspace: jest.fn(),
+      checkWorkspaceExists: jest.fn(),
+      createWorkerWorkspace: jest.fn(),
+      removeWorkerWorkspace: jest.fn()
+    })));
   }
 
   withWorker(worker: Worker): this {
