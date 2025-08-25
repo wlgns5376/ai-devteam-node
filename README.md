@@ -207,15 +207,15 @@ docker pull wlgns5376/ai-devteam:latest-all-languages
 
 - **표준 이미지** (Dockerfile 기반):
   - `latest`: 최신 버전
-  - `v1.0.2`: 특정 버전
-  - `v1.0`: 메이저.마이너 버전
-  - `v1`: 메이저 버전
+  - `vX.Y.Z`: 특정 버전 (예: `v1.0.2`)
+  - `vX.Y`: 메이저.마이너 버전 (예: `v1.0`)
+  - `vX`: 메이저 버전 (예: `v1`)
 
 - **All-languages 이미지** (Dockerfile.all-languages 기반):
   - `latest-all-languages`: 모든 언어 환경을 포함한 최신 버전
-  - `v1.0.2-all-languages`: 특정 버전 (모든 언어 환경 포함)
-  - `v1.0-all-languages`: 메이저.마이너 버전 (모든 언어 환경 포함)
-  - `v1-all-languages`: 메이저 버전 (모든 언어 환경 포함)
+  - `vX.Y.Z-all-languages`: 특정 버전 (예: `v1.0.2-all-languages`)
+  - `vX.Y-all-languages`: 메이저.마이너 버전 (예: `v1.0-all-languages`)
+  - `vX-all-languages`: 메이저 버전 (예: `v1-all-languages`)
 
 ##### 이미지 선택 가이드
 
@@ -256,10 +256,10 @@ version: '3.8'
 services:
   ai-devteam:
     # Docker Hub 이미지 사용 (다음 중 선택)
-    image: wlgns5376/ai-devteam:latest              # 표준 이미지
-    # image: wlgns5376/ai-devteam:latest-all-languages  # 모든 언어 환경 포함
-    # image: wlgns5376/ai-devteam:v1.0.2             # 특정 버전
-    # image: ai-devteam:<tag>                       # 로컬 빌드 이미지 사용 시 (예: latest, latest-all-languages)
+    image: wlgns5376/ai-devteam:latest                   # 표준 이미지
+    # image: wlgns5376/ai-devteam:latest-all-languages   # 모든 언어 환경 포함
+    # image: wlgns5376/ai-devteam:v1.0.2                 # 특정 버전
+    # image: ai-devteam:<tag>                            # 로컬 빌드 이미지 사용 시
     container_name: ai-devteam
     user: "1001:1001"
     environment:
