@@ -235,10 +235,10 @@ docker pull wlgns5376/ai-devteam:latest-all-languages
 
 ```bash
 # 표준 이미지 빌드
-docker build -t ai-devteam:latest .
+docker build -t ai-devteam:v1.0.2 .
 
 # All-languages 이미지 빌드
-docker build -f Dockerfile.all-languages -t ai-devteam:latest-all-languages .
+docker build -f Dockerfile.all-languages -t ai-devteam:v1.0.2-all-languages .
 ```
 
 #### Docker Compose 실행
