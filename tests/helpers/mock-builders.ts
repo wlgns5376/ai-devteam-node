@@ -143,6 +143,12 @@ export class MockWorkerPoolManagerBuilder {
     this.methods.set('storeTaskResult', jest.fn());
     this.methods.set('getTaskResult', jest.fn());
     this.methods.set('clearTaskResult', jest.fn());
+    this.methods.set('getWorkspaceManager', jest.fn(() => ({
+      // Mock WorkspaceManager
+      getWorkspaceInfo: jest.fn(),
+      createWorkspace: jest.fn(),
+      cleanupWorkspace: jest.fn()
+    })));
   }
 
   withWorker(worker: Worker): this {

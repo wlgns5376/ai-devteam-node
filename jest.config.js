@@ -1,6 +1,5 @@
 /** @type {import('jest').Config} */
 module.exports = {
-  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: [
@@ -10,14 +9,9 @@ module.exports = {
     '**/?(*.)+(spec|test).ts'
   ],
   transform: {
-    '^.+\\.ts$': ['ts-jest', {
-      useESM: true,
-      tsconfig: 'tsconfig.test.json'
-    }],
+    '^.+\\.tsx?$': 'ts-jest',
   },
-  transformIgnorePatterns: [
-    'node_modules/(?!(@octokit/.*|universal-user-agent|before-after-hook|is-plain-object|deprecation)/)'
-  ],
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
@@ -30,17 +24,6 @@ module.exports = {
     'html',
     'json-summary'
   ],
-  reporters: [
-    'default',
-    ['jest-junit', {
-      outputDirectory: 'coverage',
-      outputName: 'junit.xml',
-      classNameTemplate: '{classname}',
-      titleTemplate: '{title}',
-      ancestorSeparator: ' › ',
-      usePathForSuiteName: true
-    }]
-  ],
   coverageThreshold: {
     global: {
       branches: 80,
@@ -51,15 +34,9 @@ module.exports = {
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
-    '^@/types/(.*)$': '<rootDir>/src/types/$1',
-    '^@/components/(.*)$': '<rootDir>/src/components/$1',
-    '^@/services/(.*)$': '<rootDir>/src/services/$1',
-    '^@/utils/(.*)$': '<rootDir>/src/utils/$1'
   },
-  setupFilesAfterEnv: ['<rootDir>/tests/jest.setup.ts'],
   verbose: true,
   clearMocks: true,
   restoreMocks: true,
-  extensionsToTreatAsEsm: ['.ts'],
-  forceExit: true      // 테스트 완료 후 강제 종료
+  forceExit: true
 };

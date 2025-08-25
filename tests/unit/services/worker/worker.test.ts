@@ -141,7 +141,7 @@ describe('Worker', () => {
       expect(worker.getStatus()).toBe(WorkerStatus.WAITING);
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Task assigned to worker',
-        { workerId: worker.id, taskId: task.taskId, action: task.action }
+        { workerId: worker.id, taskId: task.taskId, action: task.action, previousStatus: 'idle' }
       );
     });
 

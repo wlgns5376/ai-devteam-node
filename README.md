@@ -191,9 +191,54 @@ pnpm start
 
 ### Docker 실행
 
-#### Docker 이미지 빌드
+#### 방법 1: Docker Hub 이미지 사용 (권장)
+
+Docker Hub에서 사전 빌드된 이미지를 다운로드하여 사용할 수 있습니다:
+
 ```bash
+# 표준 이미지 다운로드 (Node.js 환경만 포함)
+docker pull wlgns5376/ai-devteam:latest
+
+# All-languages 이미지 다운로드 (Python, Go, Java 등 모든 언어 환경 포함)
+docker pull wlgns5376/ai-devteam:latest-all-languages
+```
+
+##### 이미지 태그 종류
+
+- **표준 이미지** (Dockerfile 기반):
+  - `latest`: 최신 버전
+  - `vX.Y.Z`: 특정 버전 (예: `v1.0.2`)
+  - `vX.Y`: 메이저.마이너 버전 (예: `v1.0`)
+  - `vX`: 메이저 버전 (예: `v1`)
+
+- **All-languages 이미지** (Dockerfile.all-languages 기반):
+  - `latest-all-languages`: 모든 언어 환경을 포함한 최신 버전
+  - `vX.Y.Z-all-languages`: 특정 버전 (예: `v1.0.2-all-languages`)
+  - `vX.Y-all-languages`: 메이저.마이너 버전 (예: `v1.0-all-languages`)
+  - `vX-all-languages`: 메이저 버전 (예: `v1-all-languages`)
+
+##### 이미지 선택 가이드
+
+- **표준 이미지**를 사용하는 경우:
+  - Node.js/TypeScript 프로젝트만 처리하는 경우
+  - 이미지 크기를 최소화하고 싶은 경우
+  - 빠른 컨테이너 시작이 필요한 경우
+
+- **All-languages 이미지**를 사용하는 경우:
+  - 다양한 프로그래밍 언어로 작성된 프로젝트를 처리하는 경우
+  - Python, Go, Java, Rust 등의 프로젝트를 함께 관리하는 경우
+  - AI 개발자가 여러 언어로 코드를 생성해야 하는 경우
+
+#### 방법 2: 로컬에서 Docker 이미지 빌드
+
+직접 이미지를 빌드하려면:
+
+```bash
+# 표준 이미지 빌드
 docker build -t ai-devteam:v1.0.2 .
+
+# All-languages 이미지 빌드
+docker build -f Dockerfile.all-languages -t ai-devteam:v1.0.2-all-languages .
 ```
 
 #### Docker Compose 실행
@@ -210,7 +255,11 @@ version: '3.8'
 
 services:
   ai-devteam:
-    image: ai-devteam:v1.0.2
+    # Docker Hub 이미지 사용 (다음 중 선택)
+    image: wlgns5376/ai-devteam:latest                 # 표준 이미지
+    # image: wlgns5376/ai-devteam:latest-all-languages # 모든 언어 환경 포함
+    # image: wlgns5376/ai-devteam:v1.0.2               # 특정 버전
+    # image: ai-devteam:<tag>                          # 로컬 빌드 이미지 사용 시
     container_name: ai-devteam
     user: "1001:1001"
     environment:
