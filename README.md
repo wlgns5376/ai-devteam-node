@@ -256,10 +256,10 @@ version: '3.8'
 services:
   ai-devteam:
     # Docker Hub 이미지 사용 (다음 중 선택)
-    image: wlgns5376/ai-devteam:latest                   # 표준 이미지
-    # image: wlgns5376/ai-devteam:latest-all-languages   # 모든 언어 환경 포함
-    # image: wlgns5376/ai-devteam:v1.0.2                 # 특정 버전
-    # image: ai-devteam:<tag>                            # 로컬 빌드 이미지 사용 시
+    image: wlgns5376/ai-devteam:latest                 # 표준 이미지
+    # image: wlgns5376/ai-devteam:latest-all-languages # 모든 언어 환경 포함
+    # image: wlgns5376/ai-devteam:v1.0.2               # 특정 버전
+    # image: ai-devteam:<tag>                          # 로컬 빌드 이미지 사용 시
     container_name: ai-devteam
     user: "1001:1001"
     environment:
