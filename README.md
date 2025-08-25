@@ -235,10 +235,10 @@ docker pull wlgns5376/ai-devteam:latest-all-languages
 
 ```bash
 # 표준 이미지 빌드
-docker build -t ai-devteam:v1.0.2 .
+docker build -t ai-devteam:latest .
 
 # All-languages 이미지 빌드
-docker build -f Dockerfile.all-languages -t ai-devteam:v1.0.2-all-languages .
+docker build -f Dockerfile.all-languages -t ai-devteam:latest-all-languages .
 ```
 
 #### Docker Compose 실행
@@ -259,7 +259,7 @@ services:
     image: wlgns5376/ai-devteam:latest              # 표준 이미지
     # image: wlgns5376/ai-devteam:latest-all-languages  # 모든 언어 환경 포함
     # image: wlgns5376/ai-devteam:v1.0.2             # 특정 버전
-    # image: ai-devteam:v1.0.2                       # 로컬 빌드 이미지 사용 시
+    # image: ai-devteam:<tag>                       # 로컬 빌드 이미지 사용 시 (예: latest, latest-all-languages)
     container_name: ai-devteam
     user: "1001:1001"
     environment:
