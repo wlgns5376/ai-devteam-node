@@ -539,13 +539,12 @@ export class GitHubPullRequestService implements PullRequestService {
       return repoData.default_branch;
     } catch (error) {
       const logContext: Record<string, unknown> = { repoId };
-      if (error instanceof RequestError) {
+      if (error instanceof Error) {
         logContext.error = error.message;
-        logContext.status = error.status;
-        logContext.response = error.response?.data;
-      } else if (error instanceof Error) {
-        logContext.error = error.message;
-        if ('status' in error) {
+        if (error instanceof RequestError) {
+          logContext.status = error.status;
+          logContext.response = error.response?.data;
+        } else if ('status' in error) {
           logContext.status = (error as any).status;
         }
       } else {

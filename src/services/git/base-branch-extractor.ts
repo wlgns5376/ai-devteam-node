@@ -20,18 +20,15 @@ export class BaseBranchExtractor {
    * @returns 추출된 브랜치명 또는 null
    */
   extractFromLabels(labels: string[]): string | null {
-    const baseLabels = labels
-      .map(label => {
-        if (label.toLowerCase().startsWith(this.BASE_LABEL_PREFIX)) {
-          const branchName = label.substring(this.BASE_LABEL_PREFIX.length).trim();
-          // branchName이 비어있지 않은 경우에만 유효한 라벨로 간주합니다.
-          if (branchName) {
-            return { label, branchName };
-          }
+    const baseLabels = labels.reduce<{ label: string; branchName: string }[]>((acc, label) => {
+      if (label.toLowerCase().startsWith(this.BASE_LABEL_PREFIX)) {
+        const branchName = label.substring(this.BASE_LABEL_PREFIX.length).trim();
+        if (branchName) {
+          acc.push({ label, branchName });
         }
-        return null;
-      })
-      .filter((item): item is { label: string; branchName: string } => item !== null);
+      }
+      return acc;
+    }, []);
 
     if (baseLabels.length === 0) {
       return null;

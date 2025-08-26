@@ -558,7 +558,7 @@ export class TaskRequestHandler {
   }
 
   private async enrichTaskWithBaseBranch(task: WorkerTask): Promise<WorkerTask> {
-    if (!this.baseBranchExtractor) {
+    if (task.baseBranch || !this.baseBranchExtractor) {
       return task;
     }
     const baseBranch = await this.baseBranchExtractor.extractBaseBranch(task);
