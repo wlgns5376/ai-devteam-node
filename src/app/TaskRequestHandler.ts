@@ -201,13 +201,16 @@ export class TaskRequestHandler {
       workerId = worker.id;
       
       // 기존 작업에 피드백 정보 추가
-      const feedbackTask: WorkerTask = {
+      let feedbackTask: WorkerTask = {
         ...worker.currentTask!,
         action: WorkerAction.PROCESS_FEEDBACK,
         ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
         ...(request.comments && { comments: request.comments }),
         assignedAt: new Date()
       };
+
+      // Base branch 추출
+      feedbackTask = await this.enrichTaskWithBaseBranch(feedbackTask);
 
       // Worker에 피드백 작업 재할당
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
