@@ -64,9 +64,7 @@ describe('Base Branch Feature Integration Test', () => {
       // BaseBranchExtractor 설정
       baseBranchExtractor = new BaseBranchExtractor({
         logger: mockLogger,
-        githubService: {
-          getRepositoryDefaultBranch: jest.fn().mockResolvedValue('main')
-        }
+        getRepositoryDefaultBranch: jest.fn().mockResolvedValue('main')
       });
 
       // GitService 설정 (createWorktree 메서드 모킹)
@@ -152,7 +150,7 @@ describe('Base Branch Feature Integration Test', () => {
 
       baseBranchExtractor = new BaseBranchExtractor({
         logger: mockLogger,
-        githubService: mockGitHubService
+        getRepositoryDefaultBranch: mockGitHubService.getRepositoryDefaultBranch
       });
 
       // When: base branch 추출
@@ -186,9 +184,7 @@ describe('Base Branch Feature Integration Test', () => {
 
       baseBranchExtractor = new BaseBranchExtractor({
         logger: mockLogger,
-        githubService: {
-          getRepositoryDefaultBranch: jest.fn().mockResolvedValue('main')
-        }
+        getRepositoryDefaultBranch: jest.fn().mockResolvedValue('main')
       });
 
       // When: base branch 추출
@@ -215,7 +211,7 @@ describe('Base Branch Feature Integration Test', () => {
 
       baseBranchExtractor = new BaseBranchExtractor({
         logger: mockLogger,
-        githubService: mockGitHubService
+        getRepositoryDefaultBranch: mockGitHubService.getRepositoryDefaultBranch
       });
 
       // When: base branch 추출

@@ -3,9 +3,7 @@ import { Logger } from '../logger';
 
 interface BaseBranchExtractorDependencies {
   readonly logger: Logger;
-  readonly githubService: {
-    getRepositoryDefaultBranch(repositoryId: string): Promise<string>;
-  };
+  readonly getRepositoryDefaultBranch: (repositoryId: string) => Promise<string>;
 }
 
 export class BaseBranchExtractor {
@@ -23,18 +21,16 @@ export class BaseBranchExtractor {
    */
   extractFromLabels(labels: string[]): string | null {
     // 모든 base 라벨을 찾아서 여러 개 발견시 경고
-    const baseLabels = labels
-      .map(label => {
-        const lowerLabel = label.toLowerCase();
-        if (lowerLabel.startsWith(this.BASE_LABEL_PREFIX)) {
-          const branchName = label.substring(this.BASE_LABEL_PREFIX.length).trim();
-          if (branchName) {
-            return { label, branchName };
-          }
+    const baseLabels = labels.reduce<{ label: string; branchName: string }[]>((acc, label) => {
+      const lowerLabel = label.toLowerCase();
+      if (lowerLabel.startsWith(this.BASE_LABEL_PREFIX)) {
+        const branchName = label.substring(this.BASE_LABEL_PREFIX.length).trim();
+        if (branchName) {
+          acc.push({ label, branchName });
         }
-        return null;
-      })
-      .filter((item): item is { label: string; branchName: string } => item !== null);
+      }
+      return acc;
+    }, []);
 
     if (baseLabels.length === 0) {
       return null;
@@ -64,7 +60,7 @@ export class BaseBranchExtractor {
    */
   async getRepositoryDefault(repositoryId: string): Promise<string | null> {
     try {
-      const defaultBranch = await this.dependencies.githubService.getRepositoryDefaultBranch(repositoryId);
+      const defaultBranch = await this.dependencies.getRepositoryDefaultBranch(repositoryId);
       this.dependencies.logger.debug('Retrieved repository default branch', { 
         repositoryId, 
         defaultBranch 

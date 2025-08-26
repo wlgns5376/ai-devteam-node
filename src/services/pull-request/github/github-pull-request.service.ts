@@ -1,4 +1,5 @@
 import { Octokit } from '@octokit/rest';
+import { RequestError } from '@octokit/request-error';
 import { 
   PullRequest, 
   PullRequestService, 
@@ -537,10 +538,21 @@ export class GitHubPullRequestService implements PullRequestService {
 
       return repoData.default_branch;
     } catch (error) {
-      this.logger.error('Failed to get repository default branch', {
-        repoId,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      const logContext: Record<string, unknown> = { repoId };
+      if (error instanceof RequestError) {
+        logContext.error = error.message;
+        logContext.status = error.status;
+        logContext.response = error.response?.data;
+      } else if (error instanceof Error) {
+        logContext.error = error.message;
+        if ('status' in error) {
+          logContext.status = (error as any).status;
+        }
+      } else {
+        logContext.error = String(error);
+      }
+
+      this.logger.error('Failed to get repository default branch', logContext);
       
       throw new GitHubPullRequestError(
         `Failed to get repository default branch for ${repoId}`,

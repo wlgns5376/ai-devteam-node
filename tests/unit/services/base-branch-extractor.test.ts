@@ -5,7 +5,7 @@ import { WorkerTask, WorkerAction } from '@/types/worker.types';
 describe('BaseBranchExtractor', () => {
   let baseBranchExtractor: BaseBranchExtractor;
   let mockLogger: jest.Mocked<Logger>;
-  let mockGitHubService: any;
+  let mockGetRepositoryDefaultBranch: jest.Mock;
 
   beforeEach(() => {
     mockLogger = {
@@ -15,13 +15,11 @@ describe('BaseBranchExtractor', () => {
       debug: jest.fn()
     } as any;
 
-    mockGitHubService = {
-      getRepositoryDefaultBranch: jest.fn()
-    };
+    mockGetRepositoryDefaultBranch = jest.fn();
 
     baseBranchExtractor = new BaseBranchExtractor({
       logger: mockLogger,
-      githubService: mockGitHubService
+      getRepositoryDefaultBranch: mockGetRepositoryDefaultBranch
     });
   });
 
@@ -83,16 +81,16 @@ describe('BaseBranchExtractor', () => {
 
   describe('getRepositoryDefault', () => {
     it('should return repository default branch', async () => {
-      mockGitHubService.getRepositoryDefaultBranch.mockResolvedValue('develop');
+      mockGetRepositoryDefaultBranch.mockResolvedValue('develop');
       
       const result = await baseBranchExtractor.getRepositoryDefault('owner/repo');
       
       expect(result).toBe('develop');
-      expect(mockGitHubService.getRepositoryDefaultBranch).toHaveBeenCalledWith('owner/repo');
+      expect(mockGetRepositoryDefaultBranch).toHaveBeenCalledWith('owner/repo');
     });
 
     it('should return null when API call fails', async () => {
-      mockGitHubService.getRepositoryDefaultBranch.mockRejectedValue(new Error('API Error'));
+      mockGetRepositoryDefaultBranch.mockRejectedValue(new Error('API Error'));
       
       const result = await baseBranchExtractor.getRepositoryDefault('owner/repo');
       
@@ -115,12 +113,12 @@ describe('BaseBranchExtractor', () => {
 
     it('should extract branch from labels first', async () => {
       const task = createMockTask(['base:feature/auth', 'priority:high']);
-      mockGitHubService.getRepositoryDefaultBranch.mockResolvedValue('develop');
+      mockGetRepositoryDefaultBranch.mockResolvedValue('develop');
       
       const result = await baseBranchExtractor.extractBaseBranch(task);
       
       expect(result).toBe('feature/auth');
-      expect(mockGitHubService.getRepositoryDefaultBranch).not.toHaveBeenCalled();
+      expect(mockGetRepositoryDefaultBranch).not.toHaveBeenCalled();
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Extracted base branch from labels',
         expect.objectContaining({ 
@@ -132,12 +130,12 @@ describe('BaseBranchExtractor', () => {
 
     it('should fallback to repository default when no label', async () => {
       const task = createMockTask(['priority:high', 'bug']);
-      mockGitHubService.getRepositoryDefaultBranch.mockResolvedValue('develop');
+      mockGetRepositoryDefaultBranch.mockResolvedValue('develop');
       
       const result = await baseBranchExtractor.extractBaseBranch(task);
       
       expect(result).toBe('develop');
-      expect(mockGitHubService.getRepositoryDefaultBranch).toHaveBeenCalledWith('owner/repo');
+      expect(mockGetRepositoryDefaultBranch).toHaveBeenCalledWith('owner/repo');
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Using repository default branch as base branch',
         expect.objectContaining({ 
@@ -149,7 +147,7 @@ describe('BaseBranchExtractor', () => {
 
     it('should fallback to main when all else fails', async () => {
       const task = createMockTask(['priority:high']);
-      mockGitHubService.getRepositoryDefaultBranch.mockRejectedValue(new Error('API Error'));
+      mockGetRepositoryDefaultBranch.mockRejectedValue(new Error('API Error'));
       
       const result = await baseBranchExtractor.extractBaseBranch(task);
       
@@ -170,7 +168,7 @@ describe('BaseBranchExtractor', () => {
         assignedAt: new Date(),
         repositoryId: 'owner/repo'
       };
-      mockGitHubService.getRepositoryDefaultBranch.mockResolvedValue('master');
+      mockGetRepositoryDefaultBranch.mockResolvedValue('master');
       
       const result = await baseBranchExtractor.extractBaseBranch(task);
       
@@ -185,7 +183,7 @@ describe('BaseBranchExtractor', () => {
         assignedAt: new Date(),
         repositoryId: 'owner/repo'
       };
-      mockGitHubService.getRepositoryDefaultBranch.mockResolvedValue('main');
+      mockGetRepositoryDefaultBranch.mockResolvedValue('main');
       
       const result = await baseBranchExtractor.extractBaseBranch(task);
       
@@ -194,7 +192,7 @@ describe('BaseBranchExtractor', () => {
 
     it('should handle task with empty labels array', async () => {
       const task = createMockTask([]);
-      mockGitHubService.getRepositoryDefaultBranch.mockResolvedValue('develop');
+      mockGetRepositoryDefaultBranch.mockResolvedValue('develop');
       
       const result = await baseBranchExtractor.extractBaseBranch(task);
       

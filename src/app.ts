@@ -177,13 +177,11 @@ export class AIDevTeamApp {
       // 5. BaseBranchExtractor 초기화
       const baseBranchExtractor = new BaseBranchExtractor({
         logger: this.logger,
-        githubService: {
-          getRepositoryDefaultBranch: async (repositoryId: string) => {
-            if (!this.pullRequestService) {
-              throw new Error('PullRequestService is not initialized.');
-            }
-            return this.pullRequestService.getRepositoryDefaultBranch(repositoryId);
+        getRepositoryDefaultBranch: async (repositoryId: string) => {
+          if (!this.pullRequestService) {
+            throw new Error('PullRequestService is not initialized.');
           }
+          return this.pullRequestService.getRepositoryDefaultBranch(repositoryId);
         }
       });
 
