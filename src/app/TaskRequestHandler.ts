@@ -206,6 +206,7 @@ export class TaskRequestHandler {
       // 기존 작업에 피드백 정보 추가
       let feedbackTask: WorkerTask = {
         ...worker.currentTask,
+        ...(request.boardItem && { boardItem: request.boardItem }),
         action: WorkerAction.PROCESS_FEEDBACK,
         ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
         ...(request.comments && { comments: request.comments }),
