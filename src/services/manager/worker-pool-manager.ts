@@ -22,7 +22,7 @@ interface WorkerPoolManagerDependencies {
   readonly workspaceManager?: WorkspaceManagerInterface;
   readonly developerConfig: DeveloperConfig;
   readonly developerFactory?: typeof DeveloperFactory;
-  readonly baseBranchExtractor?: BaseBranchExtractor;
+  readonly baseBranchExtractor: BaseBranchExtractor;
 }
 
 export class WorkerPoolManager implements WorkerPoolManagerInterface {
@@ -647,12 +647,7 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       workspaceSetup: new WorkspaceSetup({
         logger: this.dependencies.logger,
         workspaceManager: this.dependencies.workspaceManager || null,
-        baseBranchExtractor: this.dependencies.baseBranchExtractor || new BaseBranchExtractor({
-          logger: this.dependencies.logger,
-          githubService: {
-            getRepositoryDefaultBranch: async () => 'main'
-          }
-        })
+        baseBranchExtractor: this.dependencies.baseBranchExtractor
       }),
       promptGenerator: new PromptGenerator({
         logger: this.dependencies.logger

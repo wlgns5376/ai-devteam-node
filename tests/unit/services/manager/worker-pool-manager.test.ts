@@ -102,7 +102,10 @@ describe('WorkerPoolManager', () => {
       logger: mockLogger,
       stateManager: mockStateManager,
       developerConfig,
-      developerFactory: mockDeveloperFactory as any
+      developerFactory: mockDeveloperFactory as any,
+      baseBranchExtractor: {
+        extractBaseBranch: jest.fn().mockResolvedValue('main')
+      } as any
     });
   });
 

@@ -179,9 +179,7 @@ export class AIDevTeamApp {
         logger: this.logger,
         githubService: {
           getRepositoryDefaultBranch: async (repositoryId: string) => {
-            // GitHub API를 통해 기본 브랜치 가져오기
-            // TODO: 실제 구현 필요 - 현재는 main을 기본으로 반환
-            return 'main';
+            return this.pullRequestService!.getRepositoryDefaultBranch(repositoryId);
           }
         }
       });

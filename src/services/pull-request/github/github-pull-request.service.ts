@@ -523,4 +523,31 @@ export class GitHubPullRequestService implements PullRequestService {
            author === 'github-actions' ||
            author === 'dependabot';
   }
+
+  async getRepositoryDefaultBranch(repoId: string): Promise<string> {
+    try {
+      const { owner, repo } = this.parseRepoId(repoId);
+      
+      this.logger.debug('Getting repository default branch', { owner, repo });
+
+      const { data: repoData } = await this.octokit.rest.repos.get({
+        owner,
+        repo
+      });
+
+      return repoData.default_branch;
+    } catch (error) {
+      this.logger.error('Failed to get repository default branch', {
+        repoId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      
+      throw new GitHubPullRequestError(
+        `Failed to get repository default branch for ${repoId}`,
+        repoId,
+        undefined,
+        error as Error
+      );
+    }
+  }
 }

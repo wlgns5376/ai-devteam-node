@@ -8,6 +8,7 @@ import {
   TaskResponse, 
   ResponseStatus,
   WorkerAction,
+  WorkerTask,
   WorkspaceInfo 
 } from '@/types';
 import { WorkerPoolManager } from '../services/manager/worker-pool-manager';
@@ -97,9 +98,9 @@ export class TaskRequestHandler {
 
     // PRD 요구사항에 맞는 전체 작업 정보 생성
     const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem) || 'test-owner/test-repo';
-    const workerTask = {
+    let workerTask: WorkerTask = {
       taskId: request.taskId,
-      action: 'start_new_task' as any,
+      action: WorkerAction.START_NEW_TASK,
       boardItem: request.boardItem,
       repositoryId,
       assignedAt: new Date()
@@ -108,7 +109,7 @@ export class TaskRequestHandler {
     // Base branch 추출 (baseBranchExtractor가 있는 경우에만)
     if (this.baseBranchExtractor) {
       const baseBranch = await this.baseBranchExtractor.extractBaseBranch(workerTask);
-      (workerTask as any).baseBranch = baseBranch;
+      workerTask = { ...workerTask, baseBranch };
     }
 
     // 작업 할당 및 즉시 실행 (Planner가 결과를 감지하도록 WorkerTaskExecutor 사용)

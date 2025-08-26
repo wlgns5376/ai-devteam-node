@@ -288,7 +288,8 @@ describe('WorkspaceManager', () => {
       expect(mockGitService.createWorktree).toHaveBeenCalledWith(
         '/repo/path',
         workspaceInfoWithFlag.branchName,
-        workspaceInfoWithFlag.workspaceDir
+        workspaceInfoWithFlag.workspaceDir,
+        undefined
       );
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'Worktree flag is set but worktree is invalid, recreating',
@@ -361,7 +362,8 @@ describe('WorkspaceManager', () => {
       expect(mockGitService.createWorktree).toHaveBeenCalledWith(
         repositoryPath,
         workspaceInfo.branchName,
-        workspaceInfo.workspaceDir
+        workspaceInfo.workspaceDir,
+        undefined
       );
       expect(mockRepositoryManager.addWorktree).toHaveBeenCalledWith(
         workspaceInfo.repositoryId,
@@ -446,7 +448,8 @@ describe('WorkspaceManager', () => {
       expect(mockGitService.createWorktree).toHaveBeenCalledWith(
         repositoryPath,
         existingWorkspaceInfo.branchName,
-        existingWorkspaceInfo.workspaceDir
+        existingWorkspaceInfo.workspaceDir,
+        undefined
       );
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'Worktree flag is set but worktree is invalid, recreating',

@@ -82,26 +82,13 @@ export class BaseBranchExtractor {
       }
     }
 
-    // 2. Repository 기본 브랜치 사용
-    try {
-      const defaultBranch = await this.getRepositoryDefault(task.repositoryId);
-      if (defaultBranch !== this.DEFAULT_BRANCH) {
-        this.dependencies.logger.info('Using repository default branch', {
-          taskId: task.taskId,
-          baseBranch: defaultBranch,
-          repositoryId: task.repositoryId
-        });
-        return defaultBranch;
-      }
-    } catch (error) {
-      // getRepositoryDefault 내부에서 이미 에러 로깅을 하므로 여기서는 무시
-    }
-
-    // 3. 폴백: main 브랜치
-    this.dependencies.logger.info('Using fallback branch', {
+    // 2. Repository 기본 브랜치 사용 (내부적으로 'main'으로 폴백)
+    const repoDefaultBranch = await this.getRepositoryDefault(task.repositoryId);
+    this.dependencies.logger.info('Using repository default branch as fallback', {
       taskId: task.taskId,
-      baseBranch: this.DEFAULT_BRANCH
+      baseBranch: repoDefaultBranch,
+      repositoryId: task.repositoryId
     });
-    return this.DEFAULT_BRANCH;
+    return repoDefaultBranch;
   }
 }

@@ -71,4 +71,7 @@ export interface PullRequestService {
   getComments(repoId: string, prNumber: number): Promise<ReadonlyArray<PullRequestComment>>;
   getNewComments(repoId: string, prNumber: number, since: Date, filterOptions?: CommentFilterOptions): Promise<ReadonlyArray<PullRequestComment>>;
   markCommentsAsProcessed(commentIds: string[]): Promise<void>;
+  
+  // 저장소 정보 조회
+  getRepositoryDefaultBranch(repoId: string): Promise<string>;
 }
