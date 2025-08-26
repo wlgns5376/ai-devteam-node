@@ -21,16 +21,16 @@ export class BaseBranchExtractor {
    */
   extractFromLabels(labels: string[]): string | null {
     // 모든 base 라벨을 찾아서 여러 개 발견시 경고
-    const baseLabels = labels.reduce<{ label: string; branchName: string }[]>((acc, label) => {
+    const baseLabels: { label: string; branchName: string }[] = [];
+    for (const label of labels) {
       const lowerLabel = label.toLowerCase();
       if (lowerLabel.startsWith(this.BASE_LABEL_PREFIX)) {
         const branchName = label.substring(this.BASE_LABEL_PREFIX.length).trim();
         if (branchName) {
-          acc.push({ label, branchName });
+          baseLabels.push({ label, branchName });
         }
       }
-      return acc;
-    }, []);
+    }
 
     if (baseLabels.length === 0) {
       return null;

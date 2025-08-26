@@ -98,16 +98,13 @@ export class TaskRequestHandler {
 
     // PRD 요구사항에 맞는 전체 작업 정보 생성
     const repositoryId = this.getRepositoryIdFromRequest(request);
-    let workerTask: WorkerTask = {
+    const workerTask = await this.enrichTaskWithBaseBranch({
       taskId: request.taskId,
       action: WorkerAction.START_NEW_TASK,
       boardItem: request.boardItem,
       repositoryId,
       assignedAt: new Date()
-    };
-
-    // Base branch 추출
-    workerTask = await this.enrichTaskWithBaseBranch(workerTask);
+    });
 
     // 작업 할당 및 즉시 실행 (Planner가 결과를 감지하도록 WorkerTaskExecutor 사용)
     await this.workerTaskExecutor.assignAndExecuteTask(availableWorker.id, workerTask, this.pullRequestService);
@@ -182,7 +179,7 @@ export class TaskRequestHandler {
       // 새 워커에 피드백 작업 할당
       const repositoryId = this.getRepositoryIdFromRequest(request);
         
-      let feedbackTask: WorkerTask = {
+      const feedbackTask = await this.enrichTaskWithBaseBranch({
         taskId: request.taskId,
         action: WorkerAction.PROCESS_FEEDBACK,
         boardItem: request.boardItem,
@@ -190,9 +187,7 @@ export class TaskRequestHandler {
         ...(request.comments && { comments: request.comments }),
         repositoryId,
         assignedAt: new Date()
-      };
-
-      feedbackTask = await this.enrichTaskWithBaseBranch(feedbackTask);
+      });
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
     } else {
       // 기존 워커가 있으면 재사용
@@ -298,11 +293,11 @@ export class TaskRequestHandler {
 
     // 병합 요청을 위한 작업 정보 생성
     const repositoryId = this.getRepositoryIdFromRequest(request);
-    const mergeTask = {
+    const mergeTask: WorkerTask = {
       taskId: request.taskId,
-      action: 'merge_request' as any,
-      pullRequestUrl: request.pullRequestUrl,
-      boardItem: request.boardItem,
+      action: WorkerAction.MERGE_REQUEST,
+      ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
+      ...(request.boardItem && { boardItem: request.boardItem }),
       repositoryId,
       assignedAt: new Date()
     };
