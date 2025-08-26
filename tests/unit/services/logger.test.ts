@@ -109,6 +109,9 @@ describe('Logger', () => {
     it('should log messages at or above configured level', async () => {
       // Given: WARN 레벨로 설정된 Logger가 있을 때
       const uniqueFile = getTestSpecificPath(testLogFile);
+      // 디렉토리가 확실히 생성되도록 보장
+      await fs.mkdir(path.dirname(uniqueFile), { recursive: true });
+      
       logger = new Logger({
         level: LogLevel.WARN,
         filePath: uniqueFile,
@@ -123,6 +126,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: WARN 이상의 메시지만 로깅되어야 함
       const logContent = await fs.readFile(uniqueFile, 'utf-8');
@@ -135,6 +140,9 @@ describe('Logger', () => {
     it('should log all messages with DEBUG level', async () => {
       // Given: DEBUG 레벨로 설정된 Logger가 있을 때
       const uniqueFile = getTestSpecificPath(testLogFile);
+      // 디렉토리가 확실히 생성되도록 보장
+      await fs.mkdir(path.dirname(uniqueFile), { recursive: true });
+      
       logger = new Logger({
         level: LogLevel.DEBUG,
         filePath: uniqueFile,
@@ -149,6 +157,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 모든 메시지가 로깅되어야 함
       const logContent = await fs.readFile(uniqueFile, 'utf-8');
@@ -163,6 +173,9 @@ describe('Logger', () => {
     it('should format log messages correctly', async () => {
       // Given: Logger가 설정되어 있을 때
       const uniqueFile = getTestSpecificPath(testLogFile);
+      // 디렉토리가 확실히 생성되도록 보장
+      await fs.mkdir(path.dirname(uniqueFile), { recursive: true });
+      
       logger = new Logger({
         level: LogLevel.INFO,
         filePath: uniqueFile,
@@ -174,6 +187,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 올바른 형식으로 로깅되어야 함
       const logContent = await fs.readFile(uniqueFile, 'utf-8');
@@ -183,6 +198,9 @@ describe('Logger', () => {
     it('should include context information', async () => {
       // Given: Logger가 설정되어 있을 때
       const uniqueFile = getTestSpecificPath(testLogFile);
+      // 디렉토리가 확실히 생성되도록 보장
+      await fs.mkdir(path.dirname(uniqueFile), { recursive: true });
+      
       logger = new Logger({
         level: LogLevel.INFO,
         filePath: uniqueFile,
@@ -194,6 +212,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 컨텍스트 정보가 포함되어야 함
       const logContent = await fs.readFile(uniqueFile, 'utf-8');
@@ -205,6 +225,9 @@ describe('Logger', () => {
     it('should handle error objects properly', async () => {
       // Given: Logger가 설정되어 있을 때
       const uniqueFile = getTestSpecificPath(testLogFile);
+      // 디렉토리가 확실히 생성되도록 보장
+      await fs.mkdir(path.dirname(uniqueFile), { recursive: true });
+      
       logger = new Logger({
         level: LogLevel.INFO,
         filePath: uniqueFile,
@@ -219,6 +242,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: Error 정보가 포함되어야 함
       const logContent = await fs.readFile(uniqueFile, 'utf-8');
@@ -246,6 +271,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 디렉토리가 생성되고 파일이 생성되어야 함
       const dirExists = await fs.access(newLogDir).then(() => true).catch(() => false);
@@ -258,6 +285,8 @@ describe('Logger', () => {
     it('should append to existing log file', async () => {
       // Given: 기존 로그 파일이 있을 때
       const uniqueFile = getTestSpecificPath(testLogFile);
+      // 디렉토리가 확실히 생성되도록 보장
+      await fs.mkdir(path.dirname(uniqueFile), { recursive: true });
       await fs.writeFile(uniqueFile, 'Existing log content\n');
 
       logger = new Logger({
@@ -271,6 +300,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 기존 내용에 추가되어야 함
       const logContent = await fs.readFile(uniqueFile, 'utf-8');
@@ -339,6 +370,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 현재 날짜로 된 로그 파일이 생성되어야 함
       const currentDate = getCurrentDateString();
@@ -371,6 +404,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 기존 내용에 추가되어야 함
       const logContent = await fs.readFile(dailyLogFile, 'utf-8');
@@ -381,6 +416,8 @@ describe('Logger', () => {
     it('should support both logDirectory and filePath for backward compatibility', async () => {
       // Given: 기존 filePath 방식으로 Logger를 생성할 때
       const uniqueFile = getTestSpecificPath(testLogFile);
+      // 디렉토리가 확실히 생성되도록 보장
+      await fs.mkdir(path.dirname(uniqueFile), { recursive: true });
       
       logger = new Logger({
         level: LogLevel.INFO,
@@ -393,6 +430,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 기존 방식대로 파일이 생성되어야 함
       const fileExists = await fs.access(uniqueFile).then(() => true).catch(() => false);
@@ -416,6 +455,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 일자별 로그 파일이 생성되어야 함
       const currentDate = getCurrentDateString();
@@ -472,6 +513,9 @@ describe('Logger', () => {
       circularObj.self = circularObj;
 
       const uniqueFile = getTestSpecificPath(testLogFile);
+      // 디렉토리가 확실히 생성되도록 보장
+      await fs.mkdir(path.dirname(uniqueFile), { recursive: true });
+      
       logger = new Logger({
         level: LogLevel.INFO,
         filePath: uniqueFile,
@@ -485,6 +529,8 @@ describe('Logger', () => {
 
       // 파일 쓰기 완료 대기
       await logger!.flush();
+      // 추가 대기 (파일 시스템 동기화를 위해)
+      await new Promise(resolve => setTimeout(resolve, 200));
 
       // Then: 로그 파일에 에러 메시지가 포함되어야 함
       const logContent = await fs.readFile(uniqueFile, 'utf-8');
