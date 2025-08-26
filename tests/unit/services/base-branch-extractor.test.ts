@@ -91,12 +91,12 @@ describe('BaseBranchExtractor', () => {
       expect(mockGitHubService.getRepositoryDefaultBranch).toHaveBeenCalledWith('owner/repo');
     });
 
-    it('should return main as fallback when API call fails', async () => {
+    it('should return null when API call fails', async () => {
       mockGitHubService.getRepositoryDefaultBranch.mockRejectedValue(new Error('API Error'));
       
       const result = await baseBranchExtractor.getRepositoryDefault('owner/repo');
       
-      expect(result).toBe('main');
+      expect(result).toBeNull();
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Failed to get repository default branch',
         expect.objectContaining({ repositoryId: 'owner/repo' })
@@ -139,7 +139,7 @@ describe('BaseBranchExtractor', () => {
       expect(result).toBe('develop');
       expect(mockGitHubService.getRepositoryDefaultBranch).toHaveBeenCalledWith('owner/repo');
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'Using repository default branch',
+        'Using repository default branch as base branch',
         expect.objectContaining({ 
           taskId: 'task-123',
           baseBranch: 'develop' 
@@ -155,7 +155,7 @@ describe('BaseBranchExtractor', () => {
       
       expect(result).toBe('main');
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'Using fallback branch',
+        'Using "main" as final fallback branch',
         expect.objectContaining({ 
           taskId: 'task-123',
           baseBranch: 'main' 

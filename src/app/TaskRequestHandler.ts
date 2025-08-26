@@ -187,12 +187,12 @@ export class TaskRequestHandler {
         (this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'test-owner/test-repo') : 
         'test-owner/test-repo';
         
-      const feedbackTask: any = {
+      let feedbackTask: WorkerTask = {
         taskId: request.taskId,
-        action: 'process_feedback' as any,
+        action: WorkerAction.PROCESS_FEEDBACK,
         boardItem: request.boardItem,
-        pullRequestUrl: request.pullRequestUrl,
-        comments: request.comments,
+        ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
+        ...(request.comments && { comments: request.comments }),
         repositoryId,
         assignedAt: new Date()
       };
@@ -200,7 +200,7 @@ export class TaskRequestHandler {
       // Base branch 추출 (baseBranchExtractor가 있는 경우에만)
       if (this.baseBranchExtractor) {
         const baseBranch = await this.baseBranchExtractor.extractBaseBranch(feedbackTask);
-        (feedbackTask as any).baseBranch = baseBranch;
+        feedbackTask = { ...feedbackTask, baseBranch };
       }
       
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
@@ -209,11 +209,11 @@ export class TaskRequestHandler {
       workerId = worker.id;
       
       // 기존 작업에 피드백 정보 추가
-      const feedbackTask = {
-        ...worker.currentTask,
-        action: 'process_feedback' as any,
-        pullRequestUrl: request.pullRequestUrl,
-        comments: request.comments,
+      const feedbackTask: WorkerTask = {
+        ...worker.currentTask!,
+        action: WorkerAction.PROCESS_FEEDBACK,
+        ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
+        ...(request.comments && { comments: request.comments }),
         assignedAt: new Date()
       };
 
@@ -433,7 +433,7 @@ export class TaskRequestHandler {
 
     // 작업 재할당 (RESUME_TASK 액션으로)
     const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem) || 'test-owner/test-repo';
-    const resumeTask = {
+    let resumeTask: WorkerTask = {
       taskId: request.taskId,
       action: WorkerAction.RESUME_TASK,
       boardItem: request.boardItem,
@@ -444,7 +444,7 @@ export class TaskRequestHandler {
     // Base branch 추출 (baseBranchExtractor가 있는 경우에만)
     if (this.baseBranchExtractor) {
       const baseBranch = await this.baseBranchExtractor.extractBaseBranch(resumeTask);
-      (resumeTask as any).baseBranch = baseBranch;
+      resumeTask = { ...resumeTask, baseBranch };
     }
 
     try {

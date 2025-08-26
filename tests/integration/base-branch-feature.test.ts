@@ -34,7 +34,7 @@ describe('Base Branch Feature Integration Test', () => {
     // StateManager mock
     mockStateManager = {
       saveWorkspaceInfo: jest.fn(),
-      loadWorkspaceInfo: jest.fn(),
+      loadWorkspaceInfo: jest.fn().mockResolvedValue(null), // 새 워크스페이스 생성을 위해 null 반환
       removeWorkspaceInfo: jest.fn()
     } as any;
 
@@ -72,8 +72,7 @@ describe('Base Branch Feature Integration Test', () => {
       // GitService 설정 (createWorktree 메서드 모킹)
       const gitLockService = new GitLockService({
         logger: mockLogger,
-        lockTimeoutMs: 30000,
-        maxConcurrentOps: 1
+        lockTimeoutMs: 30000
       });
 
       gitService = new GitService({
@@ -101,6 +100,9 @@ describe('Base Branch Feature Integration Test', () => {
         gitService,
         repositoryManager: mockRepositoryManager
       });
+
+      // isWorktreeValid를 false로 모킹하여 새 worktree 생성을 강제
+      jest.spyOn(workspaceManager, 'isWorktreeValid').mockResolvedValue(false);
 
       // WorkspaceSetup 설정
       workspaceSetup = new WorkspaceSetup({
@@ -160,7 +162,7 @@ describe('Base Branch Feature Integration Test', () => {
       expect(baseBranch).toBe('develop');
       expect(mockGitHubService.getRepositoryDefaultBranch).toHaveBeenCalledWith('owner/repo');
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'Using repository default branch',
+        'Using repository default branch as base branch',
         expect.objectContaining({
           taskId: 'task-456',
           baseBranch: 'develop'
@@ -222,7 +224,7 @@ describe('Base Branch Feature Integration Test', () => {
       // Then: main이 폴백으로 사용됨
       expect(baseBranch).toBe('main');
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'Using fallback branch',
+        'Using "main" as final fallback branch',
         expect.objectContaining({
           taskId: 'task-fallback',
           baseBranch: 'main'

@@ -39,9 +39,9 @@ export class BaseBranchExtractor {
   /**
    * Repository의 기본 브랜치를 가져옵니다.
    * @param repositoryId Repository ID (예: owner/repo)
-   * @returns 기본 브랜치명
+   * @returns 기본 브랜치명 또는 실패시 null
    */
-  async getRepositoryDefault(repositoryId: string): Promise<string> {
+  async getRepositoryDefault(repositoryId: string): Promise<string | null> {
     try {
       const defaultBranch = await this.dependencies.githubService.getRepositoryDefaultBranch(repositoryId);
       this.dependencies.logger.debug('Retrieved repository default branch', { 
@@ -54,7 +54,7 @@ export class BaseBranchExtractor {
         repositoryId,
         error
       });
-      return this.DEFAULT_BRANCH;
+      return null;
     }
   }
 
@@ -82,13 +82,23 @@ export class BaseBranchExtractor {
       }
     }
 
-    // 2. Repository 기본 브랜치 사용 (내부적으로 'main'으로 폴백)
+    // 2. Repository 기본 브랜치 사용
     const repoDefaultBranch = await this.getRepositoryDefault(task.repositoryId);
-    this.dependencies.logger.info('Using repository default branch as fallback', {
+    if (repoDefaultBranch) {
+      this.dependencies.logger.info('Using repository default branch as base branch', {
+        taskId: task.taskId,
+        baseBranch: repoDefaultBranch,
+        repositoryId: task.repositoryId
+      });
+      return repoDefaultBranch;
+    }
+
+    // 3. 'main' 브랜치로 폴백
+    this.dependencies.logger.info('Using "main" as final fallback branch', {
       taskId: task.taskId,
-      baseBranch: repoDefaultBranch,
+      baseBranch: this.DEFAULT_BRANCH,
       repositoryId: task.repositoryId
     });
-    return repoDefaultBranch;
+    return this.DEFAULT_BRANCH;
   }
 }
