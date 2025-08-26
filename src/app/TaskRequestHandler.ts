@@ -192,27 +192,32 @@ export class TaskRequestHandler {
         assignedAt: new Date()
       };
 
-      // Base branch 추출
       feedbackTask = await this.enrichTaskWithBaseBranch(feedbackTask);
-      
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
     } else {
       // 기존 워커가 있으면 재사용
       workerId = worker.id;
+
+      if (!worker.currentTask) {
+        this.logger?.error('Worker found for task but has no current task', { workerId, taskId: request.taskId });
+        return {
+          taskId: request.taskId,
+          status: ResponseStatus.ERROR,
+          message: `Worker ${workerId} is in an inconsistent state (no current task).`,
+          workerStatus: 'error'
+        };
+      }
       
       // 기존 작업에 피드백 정보 추가
       let feedbackTask: WorkerTask = {
-        ...worker.currentTask!,
+        ...worker.currentTask,
         action: WorkerAction.PROCESS_FEEDBACK,
         ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
         ...(request.comments && { comments: request.comments }),
         assignedAt: new Date()
       };
 
-      // Base branch 추출
       feedbackTask = await this.enrichTaskWithBaseBranch(feedbackTask);
-
-      // Worker에 피드백 작업 재할당
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
     }
 

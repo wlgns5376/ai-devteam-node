@@ -23,18 +23,18 @@ export class BaseBranchExtractor {
    */
   extractFromLabels(labels: string[]): string | null {
     // 모든 base 라벨을 찾아서 여러 개 발견시 경고
-    const baseLabels: { label: string; branchName: string }[] = [];
-    
-    for (const label of labels) {
-      const lowerLabel = label.toLowerCase();
-      if (lowerLabel.startsWith(this.BASE_LABEL_PREFIX)) {
-        // base: 이후의 브랜치명 추출
-        const branchName = label.substring(this.BASE_LABEL_PREFIX.length).trim();
-        if (branchName) {
-          baseLabels.push({ label, branchName });
+    const baseLabels = labels
+      .map(label => {
+        const lowerLabel = label.toLowerCase();
+        if (lowerLabel.startsWith(this.BASE_LABEL_PREFIX)) {
+          const branchName = label.substring(this.BASE_LABEL_PREFIX.length).trim();
+          if (branchName) {
+            return { label, branchName };
+          }
         }
-      }
-    }
+        return null;
+      })
+      .filter((item): item is { label: string; branchName: string } => item !== null);
 
     if (baseLabels.length === 0) {
       return null;
