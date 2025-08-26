@@ -25,6 +25,7 @@ export class PromptGenerator implements PromptGeneratorInterface {
 - **작업 제목**: ${task.boardItem?.title || '제목 없음'}
 - **작업 디렉토리**: ${workspaceInfo.workspaceDir}
 - **브랜치**: ${workspaceInfo.branchName}
+- **Base Branch**: ${task.baseBranch || 'main'}
 - **이슈 번호**: #${task.boardItem.contentNumber}
 
 ### 작업 설명
@@ -68,6 +69,7 @@ ${task.boardItem?.description || '작업 제목을 참고하여 적절한 구현
 - **작업 제목**: ${task.boardItem?.title || '제목 없음'}
 - **작업 디렉토리**: ${workspaceInfo.workspaceDir}
 - **브랜치**: ${workspaceInfo.branchName}
+- **Base Branch**: ${task.baseBranch || 'main'}
 - **이슈 번호**: #${task.boardItem.contentNumber}
 
 ## 재개 지침

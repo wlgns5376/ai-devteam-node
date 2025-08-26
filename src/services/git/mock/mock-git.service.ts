@@ -92,12 +92,12 @@ export class MockGitService implements GitServiceInterface {
     });
   }
 
-  async createWorktree(repoPath: string, branchName: string, worktreePath: string): Promise<void> {
+  async createWorktree(repoPath: string, branchName: string, worktreePath: string, baseBranch?: string): Promise<void> {
     // 경로에서 repository ID 추출
     const repoId = path.basename(repoPath);
     
     return this.dependencies.gitLockService.withLock(repoId, 'worktree', async () => {
-      this.dependencies.logger.info('Mock: Creating git worktree', { repoPath, branchName, worktreePath });
+      this.dependencies.logger.info('Mock: Creating git worktree', { repoPath, branchName, worktreePath, baseBranch });
       
       // 저장소가 존재하는지 확인
       const repoIdFromPath = this.getRepoIdFromPath(repoPath);

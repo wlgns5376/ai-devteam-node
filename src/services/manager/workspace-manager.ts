@@ -85,7 +85,7 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
     }
   }
 
-  async setupWorktree(workspaceInfo: WorkspaceInfo): Promise<void> {
+  async setupWorktree(workspaceInfo: WorkspaceInfo, baseBranch?: string): Promise<void> {
     // 워크트리가 이미 존재하는지 확인 (플래그 상관없이 실제 상태 확인)
     const isWorktreeValid = await this.isWorktreeValid(workspaceInfo);
     if (isWorktreeValid) {
@@ -137,7 +137,8 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
         await this.dependencies.gitService.createWorktree(
           repositoryPath,
           workspaceInfo.branchName,
-          workspaceInfo.workspaceDir
+          workspaceInfo.workspaceDir,
+          baseBranch
         );
       }
 

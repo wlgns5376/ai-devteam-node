@@ -63,7 +63,7 @@ export interface WorkerPoolManagerInterface {
 
 export interface WorkspaceManagerInterface {
   createWorkspace(taskId: string, repositoryId: string, boardItem?: any): Promise<WorkspaceInfo>;
-  setupWorktree(workspaceInfo: WorkspaceInfo): Promise<void>;
+  setupWorktree(workspaceInfo: WorkspaceInfo, baseBranch?: string): Promise<void>;
   setupClaudeLocal(workspaceInfo: WorkspaceInfo): Promise<void>;
   cleanupWorkspace(taskId: string): Promise<void>;
   getWorkspaceInfo(taskId: string): Promise<WorkspaceInfo | null>;
@@ -103,7 +103,7 @@ export interface GitServiceInterface {
   clone(repositoryUrl: string, localPath: string): Promise<void>;
   fetch(localPath: string): Promise<void>;
   pullMainBranch(localPath: string): Promise<void>;
-  createWorktree(repoPath: string, branchName: string, worktreePath: string): Promise<void>;
+  createWorktree(repoPath: string, branchName: string, worktreePath: string, baseBranch?: string): Promise<void>;
   removeWorktree(repoPath: string, worktreePath: string): Promise<void>;
   isValidRepository(path: string): Promise<boolean>;
 }

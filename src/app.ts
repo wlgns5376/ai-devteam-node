@@ -8,6 +8,7 @@ import { ServiceFactory } from './services/service-factory';
 import { ProjectBoardService, PullRequestService, ExternalServices } from './types';
 import { TaskRequestHandler } from './app/TaskRequestHandler';
 import { RepositoryInfoExtractor } from './utils/RepositoryInfoExtractor';
+import { BaseBranchExtractor } from './services/git';
 import { 
   PlannerDependencies, 
   ManagerCommunicator, 
@@ -173,7 +174,19 @@ export class AIDevTeamApp {
         }
       );
 
-      // 5. WorkerPoolManager 초기화
+      // 5. BaseBranchExtractor 초기화
+      const baseBranchExtractor = new BaseBranchExtractor({
+        logger: this.logger,
+        githubService: {
+          getRepositoryDefaultBranch: async (repositoryId: string) => {
+            // GitHub API를 통해 기본 브랜치 가져오기
+            // TODO: 실제 구현 필요 - 현재는 main을 기본으로 반환
+            return 'main';
+          }
+        }
+      });
+
+      // 6. WorkerPoolManager 초기화
       this.workerPoolManager = new WorkerPoolManager(
         {
           workspaceBasePath: this.config.manager.workspaceRoot,
@@ -188,21 +201,23 @@ export class AIDevTeamApp {
           stateManager: this.stateManager,
           workspaceManager,
           developerConfig: this.createDeveloperConfig(this.config.developer),
-          developerFactory
+          developerFactory,
+          baseBranchExtractor
         }
       );
       this.logger.info('WorkerPoolManager and WorkspaceManager initialized');
 
-      // 6. TaskRequestHandler 초기화
+      // 7. TaskRequestHandler 초기화
       this.taskRequestHandler = new TaskRequestHandler(
         this.workerPoolManager,
         this.projectBoardService,
         this.pullRequestService,
         this.logger,
-        this.extractRepositoryFromBoardItem.bind(this)
+        this.extractRepositoryFromBoardItem.bind(this),
+        baseBranchExtractor
       );
 
-      // 7. Manager Communicator 구현
+      // 8. Manager Communicator 구현
       const managerCommunicator: ManagerCommunicator = {
         sendTaskToManager: async (request: TaskRequest): Promise<TaskResponse> => {
           if (!this.taskRequestHandler) {
@@ -213,7 +228,7 @@ export class AIDevTeamApp {
         }
       };
 
-      // 8. Planner 초기화
+      // 9. Planner 초기화
       const plannerDependencies: PlannerDependencies = {
         projectBoardService: this.projectBoardService,
         pullRequestService: this.pullRequestService,

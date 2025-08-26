@@ -5,11 +5,13 @@ import {
   WorkspaceInfo
 } from '@/types';
 import { Logger } from '../logger';
+import { BaseBranchExtractor } from '../git';
 import fs from 'fs/promises';
 
 interface WorkspaceSetupDependencies {
   readonly logger: Logger;
   readonly workspaceManager: any; // WorkspaceManager interface with isWorktreeValid method
+  readonly baseBranchExtractor: BaseBranchExtractor;
 }
 
 export class WorkspaceSetup implements WorkspaceSetupInterface {
@@ -56,8 +58,11 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
         task.boardItem
       );
 
+      // Base branch 추출
+      const baseBranch = await this.dependencies.baseBranchExtractor.extractBaseBranch(task);
+
       // Git worktree 설정
-      await this.dependencies.workspaceManager.setupWorktree(workspaceInfo);
+      await this.dependencies.workspaceManager.setupWorktree(workspaceInfo, baseBranch);
 
       // CLAUDE.local.md 설정
       await this.dependencies.workspaceManager.setupClaudeLocal(workspaceInfo);

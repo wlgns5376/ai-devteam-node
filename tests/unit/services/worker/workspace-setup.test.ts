@@ -1,5 +1,6 @@
 import { WorkspaceSetup } from '@/services/worker/workspace-setup';
 import { Logger } from '@/services/logger';
+import { BaseBranchExtractor } from '@/services/git';
 import { 
   WorkerTask, 
   WorkerAction,
@@ -20,6 +21,7 @@ describe('WorkspaceSetup', () => {
   let workspaceSetup: WorkspaceSetup;
   let mockLogger: jest.Mocked<Logger>;
   let mockWorkspaceManager: MockWorkspaceManager;
+  let mockBaseBranchExtractor: jest.Mocked<BaseBranchExtractor>;
 
   beforeEach(() => {
     // Given: Mock 의존성 설정
@@ -38,9 +40,16 @@ describe('WorkspaceSetup', () => {
       getWorkspaceInfo: jest.fn()
     };
 
+    mockBaseBranchExtractor = {
+      extractFromLabels: jest.fn(),
+      getRepositoryDefault: jest.fn(),
+      extractBaseBranch: jest.fn()
+    } as any;
+
     workspaceSetup = new WorkspaceSetup({
       logger: mockLogger,
-      workspaceManager: mockWorkspaceManager
+      workspaceManager: mockWorkspaceManager,
+      baseBranchExtractor: mockBaseBranchExtractor
     });
   });
 
@@ -72,6 +81,7 @@ describe('WorkspaceSetup', () => {
       mockWorkspaceManager.createWorkspace.mockResolvedValue(expectedWorkspaceInfo);
       mockWorkspaceManager.setupWorktree.mockResolvedValue(undefined);
       mockWorkspaceManager.setupClaudeLocal.mockResolvedValue(undefined);
+      mockBaseBranchExtractor.extractBaseBranch.mockResolvedValue('main');
 
       // When: 워크스페이스 준비
       const result = await workspaceSetup.prepareWorkspace(task);
@@ -82,7 +92,8 @@ describe('WorkspaceSetup', () => {
         task.repositoryId,
         task.boardItem
       );
-      expect(mockWorkspaceManager.setupWorktree).toHaveBeenCalledWith(expectedWorkspaceInfo);
+      expect(mockBaseBranchExtractor.extractBaseBranch).toHaveBeenCalledWith(task);
+      expect(mockWorkspaceManager.setupWorktree).toHaveBeenCalledWith(expectedWorkspaceInfo, 'main');
       expect(mockWorkspaceManager.setupClaudeLocal).toHaveBeenCalledWith(expectedWorkspaceInfo);
       expect(result).toEqual(expectedWorkspaceInfo);
       expect(mockLogger.info).toHaveBeenCalledWith(

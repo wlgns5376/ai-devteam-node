@@ -15,6 +15,7 @@ import { PullRequestService, ProjectBoardService } from '../types';
 import { Logger } from '../services/logger';
 import { WorkerTaskExecutor } from './WorkerTaskExecutor';
 import { TaskAssignmentValidator, TaskReassignmentCheck } from '../services/worker/task-assignment-validator';
+import { BaseBranchExtractor } from '../services/git';
 
 export class TaskRequestHandler {
   private readonly workerTaskExecutor: WorkerTaskExecutor;
@@ -25,7 +26,8 @@ export class TaskRequestHandler {
     private readonly projectBoardService?: ProjectBoardService,
     private readonly pullRequestService?: PullRequestService,
     private readonly logger?: Logger,
-    private readonly extractRepositoryFromBoardItem?: (boardItem: any, pullRequestUrl?: string) => string
+    private readonly extractRepositoryFromBoardItem?: (boardItem: any, pullRequestUrl?: string) => string,
+    private readonly baseBranchExtractor?: BaseBranchExtractor
   ) {
     this.workerTaskExecutor = new WorkerTaskExecutor(this.workerPoolManager, this.logger);
     this.taskAssignmentValidator = new TaskAssignmentValidator({
@@ -94,13 +96,20 @@ export class TaskRequestHandler {
     }
 
     // PRD 요구사항에 맞는 전체 작업 정보 생성
+    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem) || 'test-owner/test-repo';
     const workerTask = {
       taskId: request.taskId,
       action: 'start_new_task' as any,
       boardItem: request.boardItem,
-      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem) || 'test-owner/test-repo',
+      repositoryId,
       assignedAt: new Date()
     };
+
+    // Base branch 추출 (baseBranchExtractor가 있는 경우에만)
+    if (this.baseBranchExtractor) {
+      const baseBranch = await this.baseBranchExtractor.extractBaseBranch(workerTask);
+      (workerTask as any).baseBranch = baseBranch;
+    }
 
     // 작업 할당 및 즉시 실행 (Planner가 결과를 감지하도록 WorkerTaskExecutor 사용)
     await this.workerTaskExecutor.assignAndExecuteTask(availableWorker.id, workerTask, this.pullRequestService);
@@ -173,17 +182,25 @@ export class TaskRequestHandler {
       workerId = availableWorker.id;
       
       // 새 워커에 피드백 작업 할당
-      const feedbackTask = {
+      const repositoryId = request.boardItem ? 
+        (this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'test-owner/test-repo') : 
+        'test-owner/test-repo';
+        
+      const feedbackTask: any = {
         taskId: request.taskId,
         action: 'process_feedback' as any,
         boardItem: request.boardItem,
         pullRequestUrl: request.pullRequestUrl,
         comments: request.comments,
-        repositoryId: request.boardItem ? 
-          (this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'test-owner/test-repo') : 
-          'test-owner/test-repo',
+        repositoryId,
         assignedAt: new Date()
       };
+
+      // Base branch 추출 (baseBranchExtractor가 있는 경우에만)
+      if (this.baseBranchExtractor) {
+        const baseBranch = await this.baseBranchExtractor.extractBaseBranch(feedbackTask);
+        (feedbackTask as any).baseBranch = baseBranch;
+      }
       
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
     } else {
@@ -414,13 +431,20 @@ export class TaskRequestHandler {
     }
 
     // 작업 재할당 (RESUME_TASK 액션으로)
+    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem) || 'test-owner/test-repo';
     const resumeTask = {
       taskId: request.taskId,
       action: WorkerAction.RESUME_TASK,
       boardItem: request.boardItem,
-      repositoryId: request.boardItem?.metadata?.repository || 'test-owner/test-repo',
+      repositoryId,
       assignedAt: new Date()
     };
+
+    // Base branch 추출 (baseBranchExtractor가 있는 경우에만)
+    if (this.baseBranchExtractor) {
+      const baseBranch = await this.baseBranchExtractor.extractBaseBranch(resumeTask);
+      (resumeTask as any).baseBranch = baseBranch;
+    }
 
     try {
       await this.workerPoolManager.assignWorkerTask(availableWorker.id, resumeTask);
