@@ -97,10 +97,7 @@ export class TaskRequestHandler {
     }
 
     // PRD 요구사항에 맞는 전체 작업 정보 생성
-    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem);
-    if (!repositoryId) {
-      throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
-    }
+    const repositoryId = this.getRepositoryIdFromRequest(request);
     let workerTask: WorkerTask = {
       taskId: request.taskId,
       action: WorkerAction.START_NEW_TASK,
@@ -183,10 +180,7 @@ export class TaskRequestHandler {
       workerId = availableWorker.id;
       
       // 새 워커에 피드백 작업 할당
-      const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl);
-      if (!repositoryId) {
-        throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
-      }
+      const repositoryId = this.getRepositoryIdFromRequest(request);
         
       let feedbackTask: WorkerTask = {
         taskId: request.taskId,
@@ -295,10 +289,7 @@ export class TaskRequestHandler {
     }
 
     // 병합 요청을 위한 작업 정보 생성
-    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl);
-    if (!repositoryId) {
-      throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
-    }
+    const repositoryId = this.getRepositoryIdFromRequest(request);
     const mergeTask = {
       taskId: request.taskId,
       action: 'merge_request' as any,
@@ -434,10 +425,7 @@ export class TaskRequestHandler {
     }
 
     // 작업 재할당 (RESUME_TASK 액션으로)
-    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem);
-    if (!repositoryId) {
-      throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
-    }
+    const repositoryId = this.getRepositoryIdFromRequest(request);
     let resumeTask: WorkerTask = {
       taskId: request.taskId,
       action: WorkerAction.RESUME_TASK,
@@ -492,6 +480,14 @@ export class TaskRequestHandler {
   }
 
 
+
+  private getRepositoryIdFromRequest(request: TaskRequest): string {
+    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl);
+    if (!repositoryId) {
+      throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
+    }
+    return repositoryId;
+  }
 
   private async handleReleaseWorker(request: TaskRequest): Promise<TaskResponse> {
     this.logger?.info('Received worker release request', {

@@ -47,10 +47,7 @@ export class BaseBranchExtractor {
       });
     }
 
-    const selected = baseLabels[0];
-    if (!selected) {
-      return null;
-    }
+    const selected = baseLabels[0]!; // 이전에 길이 체크를 했으므로 안전함
     
     this.dependencies.logger.debug('Found base branch label', { 
       label: selected.label, 
