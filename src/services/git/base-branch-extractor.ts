@@ -20,17 +20,18 @@ export class BaseBranchExtractor {
    * @returns 추출된 브랜치명 또는 null
    */
   extractFromLabels(labels: string[]): string | null {
-    // 모든 base 라벨을 찾아서 여러 개 발견시 경고
-    const baseLabels: { label: string; branchName: string }[] = [];
-    for (const label of labels) {
-      const lowerLabel = label.toLowerCase();
-      if (lowerLabel.startsWith(this.BASE_LABEL_PREFIX)) {
-        const branchName = label.substring(this.BASE_LABEL_PREFIX.length).trim();
-        if (branchName) {
-          baseLabels.push({ label, branchName });
+    const baseLabels = labels
+      .map(label => {
+        if (label.toLowerCase().startsWith(this.BASE_LABEL_PREFIX)) {
+          const branchName = label.substring(this.BASE_LABEL_PREFIX.length).trim();
+          // branchName이 비어있지 않은 경우에만 유효한 라벨로 간주합니다.
+          if (branchName) {
+            return { label, branchName };
+          }
         }
-      }
-    }
+        return null;
+      })
+      .filter((item): item is { label: string; branchName: string } => item !== null);
 
     if (baseLabels.length === 0) {
       return null;
@@ -38,16 +39,16 @@ export class BaseBranchExtractor {
 
     if (baseLabels.length > 1) {
       this.dependencies.logger.warn('Multiple base branch labels found. Using the first one.', {
-        baseLabels,
-        selectedBranch: baseLabels[0]?.branchName
+        baseLabels: baseLabels.map(l => l.label),
+        selectedBranch: baseLabels[0]!.branchName,
       });
     }
 
-    const selected = baseLabels[0]!; // 이전에 길이 체크를 했으므로 안전함
+    const selected = baseLabels[0]!;
     
     this.dependencies.logger.debug('Found base branch label', { 
       label: selected.label, 
-      branchName: selected.branchName 
+      branchName: selected.branchName,
     });
     
     return selected.branchName;
