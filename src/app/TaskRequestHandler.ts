@@ -106,11 +106,8 @@ export class TaskRequestHandler {
       assignedAt: new Date()
     };
 
-    // Base branch 추출 (baseBranchExtractor가 있는 경우에만)
-    if (this.baseBranchExtractor) {
-      const baseBranch = await this.baseBranchExtractor.extractBaseBranch(workerTask);
-      workerTask = { ...workerTask, baseBranch };
-    }
+    // Base branch 추출
+    workerTask = await this.enrichTaskWithBaseBranch(workerTask);
 
     // 작업 할당 및 즉시 실행 (Planner가 결과를 감지하도록 WorkerTaskExecutor 사용)
     await this.workerTaskExecutor.assignAndExecuteTask(availableWorker.id, workerTask, this.pullRequestService);
@@ -197,11 +194,8 @@ export class TaskRequestHandler {
         assignedAt: new Date()
       };
 
-      // Base branch 추출 (baseBranchExtractor가 있는 경우에만)
-      if (this.baseBranchExtractor) {
-        const baseBranch = await this.baseBranchExtractor.extractBaseBranch(feedbackTask);
-        feedbackTask = { ...feedbackTask, baseBranch };
-      }
+      // Base branch 추출
+      feedbackTask = await this.enrichTaskWithBaseBranch(feedbackTask);
       
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
     } else {
@@ -441,11 +435,8 @@ export class TaskRequestHandler {
       assignedAt: new Date()
     };
 
-    // Base branch 추출 (baseBranchExtractor가 있는 경우에만)
-    if (this.baseBranchExtractor) {
-      const baseBranch = await this.baseBranchExtractor.extractBaseBranch(resumeTask);
-      resumeTask = { ...resumeTask, baseBranch };
-    }
+    // Base branch 추출
+    resumeTask = await this.enrichTaskWithBaseBranch(resumeTask);
 
     try {
       await this.workerPoolManager.assignWorkerTask(availableWorker.id, resumeTask);
@@ -554,6 +545,14 @@ export class TaskRequestHandler {
         taskId
       });
     }
+  }
+
+  private async enrichTaskWithBaseBranch(task: WorkerTask): Promise<WorkerTask> {
+    if (!this.baseBranchExtractor) {
+      return task;
+    }
+    const baseBranch = await this.baseBranchExtractor.extractBaseBranch(task);
+    return { ...task, baseBranch };
   }
 
 }
