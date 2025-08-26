@@ -97,7 +97,10 @@ export class TaskRequestHandler {
     }
 
     // PRD 요구사항에 맞는 전체 작업 정보 생성
-    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem) || 'test-owner/test-repo';
+    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem);
+    if (!repositoryId) {
+      throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
+    }
     let workerTask: WorkerTask = {
       taskId: request.taskId,
       action: WorkerAction.START_NEW_TASK,
@@ -180,9 +183,10 @@ export class TaskRequestHandler {
       workerId = availableWorker.id;
       
       // 새 워커에 피드백 작업 할당
-      const repositoryId = request.boardItem ? 
-        (this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'test-owner/test-repo') : 
-        'test-owner/test-repo';
+      const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl);
+      if (!repositoryId) {
+        throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
+      }
         
       let feedbackTask: WorkerTask = {
         taskId: request.taskId,
@@ -291,12 +295,16 @@ export class TaskRequestHandler {
     }
 
     // 병합 요청을 위한 작업 정보 생성
+    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl);
+    if (!repositoryId) {
+      throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
+    }
     const mergeTask = {
       taskId: request.taskId,
       action: 'merge_request' as any,
       pullRequestUrl: request.pullRequestUrl,
       boardItem: request.boardItem,
-      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'test-owner/test-repo',
+      repositoryId,
       assignedAt: new Date()
     };
 
@@ -426,7 +434,10 @@ export class TaskRequestHandler {
     }
 
     // 작업 재할당 (RESUME_TASK 액션으로)
-    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem) || 'test-owner/test-repo';
+    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem);
+    if (!repositoryId) {
+      throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
+    }
     let resumeTask: WorkerTask = {
       taskId: request.taskId,
       action: WorkerAction.RESUME_TASK,

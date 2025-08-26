@@ -179,7 +179,10 @@ export class AIDevTeamApp {
         logger: this.logger,
         githubService: {
           getRepositoryDefaultBranch: async (repositoryId: string) => {
-            return this.pullRequestService!.getRepositoryDefaultBranch(repositoryId);
+            if (!this.pullRequestService) {
+              throw new Error('PullRequestService is not initialized.');
+            }
+            return this.pullRequestService.getRepositoryDefaultBranch(repositoryId);
           }
         }
       });
