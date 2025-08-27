@@ -333,16 +333,14 @@ export class ReviewTaskHandler {
     const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
 
     if (response.status === ResponseStatus.ACCEPTED) {
-      // 처리된 코멘트로 기록 (Task별 관리)
-      const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
-      await this.dependencies.stateManager.addProcessedCommentsToTask(item.id, commentIds);
+      // 처리된 코멘트로 기록
+      for (const comment of newComments) {
+        this.workflowStateManager.getState().processedComments.add(comment.id);
+      }
       
       // 작업별 lastSyncTime 업데이트
       const currentTime = new Date();
-      await this.dependencies.stateManager.updateTaskLastSyncTime(item.id, currentTime);
-      
-      // 성공 시 재시도 횟수 초기화
-      await this.dependencies.stateManager.resetTaskRetryCount(item.id);
+      this.workflowStateManager.updateActiveTaskStatus(item.id, 'IN_REVIEW');
       
       this.logger.info('Feedback processed', {
         taskId: item.id,

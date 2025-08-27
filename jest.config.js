@@ -1,5 +1,6 @@
 /** @type {import('jest').Config} */
 module.exports = {
+  preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: [
@@ -8,9 +9,6 @@ module.exports = {
     '**/__tests__/**/*.ts',
     '**/?(*.)+(spec|test).ts'
   ],
-  transform: {
-    '^.+\\.tsx?$': 'ts-jest',
-  },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -38,5 +36,24 @@ module.exports = {
   verbose: true,
   clearMocks: true,
   restoreMocks: true,
-  forceExit: true
+  forceExit: true,
+  globals: {
+    'ts-jest': {
+      tsconfig: {
+        target: 'ES2022',
+        module: 'commonjs',
+        lib: ['ES2022'],
+        esModuleInterop: true,
+        skipLibCheck: true,
+        allowSyntheticDefaultImports: true,
+        resolveJsonModule: true,
+        moduleResolution: 'node',
+        baseUrl: './',
+        paths: {
+          '@/*': ['src/*']
+        },
+        types: ['node', 'jest']
+      }
+    }
+  }
 };
