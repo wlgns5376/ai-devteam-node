@@ -81,7 +81,12 @@ describe('Worker 자동 복구 시나리오', () => {
       setupWorktree: jest.fn().mockResolvedValue(undefined),
       setupClaudeLocal: jest.fn().mockResolvedValue(undefined),
       cleanupWorkspace: jest.fn().mockResolvedValue(undefined),
-      getWorkspaceInfo: jest.fn().mockResolvedValue(null)
+      getWorkspaceInfo: jest.fn().mockResolvedValue(null),
+      isWorktreeValid: jest.fn().mockResolvedValue(true)
+    };
+
+    const mockBaseBranchExtractor = {
+      extractBaseBranch: jest.fn().mockResolvedValue('main')
     };
 
     // WorkerPoolManager 설정
@@ -89,6 +94,7 @@ describe('Worker 자동 복구 시나리오', () => {
       logger: mockLogger,
       workspaceManager: mockWorkspaceManager,
       stateManager: mockStateManager,
+      baseBranchExtractor: mockBaseBranchExtractor as any,
       developerConfig: {
         claude: { 
           enabled: true,
