@@ -1,5 +1,4 @@
 import { Octokit } from '@octokit/rest';
-import { RequestError } from '@octokit/request-error';
 import { 
   PullRequest, 
   PullRequestService, 
@@ -541,11 +540,11 @@ export class GitHubPullRequestService implements PullRequestService {
       const logContext: Record<string, unknown> = { repoId };
       if (error instanceof Error) {
         logContext.error = error.message;
-        if (error instanceof RequestError) {
-          logContext.status = error.status;
-          logContext.response = error.response?.data;
-        } else if ('status' in error) {
+        if ('status' in error) {
           logContext.status = (error as any).status;
+        }
+        if ('response' in error) {
+          logContext.response = (error as any).response?.data;
         }
       } else {
         logContext.error = String(error);

@@ -3,6 +3,8 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+  silent: true,
   testMatch: [
     '**/tests/**/*.test.ts',
     '**/tests/**/*.spec.ts',
@@ -55,5 +57,8 @@ module.exports = {
         types: ['node', 'jest']
       }
     }
-  }
+  },
+  transformIgnorePatterns: [
+    'node_modules/(?!(@octokit)/)'
+  ]
 };
