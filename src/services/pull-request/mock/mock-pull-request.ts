@@ -496,4 +496,9 @@ export class MockPullRequestService implements PullRequestService {
            author === 'github-actions' ||
            author === 'dependabot';
   }
+
+  async getRepositoryDefaultBranch(repoId: string): Promise<string> {
+    // Mock implementation returns 'main' as default branch
+    return 'main';
+  }
 }

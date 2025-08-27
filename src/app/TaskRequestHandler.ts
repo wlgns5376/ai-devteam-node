@@ -8,6 +8,7 @@ import {
   TaskResponse, 
   ResponseStatus,
   WorkerAction,
+  WorkerTask,
   WorkspaceInfo 
 } from '@/types';
 import { WorkerPoolManager } from '../services/manager/worker-pool-manager';
@@ -15,6 +16,7 @@ import { PullRequestService, ProjectBoardService } from '../types';
 import { Logger } from '../services/logger';
 import { WorkerTaskExecutor } from './WorkerTaskExecutor';
 import { TaskAssignmentValidator, TaskReassignmentCheck } from '../services/worker/task-assignment-validator';
+import { BaseBranchExtractor } from '../services/git';
 
 export class TaskRequestHandler {
   private readonly workerTaskExecutor: WorkerTaskExecutor;
@@ -25,7 +27,8 @@ export class TaskRequestHandler {
     private readonly projectBoardService?: ProjectBoardService,
     private readonly pullRequestService?: PullRequestService,
     private readonly logger?: Logger,
-    private readonly extractRepositoryFromBoardItem?: (boardItem: any, pullRequestUrl?: string) => string
+    private readonly extractRepositoryFromBoardItem?: (boardItem: any, pullRequestUrl?: string) => string,
+    private readonly baseBranchExtractor?: BaseBranchExtractor
   ) {
     this.workerTaskExecutor = new WorkerTaskExecutor(this.workerPoolManager, this.logger);
     this.taskAssignmentValidator = new TaskAssignmentValidator({
@@ -94,13 +97,14 @@ export class TaskRequestHandler {
     }
 
     // PRD 요구사항에 맞는 전체 작업 정보 생성
-    const workerTask = {
+    const repositoryId = this.getRepositoryIdFromRequest(request);
+    const workerTask = await this.enrichTaskWithBaseBranch({
       taskId: request.taskId,
-      action: 'start_new_task' as any,
+      action: WorkerAction.START_NEW_TASK,
       boardItem: request.boardItem,
-      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem) || 'test-owner/test-repo',
+      repositoryId,
       assignedAt: new Date()
-    };
+    });
 
     // 작업 할당 및 즉시 실행 (Planner가 결과를 감지하도록 WorkerTaskExecutor 사용)
     await this.workerTaskExecutor.assignAndExecuteTask(availableWorker.id, workerTask, this.pullRequestService);
@@ -173,33 +177,43 @@ export class TaskRequestHandler {
       workerId = availableWorker.id;
       
       // 새 워커에 피드백 작업 할당
-      const feedbackTask = {
+      const repositoryId = this.getRepositoryIdFromRequest(request);
+        
+      const feedbackTask = await this.enrichTaskWithBaseBranch({
         taskId: request.taskId,
-        action: 'process_feedback' as any,
+        action: WorkerAction.PROCESS_FEEDBACK,
         boardItem: request.boardItem,
-        pullRequestUrl: request.pullRequestUrl,
-        comments: request.comments,
-        repositoryId: request.boardItem ? 
-          (this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'test-owner/test-repo') : 
-          'test-owner/test-repo',
+        ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
+        ...(request.comments && { comments: request.comments }),
+        repositoryId,
         assignedAt: new Date()
-      };
-      
+      });
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
     } else {
       // 기존 워커가 있으면 재사용
       workerId = worker.id;
+
+      if (!worker.currentTask) {
+        this.logger?.error('Worker found for task but has no current task', { workerId, taskId: request.taskId });
+        return {
+          taskId: request.taskId,
+          status: ResponseStatus.ERROR,
+          message: `Worker ${workerId} is in an inconsistent state (no current task).`,
+          workerStatus: 'error'
+        };
+      }
       
       // 기존 작업에 피드백 정보 추가
-      const feedbackTask = {
+      let feedbackTask: WorkerTask = {
         ...worker.currentTask,
-        action: 'process_feedback' as any,
-        pullRequestUrl: request.pullRequestUrl,
-        comments: request.comments,
+        ...(request.boardItem && { boardItem: request.boardItem }),
+        action: WorkerAction.PROCESS_FEEDBACK,
+        ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
+        ...(request.comments && { comments: request.comments }),
         assignedAt: new Date()
       };
 
-      // Worker에 피드백 작업 재할당
+      feedbackTask = await this.enrichTaskWithBaseBranch(feedbackTask);
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
     }
 
@@ -279,12 +293,13 @@ export class TaskRequestHandler {
     }
 
     // 병합 요청을 위한 작업 정보 생성
-    const mergeTask = {
+    const repositoryId = this.getRepositoryIdFromRequest(request);
+    const mergeTask: WorkerTask = {
       taskId: request.taskId,
-      action: 'merge_request' as any,
-      pullRequestUrl: request.pullRequestUrl,
-      boardItem: request.boardItem,
-      repositoryId: this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl) || 'test-owner/test-repo',
+      action: WorkerAction.MERGE_REQUEST,
+      ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
+      ...(request.boardItem && { boardItem: request.boardItem }),
+      repositoryId,
       assignedAt: new Date()
     };
 
@@ -414,13 +429,17 @@ export class TaskRequestHandler {
     }
 
     // 작업 재할당 (RESUME_TASK 액션으로)
-    const resumeTask = {
+    const repositoryId = this.getRepositoryIdFromRequest(request);
+    let resumeTask: WorkerTask = {
       taskId: request.taskId,
       action: WorkerAction.RESUME_TASK,
       boardItem: request.boardItem,
-      repositoryId: request.boardItem?.metadata?.repository || 'test-owner/test-repo',
+      repositoryId,
       assignedAt: new Date()
     };
+
+    // Base branch 추출
+    resumeTask = await this.enrichTaskWithBaseBranch(resumeTask);
 
     try {
       await this.workerPoolManager.assignWorkerTask(availableWorker.id, resumeTask);
@@ -465,6 +484,14 @@ export class TaskRequestHandler {
   }
 
 
+
+  private getRepositoryIdFromRequest(request: TaskRequest): string {
+    const repositoryId = this.extractRepositoryFromBoardItem?.(request.boardItem, request.pullRequestUrl);
+    if (!repositoryId) {
+      throw new Error(`Could not extract repositoryId for taskId: ${request.taskId}`);
+    }
+    return repositoryId;
+  }
 
   private async handleReleaseWorker(request: TaskRequest): Promise<TaskResponse> {
     this.logger?.info('Received worker release request', {
@@ -529,6 +556,14 @@ export class TaskRequestHandler {
         taskId
       });
     }
+  }
+
+  private async enrichTaskWithBaseBranch(task: WorkerTask): Promise<WorkerTask> {
+    if (task.baseBranch || !this.baseBranchExtractor) {
+      return task;
+    }
+    const baseBranch = await this.baseBranchExtractor.extractBaseBranch(task);
+    return { ...task, baseBranch };
   }
 
 }

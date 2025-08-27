@@ -14,6 +14,7 @@ import { DeveloperFactory } from '../developer/developer-factory';
 import { Logger } from '../logger';
 import { StateManager } from '../state-manager';
 import { TaskAssignmentValidator } from '../worker/task-assignment-validator';
+import { BaseBranchExtractor } from '../git';
 
 interface WorkerPoolManagerDependencies {
   readonly logger: Logger;
@@ -21,6 +22,7 @@ interface WorkerPoolManagerDependencies {
   readonly workspaceManager?: WorkspaceManagerInterface;
   readonly developerConfig: DeveloperConfig;
   readonly developerFactory?: typeof DeveloperFactory;
+  readonly baseBranchExtractor: BaseBranchExtractor;
 }
 
 export class WorkerPoolManager implements WorkerPoolManagerInterface {
@@ -644,7 +646,8 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
       logger: this.dependencies.logger,
       workspaceSetup: new WorkspaceSetup({
         logger: this.dependencies.logger,
-        workspaceManager: this.dependencies.workspaceManager || null
+        workspaceManager: this.dependencies.workspaceManager || null,
+        baseBranchExtractor: this.dependencies.baseBranchExtractor
       }),
       promptGenerator: new PromptGenerator({
         logger: this.dependencies.logger

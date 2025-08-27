@@ -194,7 +194,7 @@ export class GitService implements GitServiceInterface {
     });
   }
 
-  async createWorktree(repoPath: string, branchName: string, worktreePath: string): Promise<void> {
+  async createWorktree(repoPath: string, branchName: string, worktreePath: string, baseBranch?: string): Promise<void> {
     // 경로에서 repository ID 추출
     const repoId = path.basename(repoPath);
     
@@ -203,7 +203,8 @@ export class GitService implements GitServiceInterface {
         this.dependencies.logger.info('Creating git worktree', { 
           repoPath, 
           branchName, 
-          worktreePath 
+          worktreePath,
+          baseBranch 
         });
 
         // 유효한 저장소인지 확인
@@ -260,6 +261,8 @@ export class GitService implements GitServiceInterface {
         const branchInUse = branchExists ? await this.isBranchInWorktree(repoPath, branchName) : false;
         
         let command: string;
+        const startPoint = baseBranch || (await this.getMainBranchName(repoPath));
+        
         try {
           if (branchExists && !branchInUse) {
             // 기존 브랜치를 사용하여 worktree 생성
@@ -269,12 +272,17 @@ export class GitService implements GitServiceInterface {
             const newBranchName = await this.generateUniqueBranchName(repoPath, branchName);
             this.dependencies.logger.warn('Branch is in use, creating new branch', {
               originalBranch: branchName,
-              newBranch: newBranchName
+              newBranch: newBranchName,
+              baseBranch: startPoint
             });
-            command = `git worktree add -b "${newBranchName}" "${worktreePath}"`;
+            command = `git worktree add -b "${newBranchName}" "${worktreePath}" "${startPoint}"`;
           } else {
             // 새 브랜치를 생성하며 worktree 추가
-            command = `git worktree add -b "${branchName}" "${worktreePath}"`;
+            command = `git worktree add -b "${branchName}" "${worktreePath}" "${startPoint}"`;
+            this.dependencies.logger.debug('Creating new branch from base', {
+              branchName,
+              baseBranch: startPoint
+            });
           }
 
           const { stderr } = await execAsync(
@@ -296,7 +304,7 @@ export class GitService implements GitServiceInterface {
               error: worktreeError.message
             });
             
-            await this.cleanupBranchAndRetry(repoPath, branchName, worktreePath);
+            await this.cleanupBranchAndRetry(repoPath, branchName, worktreePath, startPoint);
           } else {
             throw worktreeError;
           }
@@ -478,7 +486,7 @@ export class GitService implements GitServiceInterface {
   /**
    * 브랜치 충돌 정리 후 재시도합니다.
    */
-  private async cleanupBranchAndRetry(repoPath: string, branchName: string, worktreePath: string): Promise<void> {
+  private async cleanupBranchAndRetry(repoPath: string, branchName: string, worktreePath: string, baseBranch: string): Promise<void> {
     try {
       // 브랜치가 worktree에서 사용 중인지 확인하고 정리
       const branchInUse = await this.isBranchInWorktree(repoPath, branchName);
@@ -502,7 +510,7 @@ export class GitService implements GitServiceInterface {
 
       // 새 브랜치로 worktree 생성
       const { stdout } = await execAsync(
-        `git worktree add -b "${branchName}" "${worktreePath}"`,
+        `git worktree add -b "${branchName}" "${worktreePath}" "${baseBranch}"`,
         {
           cwd: repoPath,
           timeout: this.dependencies.gitOperationTimeoutMs

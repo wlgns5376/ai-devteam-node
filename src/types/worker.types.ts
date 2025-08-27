@@ -59,6 +59,7 @@ export interface WorkerTask {
   readonly repositoryId: string;
   readonly pullRequestUrl?: string; // For merge request actions
   readonly lastSyncTime?: Date; // 이 작업에 대한 마지막 동기화 시간 (PR 코멘트 확인 시점)
+  readonly baseBranch?: string; // 작업의 base branch (예: main, develop, feature/*)
 }
 
 export interface WorkerProgress {

@@ -277,7 +277,7 @@ describe('WorkspaceManager', () => {
     it('플래그가 true이지만 유효하지 않은 워크트리는 재생성해야 한다', async () => {
       // Given: 플래그는 true이지만 실제로는 유효하지 않은 워크트리
       const workspaceInfoWithFlag = { ...workspaceInfo, worktreeCreated: true };
-      jest.spyOn(fs, 'stat').mockRejectedValue(new Error('Directory not found'));
+      jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not found'));
       
       mockRepositoryManager.ensureRepository.mockResolvedValue('/repo/path');
 
@@ -288,7 +288,8 @@ describe('WorkspaceManager', () => {
       expect(mockGitService.createWorktree).toHaveBeenCalledWith(
         '/repo/path',
         workspaceInfoWithFlag.branchName,
-        workspaceInfoWithFlag.workspaceDir
+        workspaceInfoWithFlag.workspaceDir,
+        undefined
       );
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'Worktree flag is set but worktree is invalid, recreating',
@@ -361,7 +362,8 @@ describe('WorkspaceManager', () => {
       expect(mockGitService.createWorktree).toHaveBeenCalledWith(
         repositoryPath,
         workspaceInfo.branchName,
-        workspaceInfo.workspaceDir
+        workspaceInfo.workspaceDir,
+        undefined
       );
       expect(mockRepositoryManager.addWorktree).toHaveBeenCalledWith(
         workspaceInfo.repositoryId,
@@ -446,7 +448,8 @@ describe('WorkspaceManager', () => {
       expect(mockGitService.createWorktree).toHaveBeenCalledWith(
         repositoryPath,
         existingWorkspaceInfo.branchName,
-        existingWorkspaceInfo.workspaceDir
+        existingWorkspaceInfo.workspaceDir,
+        undefined
       );
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'Worktree flag is set but worktree is invalid, recreating',

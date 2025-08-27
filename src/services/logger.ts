@@ -25,11 +25,14 @@ export class Logger {
   private pendingWrites: Promise<void>[] = [];
 
   constructor(config: LoggerConfig) {
+    // 테스트 환경에서는 콘솔 출력을 기본적으로 비활성화
+    const isTestEnvironment = process.env.NODE_ENV === 'test';
+    
     this.config = {
       level: config.level,
       filePath: config.filePath || '',
       logDirectory: config.logDirectory || process.env.LOG_DIRECTORY || '',
-      enableConsole: config.enableConsole ?? true
+      enableConsole: config.enableConsole ?? !isTestEnvironment
     };
   }
 
