@@ -215,12 +215,12 @@ export class ClaudeDeveloper implements DeveloperInterface {
         this.killProcessGroup(child.pid, 'SIGTERM');
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
-        const gracefulExit = new Promise<void>(resolve => child.once('exit', resolve));
-        const timeout = new Promise<void>(resolve => setTimeout(resolve, 1000));
+        const gracefulExit = new Promise<boolean>(resolve => child.once('exit', () => resolve(true)));
+        const timeout = new Promise<boolean>(resolve => setTimeout(() => resolve(false), 1000));
 
-        await Promise.race([gracefulExit, timeout]);
+        const exitedGracefully = await Promise.race([gracefulExit, timeout]);
         
-        if (!child.killed) {
+        if (!exitedGracefully) {
           // SIGKILL로 강제 종료
           this.killProcessGroup(child.pid, 'SIGKILL');
         }
@@ -623,7 +623,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
           
           // 5초 후에도 종료되지 않으면 SIGKILL
           setTimeout(() => {
-            if (!child.killed) {
+            if (child.exitCode === null) {
               // 프로세스 그룹에 SIGKILL 전송
               this.killProcessGroup(child.pid, 'SIGKILL');
             }
