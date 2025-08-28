@@ -1,3 +1,15 @@
+// Mock execAsync for promisified exec - declare globally
+const mockExecAsync = jest.fn();
+
+// util mock for promisify - must be before other imports
+jest.mock('util', () => ({
+  ...jest.requireActual('util'),
+  promisify: jest.fn(() => mockExecAsync)
+}));
+
+// child_process mock
+jest.mock('child_process');
+
 import { ClaudeDeveloper } from '@/services/developer/claude-developer';
 import { Logger } from '@/services/logger';
 import { 
@@ -8,8 +20,6 @@ import {
 } from '@/types/developer.types';
 import { exec, spawn } from 'child_process';
 
-// child_process mock
-jest.mock('child_process');
 const mockedExec = jest.mocked(exec);
 const mockedSpawn = jest.mocked(spawn);
 
@@ -112,16 +122,13 @@ describe('ClaudeDeveloper', () => {
         );
         
         // 초기화
-        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-          process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-          return {} as any;
-        });
+        mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await shortTimeoutDeveloper.initialize();
         
         // Then: 타임아웃 에러 발생 및 프로세스 그룹 종료
         await expect(
           shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp')
-        ).rejects.toThrow(DeveloperError);
+        ).rejects.toThrow(DeveloperError)
 
         // 프로세스 그룹에만 SIGTERM을 보냄 (개별 kill은 하지 않음)
         
@@ -141,10 +148,7 @@ describe('ClaudeDeveloper', () => {
         const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => true);
 
         // 초기화
-        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-          process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-          return {} as any;
-        });
+        mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await claudeDeveloper.initialize();
 
         // When: 정상 실행
@@ -185,10 +189,7 @@ describe('ClaudeDeveloper', () => {
         );
         
         // 초기화
-        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-          process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-          return {} as any;
-        });
+        mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await shortTimeoutDeveloper.initialize();
         
         const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp');
@@ -232,7 +233,6 @@ describe('ClaudeDeveloper', () => {
           mockProcess.once = jest.fn((event, callback) => {
             if (event === 'exit') {
               setTimeout(() => {
-                mockProcess.killed = true;
                 callback();
               }, 50);
             }
@@ -256,10 +256,7 @@ describe('ClaudeDeveloper', () => {
         );
         
         // 초기화
-        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-          process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-          return {} as any;
-        });
+        mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await longTimeoutDeveloper.initialize();
 
         const promises = [
@@ -329,10 +326,7 @@ describe('ClaudeDeveloper', () => {
   describe('초기화', () => {
     it('성공적으로 초기화되어야 한다', async () => {
       // Given: Claude CLI 설치 확인 성공
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-        return {} as any;
-      });
+      mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
 
       // When: 초기화
       await claudeDeveloper.initialize();
@@ -350,16 +344,10 @@ describe('ClaudeDeveloper', () => {
 
     it('Claude CLI가 설치되지 않았으면 실패해야 한다', async () => {
       // Given: Claude CLI 명령어 실패
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(new Error('command not found: claude'), null));
-        return {} as any;
-      });
+      mockExecAsync.mockRejectedValueOnce(new Error('command not found: claude'));
       
       // 두 번째 시도도 실패
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(new Error('command not found: claude'), null));
-        return {} as any;
-      });
+      mockExecAsync.mockRejectedValueOnce(new Error('command not found: claude'));
 
       // When & Then: 초기화 실패
       await expect(claudeDeveloper.initialize()).rejects.toThrow(
@@ -381,10 +369,7 @@ describe('ClaudeDeveloper', () => {
       };
       
       // Mock으로 CLI 확인 성공 (claude --help)
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: 'claude help output', stderr: '' }));
-        return {} as any;
-      });
+      mockExecAsync.mockResolvedValueOnce({ stdout: 'claude help output', stderr: '' });
       
       const claudeDeveloper = new ClaudeDeveloper(configWithoutApiKey, { logger: mockLogger });
       
@@ -401,10 +386,7 @@ describe('ClaudeDeveloper', () => {
   describe('프롬프트 실행', () => {
     beforeEach(async () => {
       // Claude CLI 설치 확인 Mock
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-        return {} as any;
-      });
+      mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       
       await claudeDeveloper.initialize();
       jest.clearAllMocks();
@@ -599,10 +581,7 @@ $ git commit -m "Refactor code structure"
   describe('타임아웃 설정', () => {
     it('타임아웃을 설정할 수 있어야 한다', async () => {
       // Given: 초기화
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-        return {} as any;
-      });
+      mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();
 
       // When: 타임아웃 설정
@@ -619,10 +598,7 @@ $ git commit -m "Refactor code structure"
   describe('정리', () => {
     it('리소스를 정리해야 한다', async () => {
       // Given: 초기화된 상태
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-        return {} as any;
-      });
+      mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();
 
       // When: 정리
@@ -638,10 +614,7 @@ $ git commit -m "Refactor code structure"
   describe('명령어 구성', () => {
     it('올바른 Claude CLI 명령어가 구성되어야 한다', async () => {
       // Given: 초기화
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-        return {} as any;
-      });
+      mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();
 
       const mockChildProcess = createMockSpawn('작업 완료');
@@ -664,10 +637,7 @@ $ git commit -m "Refactor code structure"
 
     it('프롬프트가 임시 파일을 통해 전달되어야 한다', async () => {
       // Given: 초기화
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-        return {} as any;
-      });
+      mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();
 
       const mockWrite = jest.spyOn(require('fs/promises'), 'writeFile').mockResolvedValue(undefined);

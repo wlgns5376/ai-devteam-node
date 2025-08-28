@@ -546,14 +546,17 @@ export class ClaudeDeveloper implements DeveloperInterface {
     
     if (process.platform === 'win32') {
       // Windows에서는 taskkill 사용
+      // SIGTERM은 정상 종료 시도(/f 없음), SIGKILL은 강제 종료(/f 포함)
+      const forceFlag = signal === 'SIGKILL' ? ' /f' : '';
       try {
-        execSync(`taskkill /pid ${pid} /t /f`, { stdio: 'ignore' });
-        this.dependencies.logger.debug(`Terminated process tree on Windows`, { pid });
+        execSync(`taskkill /pid ${pid} /t${forceFlag}`, { stdio: 'ignore' });
+        this.dependencies.logger.debug(`Terminated process tree on Windows with signal ${signal}`, { pid });
       } catch (error: any) {
         // 프로세스가 이미 종료된 경우(exit code 128)는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
         if (error.status !== 128) {
           this.dependencies.logger.warn('Failed to kill process tree on Windows', {
             pid,
+            signal,
             error
           });
         }
