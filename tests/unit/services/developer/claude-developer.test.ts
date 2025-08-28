@@ -83,6 +83,17 @@ describe('ClaudeDeveloper', () => {
   });
 
   describe('프로세스 관리', () => {
+    beforeEach(async () => {
+      // Claude CLI 설치 확인 Mock
+      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
+        process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
+        return {} as any;
+      });
+      
+      await claudeDeveloper.initialize();
+      jest.clearAllMocks();
+    });
+
     describe('프로세스 그룹 종료', () => {
       it('타임아웃 시 프로세스 그룹 전체를 종료해야 한다', async () => {
         // Given: 타임아웃이 발생하는 긴 실행 명령
@@ -109,9 +120,16 @@ describe('ClaudeDeveloper', () => {
           { logger: mockLogger }
         );
         
+        // 초기화
+        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
+          process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
+          return {} as any;
+        });
+        await shortTimeoutDeveloper.initialize();
+        
         // Then: 타임아웃 에러 발생 및 프로세스 그룹 종료
         await expect(
-          shortTimeoutDeveloper.execute('sleep 10', '/tmp')
+          shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp')
         ).rejects.toThrow('Claude execution timeout after 50ms');
 
         // 프로세스 자체 종료
@@ -135,10 +153,10 @@ describe('ClaudeDeveloper', () => {
         process.kill = processKillMock as any;
 
         // When: 정상 실행
-        const result = await claudeDeveloper.execute('echo "test"', '/tmp');
+        const result = await claudeDeveloper.executePrompt('echo "test"', '/tmp');
 
         // Then: 정상 결과 반환 및 프로세스 그룹 종료 미호출
-        expect(result.output).toBe('output');
+        expect(result.rawOutput).toBe('output');
         expect(processKillMock).not.toHaveBeenCalled();
 
         // Cleanup
@@ -172,7 +190,14 @@ describe('ClaudeDeveloper', () => {
           { logger: mockLogger }
         );
         
-        const executePromise = shortTimeoutDeveloper.execute('sleep 10', '/tmp');
+        // 초기화
+        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
+          process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
+          return {} as any;
+        });
+        await shortTimeoutDeveloper.initialize();
+        
+        const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp');
 
         // 타임아웃 발생
         jest.advanceTimersByTime(51);
@@ -203,7 +228,7 @@ describe('ClaudeDeveloper', () => {
     describe('Graceful Shutdown', () => {
       it('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
         // Given: 여러 프로세스가 실행 중
-        const mockProcesses = [];
+        const mockProcesses: any[] = [];
         for (let i = 0; i < 3; i++) {
           const mockProcess = createMockSpawn('', '', 0);
           mockProcess.pid = 1000 + i;
@@ -234,11 +259,18 @@ describe('ClaudeDeveloper', () => {
           { ...config, timeoutMs: 10000 },
           { logger: mockLogger }
         );
+        
+        // 초기화
+        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
+          process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
+          return {} as any;
+        });
+        await longTimeoutDeveloper.initialize();
 
         const promises = [
-          longTimeoutDeveloper.execute('sleep 10', '/tmp').catch(() => {}),
-          longTimeoutDeveloper.execute('sleep 10', '/tmp').catch(() => {}),
-          longTimeoutDeveloper.execute('sleep 10', '/tmp').catch(() => {})
+          longTimeoutDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {}),
+          longTimeoutDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {}),
+          longTimeoutDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {})
         ];
 
         // 프로세스가 시작될 때까지 대기
@@ -280,7 +312,7 @@ describe('ClaudeDeveloper', () => {
         }) as any;
 
         // When: 프로세스 시작 후 cleanup
-        const executePromise = claudeDeveloper.execute('sleep 10', '/tmp').catch(() => {});
+        const executePromise = claudeDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {});
         await new Promise(resolve => setTimeout(resolve, 10));
         
         // cleanup이 에러를 throw하지 않고 완료되어야 함

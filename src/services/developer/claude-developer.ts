@@ -9,7 +9,7 @@ import {
 } from '@/types/developer.types';
 import { ResponseParser } from './response-parser';
 import { ContextFileManager, ContextFileConfig } from './context-file-manager';
-import { exec, spawn } from 'child_process';
+import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -23,7 +23,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
   private timeoutMs: number;
   private responseParser: ResponseParser;
   private contextFileManager: ContextFileManager | null = null;
-  private activeProcesses: Set<any> = new Set();
+  private activeProcesses: Set<ChildProcess> = new Set();
 
   constructor(
     private readonly config: DeveloperConfig,
@@ -189,6 +189,9 @@ export class ClaudeDeveloper implements DeveloperInterface {
   }
 
   async cleanup(): Promise<void> {
+    // 활성 프로세스 정리
+    await this.cleanupActiveProcesses();
+    
     // 컨텍스트 파일 정리 (contextFileManager가 초기화된 경우에만)
     if (this.contextFileManager) {
       await this.contextFileManager.cleanupContextFiles();
@@ -635,7 +638,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
   /**
    * 모든 활성 프로세스를 정리합니다 (Graceful shutdown용)
    */
-  async cleanup(): Promise<void> {
+  private async cleanupActiveProcesses(): Promise<void> {
     this.dependencies.logger.debug('Cleaning up active Claude processes', {
       activeProcessCount: this.activeProcesses.size
     });
