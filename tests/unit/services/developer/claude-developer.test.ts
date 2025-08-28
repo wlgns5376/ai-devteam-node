@@ -38,7 +38,18 @@ const mockedSpawn = jest.mocked(spawn);
 
 // Mock spawn helper
 const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number = 0, signal?: string) => {
-  const mockChildProcess = {
+  interface Callbacks {
+    close: Function[];
+    exit: Function[];
+    error: Function[];
+  }
+  const callbacks: Callbacks = {
+    close: [],
+    exit: [],
+    error: []
+  };
+  
+  const mockChildProcess: any = {
     stdout: {
       on: jest.fn((event, callback) => {
         if (event === 'data' && stdout) {
@@ -58,18 +69,36 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
     },
     on: jest.fn((event, callback) => {
       if (event === 'close') {
-        process.nextTick(() => callback(exitCode, signal));
+        callbacks.close.push(callback);
+        // 정상 종료 시 즉시 close 이벤트 발생
+        if (exitCode === 0) {
+          process.nextTick(() => callback(exitCode, signal));
+        }
+      } else if (event === 'exit') {
+        callbacks.exit.push(callback);
+        // exit 이벤트도 등록
+        if (exitCode === 0) {
+          process.nextTick(() => callback());
+        }
+      } else if (event === 'error') {
+        callbacks.error.push(callback);
       }
+      return mockChildProcess;
     }),
     once: jest.fn((event, callback) => {
       if (event === 'exit') {
-        // 기본적으로 exit 이벤트를 발생시키지 않음
+        callbacks.exit.push(callback);
+        // 정상 종료 시 exit 이벤트 발생
+        if (exitCode === 0) {
+          process.nextTick(() => callback());
+        }
       }
+      return mockChildProcess;
     }),
     removeListener: jest.fn(),
     kill: jest.fn(),
     killed: false,
-    exitCode: null,
+    exitCode: exitCode === 0 ? 0 : null,
     pid: 12345
   };
   
@@ -255,6 +284,8 @@ describe('ClaudeDeveloper', () => {
 
     describe('Graceful Shutdown', () => {
       it('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
+        jest.useFakeTimers();
+        
         // Given: 여러 프로세스가 실행 중
         const mockProcesses: any[] = [];
         for (let i = 0; i < 3; i++) {
@@ -303,10 +334,14 @@ describe('ClaudeDeveloper', () => {
         ];
 
         // 프로세스가 시작될 때까지 대기
-        await new Promise(resolve => setTimeout(resolve, 10));
+        jest.advanceTimersByTime(10);
 
         // When: cleanup 호출
-        await longTimeoutDeveloper.cleanup();
+        const cleanupPromise = longTimeoutDeveloper.cleanup();
+        
+        // exit 이벤트 발생 시뮬레이션
+        jest.advanceTimersByTime(50);
+        await cleanupPromise;
 
         // Then: 모든 프로세스가 종료되어야 함
         mockProcesses.forEach((mockProcess, index) => {
@@ -315,17 +350,23 @@ describe('ClaudeDeveloper', () => {
         });
 
         // Cleanup
+        jest.useRealTimers();
         processKillSpy.mockRestore();
       }, 10000);
 
       it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
+        jest.useFakeTimers();
+        
         // Given: 종료할 수 없는 프로세스
-        const stubProcess = {
+        const stubProcess: any = {
           stdout: { on: jest.fn() },
           stderr: { on: jest.fn() },
           stdin: { end: jest.fn() },
           on: jest.fn(),
-          once: jest.fn(),
+          once: jest.fn((event, callback) => {
+            // exit 이벤트는 발생하지 않음 (타임아웃 테스트)
+            return stubProcess;
+          }),
           removeListener: jest.fn(),
           killed: false,
           exitCode: null,
@@ -341,10 +382,16 @@ describe('ClaudeDeveloper', () => {
 
         // When: 프로세스 시작 후 cleanup
         const executePromise = claudeDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {});
-        await new Promise(resolve => setTimeout(resolve, 10));
+        jest.advanceTimersByTime(10);
+        
+        // cleanup 호출
+        const cleanupPromise = claudeDeveloper.cleanup();
+        
+        // 타임아웃 발생 시뮬레이션
+        jest.advanceTimersByTime(1000);
         
         // cleanup이 에러를 throw하지 않고 완료되어야 함
-        await expect(claudeDeveloper.cleanup()).resolves.not.toThrow();
+        await expect(cleanupPromise).resolves.not.toThrow();
 
         // Then: 경고 로그가 기록되어야 함
         expect(mockLogger.warn).toHaveBeenCalledWith(
@@ -355,6 +402,7 @@ describe('ClaudeDeveloper', () => {
         );
 
         // Cleanup
+        jest.useRealTimers();
         processKillSpy.mockRestore();
       }, 10000);
     });
