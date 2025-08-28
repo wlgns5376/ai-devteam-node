@@ -515,7 +515,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
       });
     } catch (error) {
       // 프로세스가 이미 종료된 경우 무시
-      if ((error as any).code !== 'ESRCH') {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
         this.dependencies.logger.warn('Failed to kill process group', {
           pid,
           signal,
@@ -653,7 +653,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         this.killProcessGroup(child.pid, 'SIGTERM');
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
-        const gracefulExit = new Promise<void>(resolve => child.on('exit', resolve));
+        const gracefulExit = new Promise<void>(resolve => child.once('exit', resolve));
         const timeout = new Promise<void>(resolve => setTimeout(resolve, 1000));
 
         await Promise.race([gracefulExit, timeout]);
