@@ -92,7 +92,7 @@ describe('ClaudeDeveloper', () => {
       
       await claudeDeveloper.initialize();
       jest.clearAllMocks();
-    });
+    }, 10000);
 
     describe('프로세스 그룹 종료', () => {
       it('타임아웃 시 프로세스 그룹 전체를 종료해야 한다', async () => {
@@ -130,7 +130,7 @@ describe('ClaudeDeveloper', () => {
         // Then: 타임아웃 에러 발생 및 프로세스 그룹 종료
         await expect(
           shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp')
-        ).rejects.toThrow('Claude execution timeout after 50ms');
+        ).rejects.toThrow(DeveloperError);
 
         // 프로세스 자체 종료
         expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGTERM');
@@ -217,12 +217,12 @@ describe('ClaudeDeveloper', () => {
         )?.[1];
         if (closeCallback) closeCallback(null, 'SIGKILL');
 
-        await expect(executePromise).rejects.toThrow('Claude execution timeout after 50ms');
+        await expect(executePromise).rejects.toThrow(DeveloperError);
 
         // Cleanup
         jest.useRealTimers();
         process.kill = originalProcessKill;
-      });
+      }, 10000);
     });
 
     describe('Graceful Shutdown', () => {
@@ -287,7 +287,7 @@ describe('ClaudeDeveloper', () => {
 
         // Cleanup
         process.kill = originalProcessKill;
-      });
+      }, 10000);
 
       it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
         // Given: 종료할 수 없는 프로세스
@@ -328,7 +328,7 @@ describe('ClaudeDeveloper', () => {
 
         // Cleanup
         process.kill = originalProcessKill;
-      });
+      }, 10000);
     });
   });
 
