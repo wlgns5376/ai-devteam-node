@@ -24,6 +24,8 @@ export class ClaudeDeveloper implements DeveloperInterface {
   private responseParser: ResponseParser;
   private contextFileManager: ContextFileManager | null = null;
   private activeProcesses: Set<ChildProcess> = new Set();
+  private readonly GRACEFUL_CLEANUP_TIMEOUT_MS = 1000;
+  private readonly FORCE_KILL_TIMEOUT_MS = 5000;
 
   constructor(
     private readonly config: DeveloperConfig,
@@ -216,7 +218,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
         const gracefulExit = new Promise<boolean>(resolve => child.once('exit', () => resolve(true)));
-        const timeout = new Promise<boolean>(resolve => setTimeout(() => resolve(false), 1000));
+        const timeout = new Promise<boolean>(resolve => setTimeout(() => resolve(false), this.GRACEFUL_CLEANUP_TIMEOUT_MS));
 
         const exitedGracefully = await Promise.race([gracefulExit, timeout]);
         
@@ -547,12 +549,14 @@ export class ClaudeDeveloper implements DeveloperInterface {
       try {
         execSync(`taskkill /pid ${pid} /t /f`, { stdio: 'ignore' });
         this.dependencies.logger.debug(`Terminated process tree on Windows`, { pid });
-      } catch (error) {
-        // 프로세스가 이미 종료된 경우 무시
-        this.dependencies.logger.warn('Failed to kill process tree on Windows', {
-          pid,
-          error
-        });
+      } catch (error: any) {
+        // 프로세스가 이미 종료된 경우(exit code 128)는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
+        if (error.status !== 128) {
+          this.dependencies.logger.warn('Failed to kill process tree on Windows', {
+            pid,
+            error
+          });
+        }
       }
     } else {
       // Unix-like 시스템에서는 프로세스 그룹 사용
@@ -627,7 +631,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
               // 프로세스 그룹에 SIGKILL 전송
               this.killProcessGroup(child.pid, 'SIGKILL');
             }
-          }, 5000);
+          }, this.FORCE_KILL_TIMEOUT_MS);
           
           reject(new Error(`Claude execution timeout after ${this.timeoutMs}ms`));
         }

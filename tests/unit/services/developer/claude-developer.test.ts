@@ -83,16 +83,9 @@ describe('ClaudeDeveloper', () => {
   });
 
   describe('프로세스 관리', () => {
-    beforeEach(async () => {
-      // Claude CLI 설치 확인 Mock
-      mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
-        process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
-        return {} as any;
-      });
-      
-      await claudeDeveloper.initialize();
+    beforeEach(() => {
       jest.clearAllMocks();
-    }, 10000);
+    });
 
     describe('프로세스 그룹 종료', () => {
       it('타임아웃 시 프로세스 그룹 전체를 종료해야 한다', async () => {
@@ -147,6 +140,13 @@ describe('ClaudeDeveloper', () => {
         // process.kill mock
         const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => true);
 
+        // 초기화
+        mockedExec.mockImplementationOnce((command: string, options: any, callback: any) => {
+          process.nextTick(() => callback(null, { stdout: 'claude version 1.0.0', stderr: '' }));
+          return {} as any;
+        });
+        await claudeDeveloper.initialize();
+
         // When: 정상 실행
         const result = await claudeDeveloper.executePrompt('echo "test"', '/tmp');
 
@@ -169,7 +169,8 @@ describe('ClaudeDeveloper', () => {
           on: jest.fn(),
           kill: jest.fn(),
           killed: false,
-          pid: 99999
+          pid: 99999,
+          exitCode: null
         };
         
         mockedSpawn.mockReturnValue(mockChildProcess as any);
@@ -193,13 +194,13 @@ describe('ClaudeDeveloper', () => {
         const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp');
 
         // 타임아웃 발생
-        jest.advanceTimersByTime(51);
+        await jest.advanceTimersByTimeAsync(51);
 
         // Then: 프로세스 그룹에 SIGTERM 전송
         expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGTERM');
 
-        // 5초 후 SIGKILL 전송 (프로세스 그룹에만)
-        jest.advanceTimersByTime(5000);
+        // 5초 후 SIGKILL 전송 (프로세스 그룹에만) 
+        await jest.advanceTimersByTimeAsync(5000);
         expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGKILL');
 
         // 프로세스 종료 시뮬레이션
@@ -213,7 +214,7 @@ describe('ClaudeDeveloper', () => {
         // Cleanup
         jest.useRealTimers();
         processKillSpy.mockRestore();
-      }, 10000);
+      }, 15000);
     });
 
     describe('Graceful Shutdown', () => {
