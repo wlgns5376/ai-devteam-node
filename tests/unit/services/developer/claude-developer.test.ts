@@ -226,12 +226,7 @@ describe('ClaudeDeveloper', () => {
           mockProcess.pid = 1000 + i;
           mockProcess.killed = false;
           mockProcess.on = jest.fn((event, callback) => {
-            if (event === 'exit') {
-              setTimeout(() => {
-                mockProcess.killed = true;
-                callback();
-              }, 50);
-            }
+            // 'close' 이벤트 등 다른 이벤트 처리
             return mockProcess;
           });
           mockProcess.once = jest.fn((event, callback) => {
