@@ -23,6 +23,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
   private timeoutMs: number;
   private responseParser: ResponseParser;
   private contextFileManager: ContextFileManager | null = null;
+  private activeProcesses: Set<any> = new Set();
 
   constructor(
     private readonly config: DeveloperConfig,
@@ -512,10 +513,19 @@ export class ClaudeDeveloper implements DeveloperInterface {
       });
 
       // spawn으로 bash 실행
+      // detached: true로 프로세스 그룹 생성 (Linux/macOS)
       const child = spawn('bash', ['-c', bashCommand], {
         cwd: workspaceDir,
         env,
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32', // Windows가 아닌 경우 프로세스 그룹 생성
+        killSignal: 'SIGTERM'
+      });
+
+      // 프로세스 추적
+      this.activeProcesses.add(child);
+      child.on('exit', () => {
+        this.activeProcesses.delete(child);
       });
 
       let stdout = '';
@@ -534,10 +544,39 @@ export class ClaudeDeveloper implements DeveloperInterface {
           // SIGTERM으로 먼저 종료 시도
           child.kill('SIGTERM');
           
+          // 프로세스 그룹 전체 종료 (bash -c로 실행된 하위 프로세스 포함)
+          if (child.pid) {
+            try {
+              process.kill(-child.pid, 'SIGTERM');
+              this.dependencies.logger.debug('Sent SIGTERM to process group', {
+                pid: child.pid,
+                groupPid: -child.pid
+              });
+            } catch (error) {
+              this.dependencies.logger.warn('Failed to kill process group', {
+                pid: child.pid,
+                error
+              });
+            }
+          }
+          
           // 5초 후에도 종료되지 않으면 SIGKILL
           setTimeout(() => {
             if (!child.killed) {
               child.kill('SIGKILL');
+              
+              // 프로세스 그룹에도 SIGKILL 전송
+              if (child.pid) {
+                try {
+                  process.kill(-child.pid, 'SIGKILL');
+                  this.dependencies.logger.debug('Sent SIGKILL to process group', {
+                    pid: child.pid,
+                    groupPid: -child.pid
+                  });
+                } catch (error) {
+                  // 이미 종료된 경우 무시
+                }
+              }
             }
           }, 5000);
           
@@ -591,5 +630,54 @@ export class ClaudeDeveloper implements DeveloperInterface {
       // 표준 입력이 필요한 경우를 대비해 stdin 닫기
       child.stdin?.end();
     });
+  }
+
+  /**
+   * 모든 활성 프로세스를 정리합니다 (Graceful shutdown용)
+   */
+  async cleanup(): Promise<void> {
+    this.dependencies.logger.debug('Cleaning up active Claude processes', {
+      activeProcessCount: this.activeProcesses.size
+    });
+
+    const cleanupPromises = Array.from(this.activeProcesses).map(async (child) => {
+      try {
+        // SIGTERM 전송
+        child.kill('SIGTERM');
+        
+        // 프로세스 그룹 종료
+        if (child.pid) {
+          try {
+            process.kill(-child.pid, 'SIGTERM');
+          } catch (error) {
+            // 프로세스가 이미 종료된 경우 무시
+          }
+        }
+
+        // 짧은 시간 대기 후 강제 종료
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        if (!child.killed) {
+          child.kill('SIGKILL');
+          if (child.pid) {
+            try {
+              process.kill(-child.pid, 'SIGKILL');
+            } catch (error) {
+              // 프로세스가 이미 종료된 경우 무시
+            }
+          }
+        }
+      } catch (error) {
+        this.dependencies.logger.warn('Failed to cleanup process', { 
+          pid: child.pid, 
+          error 
+        });
+      }
+    });
+
+    await Promise.all(cleanupPromises);
+    this.activeProcesses.clear();
+
+    this.dependencies.logger.info('Claude Developer cleanup completed');
   }
 }

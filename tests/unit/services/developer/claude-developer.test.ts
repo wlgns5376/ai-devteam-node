@@ -82,6 +82,224 @@ describe('ClaudeDeveloper', () => {
     jest.resetAllMocks();
   });
 
+  describe('프로세스 관리', () => {
+    describe('프로세스 그룹 종료', () => {
+      it('타임아웃 시 프로세스 그룹 전체를 종료해야 한다', async () => {
+        // Given: 타임아웃이 발생하는 긴 실행 명령
+        const mockChildProcess = createMockSpawn('', '', 0);
+        mockChildProcess.on = jest.fn((event, callback) => {
+          // 타임아웃 시간 후에 close 이벤트 발생
+          if (event === 'close') {
+            setTimeout(() => callback(null, 'SIGTERM'), 100);
+          }
+        });
+        mockChildProcess.pid = 54321;
+        mockChildProcess.kill = jest.fn();
+        
+        mockedSpawn.mockReturnValue(mockChildProcess);
+
+        // process.kill mock
+        const originalProcessKill = process.kill;
+        const processKillMock = jest.fn();
+        process.kill = processKillMock as any;
+
+        // When: 짧은 타임아웃으로 실행
+        const shortTimeoutDeveloper = new ClaudeDeveloper(
+          { ...config, timeoutMs: 50 },
+          { logger: mockLogger }
+        );
+        
+        // Then: 타임아웃 에러 발생 및 프로세스 그룹 종료
+        await expect(
+          shortTimeoutDeveloper.execute('sleep 10', '/tmp')
+        ).rejects.toThrow('Claude execution timeout after 50ms');
+
+        // 프로세스 자체 종료
+        expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGTERM');
+        
+        // 프로세스 그룹 종료 (-pid로 호출)
+        expect(processKillMock).toHaveBeenCalledWith(-54321, 'SIGTERM');
+
+        // Cleanup
+        process.kill = originalProcessKill;
+      });
+
+      it('정상 종료 시에는 프로세스 그룹 종료를 호출하지 않아야 한다', async () => {
+        // Given: 정상적으로 완료되는 명령
+        const mockChildProcess = createMockSpawn('output', '', 0);
+        mockedSpawn.mockReturnValue(mockChildProcess);
+
+        // process.kill mock
+        const originalProcessKill = process.kill;
+        const processKillMock = jest.fn();
+        process.kill = processKillMock as any;
+
+        // When: 정상 실행
+        const result = await claudeDeveloper.execute('echo "test"', '/tmp');
+
+        // Then: 정상 결과 반환 및 프로세스 그룹 종료 미호출
+        expect(result.output).toBe('output');
+        expect(processKillMock).not.toHaveBeenCalled();
+
+        // Cleanup
+        process.kill = originalProcessKill;
+      });
+
+      it('SIGKILL 전송 전에 프로세스 그룹 종료를 시도해야 한다', async () => {
+        // Given: SIGTERM으로 종료되지 않는 프로세스
+        jest.useFakeTimers();
+        
+        const mockChildProcess = {
+          stdout: { on: jest.fn() },
+          stderr: { on: jest.fn() },
+          stdin: { end: jest.fn() },
+          on: jest.fn(),
+          kill: jest.fn(),
+          killed: false,
+          pid: 99999
+        };
+        
+        mockedSpawn.mockReturnValue(mockChildProcess as any);
+
+        // process.kill mock
+        const originalProcessKill = process.kill;
+        const processKillMock = jest.fn();
+        process.kill = processKillMock as any;
+
+        // When: 타임아웃이 짧은 개발자 인스턴스로 실행
+        const shortTimeoutDeveloper = new ClaudeDeveloper(
+          { ...config, timeoutMs: 50 },
+          { logger: mockLogger }
+        );
+        
+        const executePromise = shortTimeoutDeveloper.execute('sleep 10', '/tmp');
+
+        // 타임아웃 발생
+        jest.advanceTimersByTime(51);
+
+        // Then: 먼저 SIGTERM 전송
+        expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGTERM');
+        expect(processKillMock).toHaveBeenCalledWith(-99999, 'SIGTERM');
+
+        // 5초 후 SIGKILL 전송
+        jest.advanceTimersByTime(5000);
+        expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGKILL');
+        expect(processKillMock).toHaveBeenCalledWith(-99999, 'SIGKILL');
+
+        // 프로세스 종료 시뮬레이션
+        const closeCallback = mockChildProcess.on.mock.calls.find(
+          call => call[0] === 'close'
+        )?.[1];
+        if (closeCallback) closeCallback(null, 'SIGKILL');
+
+        await expect(executePromise).rejects.toThrow('Claude execution timeout after 50ms');
+
+        // Cleanup
+        jest.useRealTimers();
+        process.kill = originalProcessKill;
+      });
+    });
+
+    describe('Graceful Shutdown', () => {
+      it('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
+        // Given: 여러 프로세스가 실행 중
+        const mockProcesses = [];
+        for (let i = 0; i < 3; i++) {
+          const mockProcess = createMockSpawn('', '', 0);
+          mockProcess.pid = 1000 + i;
+          mockProcess.killed = false;
+          mockProcess.on = jest.fn((event, callback) => {
+            if (event === 'exit') {
+              setTimeout(() => {
+                mockProcess.killed = true;
+                callback();
+              }, 50);
+            }
+          });
+          mockProcesses.push(mockProcess);
+        }
+
+        let processIndex = 0;
+        mockedSpawn.mockImplementation(() => {
+          return mockProcesses[processIndex++] || mockProcesses[0];
+        });
+
+        // process.kill mock
+        const originalProcessKill = process.kill;
+        const processKillMock = jest.fn();
+        process.kill = processKillMock as any;
+
+        // 여러 프로세스 시작 (타임아웃을 길게 설정하여 cleanup 전까지 실행 유지)
+        const longTimeoutDeveloper = new ClaudeDeveloper(
+          { ...config, timeoutMs: 10000 },
+          { logger: mockLogger }
+        );
+
+        const promises = [
+          longTimeoutDeveloper.execute('sleep 10', '/tmp').catch(() => {}),
+          longTimeoutDeveloper.execute('sleep 10', '/tmp').catch(() => {}),
+          longTimeoutDeveloper.execute('sleep 10', '/tmp').catch(() => {})
+        ];
+
+        // 프로세스가 시작될 때까지 대기
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        // When: cleanup 호출
+        await longTimeoutDeveloper.cleanup();
+
+        // Then: 모든 프로세스가 종료되어야 함
+        mockProcesses.forEach((mockProcess, index) => {
+          expect(mockProcess.kill).toHaveBeenCalledWith('SIGTERM');
+          expect(processKillMock).toHaveBeenCalledWith(-(1000 + index), 'SIGTERM');
+        });
+
+        // Cleanup
+        process.kill = originalProcessKill;
+      });
+
+      it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
+        // Given: 종료할 수 없는 프로세스
+        const stubProcess = {
+          stdout: { on: jest.fn() },
+          stderr: { on: jest.fn() },
+          stdin: { end: jest.fn() },
+          on: jest.fn(),
+          kill: jest.fn(() => {
+            throw new Error('Process cannot be killed');
+          }),
+          killed: false,
+          pid: 55555
+        };
+
+        mockedSpawn.mockReturnValue(stubProcess as any);
+
+        // process.kill mock
+        const originalProcessKill = process.kill;
+        process.kill = jest.fn(() => {
+          throw new Error('Operation not permitted');
+        }) as any;
+
+        // When: 프로세스 시작 후 cleanup
+        const executePromise = claudeDeveloper.execute('sleep 10', '/tmp').catch(() => {});
+        await new Promise(resolve => setTimeout(resolve, 10));
+        
+        // cleanup이 에러를 throw하지 않고 완료되어야 함
+        await expect(claudeDeveloper.cleanup()).resolves.not.toThrow();
+
+        // Then: 경고 로그가 기록되어야 함
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+          'Failed to cleanup process',
+          expect.objectContaining({
+            pid: 55555
+          })
+        );
+
+        // Cleanup
+        process.kill = originalProcessKill;
+      });
+    });
+  });
+
   describe('초기화', () => {
     it('성공적으로 초기화되어야 한다', async () => {
       // Given: Claude CLI 설치 확인 성공
