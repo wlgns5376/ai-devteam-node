@@ -10,6 +10,19 @@ jest.mock('util', () => ({
 // child_process mock
 jest.mock('child_process');
 
+// fs/promises mock
+jest.mock('fs/promises', () => ({
+  writeFile: jest.fn().mockResolvedValue(undefined),
+  unlink: jest.fn().mockResolvedValue(undefined),
+  access: jest.fn().mockResolvedValue(undefined),
+  readFile: jest.fn().mockResolvedValue('')
+}));
+
+// os mock
+jest.mock('os', () => ({
+  tmpdir: jest.fn(() => '/tmp')
+}));
+
 import { ClaudeDeveloper } from '@/services/developer/claude-developer';
 import { Logger } from '@/services/logger';
 import { 
@@ -48,8 +61,15 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
         process.nextTick(() => callback(exitCode, signal));
       }
     }),
+    once: jest.fn((event, callback) => {
+      if (event === 'exit') {
+        // 기본적으로 exit 이벤트를 발생시키지 않음
+      }
+    }),
+    removeListener: jest.fn(),
     kill: jest.fn(),
     killed: false,
+    exitCode: null,
     pid: 12345
   };
   
@@ -106,6 +126,9 @@ describe('ClaudeDeveloper', () => {
           if (event === 'close') {
             setTimeout(() => callback(null, 'SIGTERM'), 100);
           }
+        });
+        mockChildProcess.once = jest.fn((event, callback) => {
+          // exit 이벤트를 발생시키지 않음 (타임아웃 테스트를 위해)
         });
         mockChildProcess.pid = 54321;
         mockChildProcess.kill = jest.fn();
@@ -170,7 +193,16 @@ describe('ClaudeDeveloper', () => {
           stdout: { on: jest.fn() },
           stderr: { on: jest.fn() },
           stdin: { end: jest.fn() },
-          on: jest.fn(),
+          on: jest.fn((event, callback) => {
+            if (event === 'close') {
+              // 타임아웃 후 close 이벤트 발생
+              setTimeout(() => callback(null, 'SIGKILL'), 6000);
+            }
+          }),
+          once: jest.fn((event, callback) => {
+            // exit 이벤트 발생하지 않음 (타임아웃 테스트)
+          }),
+          removeListener: jest.fn(),
           kill: jest.fn(),
           killed: false,
           pid: 99999,
@@ -194,6 +226,9 @@ describe('ClaudeDeveloper', () => {
         
         const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp');
 
+        // 프로세스가 시작될 때까지 대기
+        await new Promise(resolve => process.nextTick(resolve));
+        
         // 타임아웃 발생
         await jest.advanceTimersByTimeAsync(51);
 
@@ -238,6 +273,8 @@ describe('ClaudeDeveloper', () => {
             }
             return mockProcess;
           });
+          mockProcess.removeListener = jest.fn();
+          mockProcess.exitCode = null;
           mockProcesses.push(mockProcess);
         }
 
@@ -288,10 +325,10 @@ describe('ClaudeDeveloper', () => {
           stderr: { on: jest.fn() },
           stdin: { end: jest.fn() },
           on: jest.fn(),
-          kill: jest.fn(() => {
-            throw new Error('Process cannot be killed');
-          }),
+          once: jest.fn(),
+          removeListener: jest.fn(),
           killed: false,
+          exitCode: null,
           pid: 55555
         };
 
@@ -495,8 +532,11 @@ $ git commit -m "Refactor code structure"
               process.nextTick(() => callback(new Error('Claude CLI execution failed')));
             }
           }),
+          once: jest.fn(),
+          removeListener: jest.fn(),
           kill: jest.fn(),
           killed: false,
+          exitCode: null,
           pid: 12345
         };
         mockedSpawn.mockReturnValueOnce(mockChildProcess as any);
@@ -525,8 +565,11 @@ $ git commit -m "Refactor code structure"
           stderr: { on: jest.fn() },
           stdin: { end: jest.fn() },
           on: jest.fn(), // 'close' 이벤트를 발생시키지 않음
+          once: jest.fn(),
+          removeListener: jest.fn(),
           kill: jest.fn(),
           killed: false,
+          exitCode: null,
           pid: 12345
         };
         mockedSpawn.mockReturnValueOnce(mockChildProcess as any);

@@ -217,10 +217,19 @@ export class ClaudeDeveloper implements DeveloperInterface {
         this.killProcessGroup(child.pid, 'SIGTERM');
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
-        const gracefulExit = new Promise<boolean>(resolve => child.once('exit', () => resolve(true)));
-        const timeout = new Promise<boolean>(resolve => setTimeout(() => resolve(false), this.GRACEFUL_CLEANUP_TIMEOUT_MS));
+        // Promise.race로 프로세스 종료 대기 (리소스 정리 포함)
+        const exitedGracefully = await new Promise<boolean>(resolve => {
+          const onExit = () => {
+            clearTimeout(timeoutId);
+            resolve(true);
+          };
+          child.once('exit', onExit);
 
-        const exitedGracefully = await Promise.race([gracefulExit, timeout]);
+          const timeoutId = setTimeout(() => {
+            child.removeListener('exit', onExit);
+            resolve(false);
+          }, this.GRACEFUL_CLEANUP_TIMEOUT_MS);
+        });
         
         if (!exitedGracefully) {
           // SIGKILL로 강제 종료
@@ -551,9 +560,9 @@ export class ClaudeDeveloper implements DeveloperInterface {
       try {
         execSync(`taskkill /pid ${pid} /t${forceFlag}`, { stdio: 'ignore' });
         this.dependencies.logger.debug(`Terminated process tree on Windows with signal ${signal}`, { pid });
-      } catch (error: any) {
+      } catch (error: unknown) {
         // 프로세스가 이미 종료된 경우(exit code 128)는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
-        if (error.status !== 128) {
+        if ((error as any).status !== 128) {
           this.dependencies.logger.warn('Failed to kill process tree on Windows', {
             pid,
             signal,
@@ -629,12 +638,13 @@ export class ClaudeDeveloper implements DeveloperInterface {
           this.killProcessGroup(child.pid, 'SIGTERM');
           
           // 5초 후에도 종료되지 않으면 SIGKILL
-          setTimeout(() => {
+          const forceKillTimeout = setTimeout(() => {
             if (child.exitCode === null) {
               // 프로세스 그룹에 SIGKILL 전송
               this.killProcessGroup(child.pid, 'SIGKILL');
             }
           }, this.FORCE_KILL_TIMEOUT_MS);
+          child.once('exit', () => clearTimeout(forceKillTimeout));
           
           reject(new Error(`Claude execution timeout after ${this.timeoutMs}ms`));
         }
