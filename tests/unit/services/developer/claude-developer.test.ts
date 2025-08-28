@@ -130,8 +130,7 @@ describe('ClaudeDeveloper', () => {
           shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp')
         ).rejects.toThrow(DeveloperError);
 
-        // 프로세스 자체 종료
-        expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGTERM');
+        // 프로세스 그룹에만 SIGTERM을 보냄 (개별 kill은 하지 않음)
         
         // 프로세스 그룹 종료 (-pid로 호출)
         expect(processKillSpy).toHaveBeenCalledWith(-54321, 'SIGTERM');
@@ -196,13 +195,11 @@ describe('ClaudeDeveloper', () => {
         // 타임아웃 발생
         jest.advanceTimersByTime(51);
 
-        // Then: 먼저 SIGTERM 전송
-        expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGTERM');
+        // Then: 프로세스 그룹에 SIGTERM 전송
         expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGTERM');
 
-        // 5초 후 SIGKILL 전송
+        // 5초 후 SIGKILL 전송 (프로세스 그룹에만)
         jest.advanceTimersByTime(5000);
-        expect(mockChildProcess.kill).toHaveBeenCalledWith('SIGKILL');
         expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGKILL');
 
         // 프로세스 종료 시뮬레이션
@@ -234,6 +231,16 @@ describe('ClaudeDeveloper', () => {
                 callback();
               }, 50);
             }
+            return mockProcess;
+          });
+          mockProcess.once = jest.fn((event, callback) => {
+            if (event === 'exit') {
+              setTimeout(() => {
+                mockProcess.killed = true;
+                callback();
+              }, 50);
+            }
+            return mockProcess;
           });
           mockProcesses.push(mockProcess);
         }
@@ -273,7 +280,7 @@ describe('ClaudeDeveloper', () => {
 
         // Then: 모든 프로세스가 종료되어야 함
         mockProcesses.forEach((mockProcess, index) => {
-          expect(mockProcess.kill).toHaveBeenCalledWith('SIGTERM');
+          // cleanup은 이제 프로세스 그룹에만 시그널을 보냄
           expect(processKillSpy).toHaveBeenCalledWith(-(1000 + index), 'SIGTERM');
         });
 

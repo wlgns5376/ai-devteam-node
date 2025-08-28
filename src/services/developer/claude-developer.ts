@@ -9,7 +9,7 @@ import {
 } from '@/types/developer.types';
 import { ResponseParser } from './response-parser';
 import { ContextFileManager, ContextFileConfig } from './context-file-manager';
-import { exec, spawn, ChildProcess } from 'child_process';
+import { exec, spawn, ChildProcess, execSync } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -190,16 +190,28 @@ export class ClaudeDeveloper implements DeveloperInterface {
 
   async cleanup(): Promise<void> {
     // 활성 프로세스 정리
+    await this.cleanupActiveProcesses();
+    
+    // 컨텍스트 파일 정리 (contextFileManager가 초기화된 경우에만)
+    if (this.contextFileManager) {
+      await this.contextFileManager.cleanupContextFiles();
+    }
+    
+    this.isInitialized = false;
+    this.dependencies.logger.info('Claude Developer cleaned up');
+  }
+
+  /**
+   * 활성 프로세스를 정리하는 메서드
+   */
+  private async cleanupActiveProcesses(): Promise<void> {
     this.dependencies.logger.debug('Cleaning up active Claude processes', {
       activeProcessCount: this.activeProcesses.size
     });
 
     const cleanupPromises = Array.from(this.activeProcesses).map(async (child) => {
       try {
-        // SIGTERM 전송
-        child.kill('SIGTERM');
-        
-        // 프로세스 그룹 종료
+        // 프로세스 그룹에 SIGTERM 전송
         this.killProcessGroup(child.pid, 'SIGTERM');
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
@@ -209,8 +221,8 @@ export class ClaudeDeveloper implements DeveloperInterface {
         await Promise.race([gracefulExit, timeout]);
         
         if (!child.killed) {
+          // SIGKILL로 강제 종료
           this.killProcessGroup(child.pid, 'SIGKILL');
-          try { child.kill('SIGKILL'); } catch (e) { /* 이미 종료된 경우이므로 무시 */ }
         }
       } catch (error) {
         this.dependencies.logger.warn('Failed to cleanup process', { 
@@ -222,14 +234,6 @@ export class ClaudeDeveloper implements DeveloperInterface {
 
     await Promise.all(cleanupPromises);
     this.activeProcesses.clear();
-    
-    // 컨텍스트 파일 정리 (contextFileManager가 초기화된 경우에만)
-    if (this.contextFileManager) {
-      await this.contextFileManager.cleanupContextFiles();
-    }
-    
-    this.isInitialized = false;
-    this.dependencies.logger.info('Claude Developer cleaned up');
   }
 
   async isAvailable(): Promise<boolean> {
@@ -541,7 +545,6 @@ export class ClaudeDeveloper implements DeveloperInterface {
     if (process.platform === 'win32') {
       // Windows에서는 taskkill 사용
       try {
-        const { execSync } = require('child_process');
         execSync(`taskkill /pid ${pid} /t /f`, { stdio: 'ignore' });
         this.dependencies.logger.debug(`Terminated process tree on Windows`, { pid });
       } catch (error) {
@@ -615,18 +618,14 @@ export class ClaudeDeveloper implements DeveloperInterface {
             pid: child.pid
           });
           
-          // 프로세스 그룹 전체 종료 먼저 (bash -c로 실행된 하위 프로세스 포함)
+          // 프로세스 그룹 전체 종료 (bash -c로 실행된 하위 프로세스 포함)
           this.killProcessGroup(child.pid, 'SIGTERM');
-          
-          // 메인 프로세스에 SIGTERM 전송
-          try { child.kill('SIGTERM'); } catch (e) { /* 이미 종료된 경우이므로 무시 */ }
           
           // 5초 후에도 종료되지 않으면 SIGKILL
           setTimeout(() => {
             if (!child.killed) {
               // 프로세스 그룹에 SIGKILL 전송
               this.killProcessGroup(child.pid, 'SIGKILL');
-              try { child.kill('SIGKILL'); } catch (e) { /* 이미 종료된 경우이므로 무시 */ }
             }
           }, 5000);
           
