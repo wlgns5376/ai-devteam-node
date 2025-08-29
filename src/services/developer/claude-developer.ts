@@ -226,6 +226,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         await this.killProcessGroup(child.pid, 'SIGTERM');
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
+        // 이벤트와 타임아웃을 함께 처리하여 프로세스가 정상적으로 종료되었는지 확인
         const exitedGracefully = await new Promise<boolean>(resolve => {
           const onExit = () => {
             clearTimeout(timeoutId);
@@ -568,9 +569,13 @@ export class ClaudeDeveloper implements DeveloperInterface {
         await execAsync(`taskkill /pid ${pid} /t${forceFlag}`, { encoding: 'utf8' });
         this.dependencies.logger.debug(`Terminated process tree on Windows with signal ${signal}`, { pid });
       } catch (error: unknown) {
-        // 프로세스가 이미 종료된 경우(exit code 128)는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
+        // 프로세스가 이미 종료된 경우는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
+        // execAsync가 실패할 때 'code' 속성에 종료 코드가 담김
         const isAlreadyExitedError =
-          error instanceof Error && 'code' in error && (error as { code: number }).code === 128;
+          error instanceof Error && 
+          'code' in error && 
+          typeof (error as { code: unknown }).code === 'number' &&
+          (error as { code: number }).code === 128;
 
         if (!isAlreadyExitedError) {
           this.dependencies.logger.warn('Failed to kill process tree on Windows', {
@@ -591,7 +596,9 @@ export class ClaudeDeveloper implements DeveloperInterface {
       } catch (error) {
         // ESRCH: No such process. 프로세스가 이미 종료된 경우이므로 무시합니다.
         const isNoSuchProcessError =
-          error instanceof Error && 'code' in error && (error as { code: string }).code === 'ESRCH';
+          error instanceof Error && 
+          'code' in error && 
+          (error as NodeJS.ErrnoException).code === 'ESRCH';
 
         if (!isNoSuchProcessError) {
           this.dependencies.logger.warn('Failed to kill process group', {
@@ -648,13 +655,23 @@ export class ClaudeDeveloper implements DeveloperInterface {
           });
           
           // 프로세스 그룹 전체 종료 (bash -c로 실행된 하위 프로세스 포함)
-          void this.killProcessGroup(child.pid, 'SIGTERM');
+          this.killProcessGroup(child.pid, 'SIGTERM').catch(err => {
+            this.dependencies.logger.warn('Failed to send SIGTERM to process group', {
+              pid: child.pid,
+              error: err
+            });
+          });
           
           // 5초 후에도 종료되지 않으면 SIGKILL
-          const forceKillTimeout = setTimeout(async () => {
+          const forceKillTimeout = setTimeout(() => {
             if (child.exitCode === null) {
               // 프로세스 그룹에 SIGKILL 전송
-              await this.killProcessGroup(child.pid, 'SIGKILL');
+              this.killProcessGroup(child.pid, 'SIGKILL').catch(err => {
+                this.dependencies.logger.warn('Failed to send SIGKILL to process group', {
+                  pid: child.pid,
+                  error: err
+                });
+              });
             }
           }, this.FORCE_KILL_TIMEOUT_MS);
           child.once('exit', () => clearTimeout(forceKillTimeout));

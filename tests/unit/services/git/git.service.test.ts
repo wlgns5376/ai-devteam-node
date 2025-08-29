@@ -1,3 +1,10 @@
+// promisify mock
+const mockExecAsync = jest.fn();
+jest.mock('util', () => ({
+  ...jest.requireActual('util'),
+  promisify: jest.fn(() => mockExecAsync)
+}));
+
 import { GitService } from '@/services/git/git.service';
 import { GitLockService } from '@/services/git/git-lock.service';
 import { Logger } from '@/services/logger';
@@ -6,6 +13,14 @@ import { promisify } from 'util';
 
 jest.mock('child_process');
 const mockedExec = jest.mocked(exec);
+
+// fs/promises mock
+jest.mock('fs/promises', () => ({
+  access: jest.fn().mockResolvedValue(undefined),
+  mkdir: jest.fn().mockResolvedValue(undefined),
+  readdir: jest.fn().mockResolvedValue([]),
+  stat: jest.fn().mockResolvedValue({ isDirectory: () => true }),
+}));
 
 describe('GitService - pullMainBranch', () => {
   let gitService: GitService;
@@ -46,18 +61,22 @@ describe('GitService - pullMainBranch', () => {
       // GitLockService가 'pull' 타입을 지원하는지 확인
       expect(mockGitLockService.withLock).toBeDefined();
       
+      // git 명령어 mock
+      mockExecAsync.mockResolvedValue({ stdout: 'main', stderr: '' });
+      
       // pull 작업이 GitLockService를 통해 호출되는지 간접 확인
-      // (실제 git 명령어를 mock하지 않고 구조만 확인)
       try {
-        await gitService.pullMainBranch('/invalid/path');
+        await gitService.pullMainBranch('/test/path');
       } catch (error) {
-        // 에러가 발생하더라도 lock이 호출되는지만 확인
-        expect(mockGitLockService.withLock).toHaveBeenCalledWith(
-          expect.any(String), 
-          'pull', 
-          expect.any(Function)
-        );
+        // 테스트 목적 달성
       }
+      
+      // lock이 호출되었는지 확인
+      expect(mockGitLockService.withLock).toHaveBeenCalledWith(
+        expect.any(String), 
+        'pull', 
+        expect.any(Function)
+      );
     });
   });
 
@@ -65,15 +84,20 @@ describe('GitService - pullMainBranch', () => {
     it('pullMainBranch가 로깅을 수행해야 함', async () => {
       const localPath = '/test/repo';
       
+      // git 명령어 mock
+      mockExecAsync.mockResolvedValue({ stdout: 'main', stderr: '' });
+      
       try {
         await gitService.pullMainBranch(localPath);
       } catch (error) {
-        // 실제 git 명령어 실행 실패는 예상되지만 로깅은 수행되어야 함
-        expect(mockLogger.info).toHaveBeenCalledWith(
-          'Pulling main branch updates', 
-          { localPath }
-        );
+        // 테스트 목적 달성
       }
+      
+      // 로깅이 수행되었는지 확인
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Pulling main branch updates', 
+        { localPath }
+      );
     });
   });
 });
@@ -115,42 +139,10 @@ describe('GitService - 프로세스 관리', () => {
 
   describe('프로세스 타임아웃 처리', () => {
     it('타임아웃 시 프로세스가 정리되어야 한다', async () => {
-      // Given: 타임아웃이 발생하는 git 명령
-      const mockChildProcess = {
-        stdout: '',
-        stderr: '',
-        on: jest.fn(),
-        removeAllListeners: jest.fn(),
-        kill: jest.fn(() => true),
-        pid: 12345,
-      };
-
-      let timeoutId: NodeJS.Timeout;
-      
-      mockedExec.mockImplementation((command: string, options: any, callback?: any) => {
-        // 콜백이 있는 경우
-        if (callback) {
-          // 타임아웃 시뮬레이션
-          timeoutId = setTimeout(() => {
-            const error = new Error('Command failed');
-            (error as any).code = 'ETIMEDOUT';
-            (error as any).killed = true;
-            (error as any).signal = 'SIGTERM';
-            callback(error, '', '');
-          }, 100);
-          
-          return mockChildProcess as any;
-        }
-        
-        // promisify 버전
-        return new Promise((resolve, reject) => {
-          timeoutId = setTimeout(() => {
-            const error = new Error('Command failed');
-            (error as any).code = 'ETIMEDOUT';
-            reject(error);
-          }, 100);
-        }) as any;
-      });
+      // Given: 타임아웃 에러 모의
+      const timeoutError = new Error('Command failed');
+      (timeoutError as any).code = 'ETIMEDOUT';
+      mockExecAsync.mockRejectedValue(timeoutError);
 
       // When: git clone 실행
       const clonePromise = gitService.clone('https://github.com/test/repo.git', '/tmp/repo');
@@ -166,25 +158,11 @@ describe('GitService - 프로세스 관리', () => {
           localPath: '/tmp/repo',
         })
       );
-
-      clearTimeout(timeoutId!);
     });
 
     it('정상 종료 시 프로세스 정리를 시도하지 않아야 한다', async () => {
       // Given: 정상적으로 완료되는 git 명령
-      mockedExec.mockImplementation((command: string, options: any, callback?: any) => {
-        if (callback) {
-          process.nextTick(() => callback(null, { stdout: 'Success', stderr: '' }));
-          return {} as any;
-        }
-        
-        return Promise.resolve({ stdout: 'Success', stderr: '' }) as any;
-      });
-
-      // Mock fs
-      jest.mock('fs/promises', () => ({
-        mkdir: jest.fn().mockResolvedValue(undefined),
-      }));
+      mockExecAsync.mockResolvedValue({ stdout: 'Success', stderr: '' });
 
       // When: git fetch 실행
       await gitService.fetch('/tmp/repo');
@@ -204,15 +182,11 @@ describe('GitService - 프로세스 관리', () => {
 
   describe('execAsync 타임아웃 처리', () => {
     it('모든 git 명령이 타임아웃 설정을 가져야 한다', async () => {
-      // Given: exec 호출을 추적하는 mock
+      // Given: execAsync 호출을 추적하는 mock
       const execCalls: any[] = [];
-      mockedExec.mockImplementation((command: string, options: any, callback?: any) => {
+      mockExecAsync.mockImplementation((command: string, options?: any) => {
         execCalls.push({ command, options });
-        if (callback) {
-          process.nextTick(() => callback(new Error('Test error'), '', ''));
-          return {} as any;
-        }
-        return Promise.reject(new Error('Test error')) as any;
+        return Promise.reject(new Error('Test error'));
       });
 
       // When: 여러 git 명령 실행
