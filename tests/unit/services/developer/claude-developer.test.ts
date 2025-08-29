@@ -147,7 +147,7 @@ describe('ClaudeDeveloper', () => {
     
     // contextFileManager mock 설정
     (claudeDeveloper as any).contextFileManager = {
-      cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
+      cleanupContextFiles: mockCleanupContextFiles
     };
     
     // Mock 기본 설정
@@ -226,14 +226,10 @@ describe('ClaudeDeveloper', () => {
         await claudeDeveloper.initialize();
 
         // When: 정상 실행
-        try {
-          const result = await claudeDeveloper.executePrompt('echo "test"', '/tmp');
-          // Then: 정상 결과 반환 및 프로세스 그룹 종료 미호출
-          expect(result.rawOutput).toBe('output');
-        } catch (error) {
-          // 테스트에서 발생한 에러는 무시하고 프로세스 그룹 종료 호출 여부만 확인
-          // spawn mock이 완전하지 않아 발생하는 에러를 무시
-        }
+        await claudeDeveloper.executePrompt('echo "test"', '/tmp').catch(() => {
+          // 이 테스트의 주 목적은 processKillSpy 호출 여부를 확인하는 것이므로
+          // 모의(mock) 객체 불완전으로 인한 에러는 무시합니다.
+        });
         
         // 프로세스 그룹 종료가 호출되지 않았는지 확인
         expect(processKillSpy).not.toHaveBeenCalled();
@@ -242,8 +238,7 @@ describe('ClaudeDeveloper', () => {
         processKillSpy.mockRestore();
       });
 
-      it.skip('SIGKILL 전송 전에 프로세스 그룹 종료를 시도해야 한다', async () => {
-        // Skip됨: killProcessGroup이 async로 변경되어 테스트 수정 필요
+      it('SIGKILL 전송 전에 프로세스 그룹 종료를 시도해야 한다', async () => {
         // Given: SIGTERM으로 종료되지 않는 프로세스
         jest.useFakeTimers();
         
@@ -312,7 +307,7 @@ describe('ClaudeDeveloper', () => {
     });
 
     describe('Graceful Shutdown', () => {
-      it.skip('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
+      it('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
         jest.useFakeTimers();
         
         // Given: 여러 프로세스가 실행 중
@@ -354,7 +349,7 @@ describe('ClaudeDeveloper', () => {
         
         // contextFileManager mock 설정
         (longTimeoutDeveloper as any).contextFileManager = {
-          cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
+          cleanupContextFiles: mockCleanupContextFiles
         };
         
         // 초기화
@@ -389,7 +384,7 @@ describe('ClaudeDeveloper', () => {
         processKillSpy.mockRestore();
       }, 10000);
 
-      it.skip('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
+      it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
         jest.useFakeTimers();
         
         // Given: 종료할 수 없는 프로세스
@@ -417,7 +412,7 @@ describe('ClaudeDeveloper', () => {
         
         // contextFileManager mock 설정
         (claudeDeveloper as any).contextFileManager = {
-          cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
+          cleanupContextFiles: mockCleanupContextFiles
         };
         
         // 초기화
@@ -522,7 +517,7 @@ describe('ClaudeDeveloper', () => {
     });
 
     describe('성공 시나리오', () => {
-      it.skip('PR 생성과 함께 성공해야 한다', async () => {
+      it('PR 생성과 함께 성공해야 한다', async () => {
         // Given: Claude CLI 성공 응답
         const mockOutput = `작업을 시작합니다...
 
@@ -583,7 +578,7 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
         );
       });
 
-      it.skip('코드 수정만으로 성공해야 한다', async () => {
+      it('코드 수정만으로 성공해야 한다', async () => {
         // Given: PR 없는 성공 응답
         const mockOutput = `작업을 시작합니다...
 
@@ -691,7 +686,7 @@ $ git commit -m "Refactor code structure"
     });
 
     describe('환경 변수 설정', () => {
-      it.skip('Claude API 키가 환경 변수로 전달되어야 한다', async () => {
+      it('Claude API 키가 환경 변수로 전달되어야 한다', async () => {
         // Given: 프롬프트 준비
         const mockChildProcess = createMockSpawn('작업 완료');
         mockedSpawn.mockReturnValueOnce(mockChildProcess);
@@ -747,7 +742,7 @@ $ git commit -m "Refactor code structure"
   });
 
   describe('명령어 구성', () => {
-    it.skip('올바른 Claude CLI 명령어가 구성되어야 한다', async () => {
+    it('올바른 Claude CLI 명령어가 구성되어야 한다', async () => {
       // Given: 초기화
       mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();
@@ -770,7 +765,7 @@ $ git commit -m "Refactor code structure"
       );
     });
 
-    it.skip('프롬프트가 임시 파일을 통해 전달되어야 한다', async () => {
+    it('프롬프트가 임시 파일을 통해 전달되어야 한다', async () => {
       // Given: 초기화
       mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();

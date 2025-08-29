@@ -572,10 +572,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         // 프로세스가 이미 종료된 경우는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
         // execAsync가 실패할 때 'code' 속성에 종료 코드가 담김
         const isAlreadyExitedError =
-          error instanceof Error && 
-          'code' in error && 
-          typeof (error as { code: unknown }).code === 'number' &&
-          (error as { code: number }).code === 128;
+          error instanceof Error && 'code' in error && (error as { code: number }).code === 128;
 
         if (!isAlreadyExitedError) {
           this.dependencies.logger.warn('Failed to kill process tree on Windows', {
