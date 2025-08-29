@@ -230,7 +230,7 @@ describe('ClaudeDeveloper', () => {
         processKillSpy.mockRestore();
       });
 
-      it.skip('SIGKILL 전송 전에 프로세스 그룹 종료를 시도해야 한다', async () => {
+      it('SIGKILL 전송 전에 프로세스 그룹 종료를 시도해야 한다', async () => {
         // Given: SIGTERM으로 종료되지 않는 프로세스
         jest.useFakeTimers();
         
@@ -299,7 +299,7 @@ describe('ClaudeDeveloper', () => {
     });
 
     describe('Graceful Shutdown', () => {
-      it.skip('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
+      it('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
         jest.useFakeTimers();
         
         // Given: 여러 프로세스가 실행 중
@@ -339,6 +339,11 @@ describe('ClaudeDeveloper', () => {
           { logger: mockLogger }
         );
         
+        // contextFileManager mock 설정
+        (longTimeoutDeveloper as any).contextFileManager = {
+          cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
+        };
+        
         // 초기화
         mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await longTimeoutDeveloper.initialize();
@@ -370,7 +375,7 @@ describe('ClaudeDeveloper', () => {
         processKillSpy.mockRestore();
       }, 10000);
 
-      it.skip('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
+      it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
         jest.useFakeTimers();
         
         // Given: 종료할 수 없는 프로세스
@@ -395,6 +400,11 @@ describe('ClaudeDeveloper', () => {
         const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => {
           throw new Error('Operation not permitted');
         });
+        
+        // contextFileManager mock 설정
+        (claudeDeveloper as any).contextFileManager = {
+          cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
+        };
         
         // 초기화
         mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
