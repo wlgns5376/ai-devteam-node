@@ -70,7 +70,7 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
       on: jest.fn((event, callback) => {
         if (event === 'data' && stdout) {
           // 데이터를 약간의 지연 후 전송
-          setTimeout(() => callback(stdout), 1);
+          process.nextTick(() => callback(stdout));
         }
       })
     },
@@ -78,7 +78,7 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
       on: jest.fn((event, callback) => {
         if (event === 'data' && stderr) {
           // 데이터를 약간의 지연 후 전송
-          setTimeout(() => callback(stderr), 1);
+          process.nextTick(() => callback(stderr));
         }
       })
     },
@@ -89,11 +89,11 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
       if (event === 'close') {
         callbacks.close.push(callback);
         // 정상 종료 시 close 이벤트 발생 (약간의 지연 추가)
-        setTimeout(() => callback(exitCode, signal), 10);
+        process.nextTick(() => callback(exitCode, signal));
       } else if (event === 'exit') {
         callbacks.exit.push(callback);
         // exit 이벤트 등록
-        setTimeout(() => callback(), 5);
+        process.nextTick(() => callback());
       } else if (event === 'error') {
         callbacks.error.push(callback);
       }
@@ -103,7 +103,7 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
       if (event === 'exit') {
         callbacks.exit.push(callback);
         // exit 이벤트 발생
-        setTimeout(() => callback(), 5);
+        process.nextTick(() => callback());
       }
       return mockChildProcess;
     }),
@@ -433,7 +433,7 @@ describe('ClaudeDeveloper', () => {
         
         // contextFileManager mock 설정
         (claudeDeveloper as any).contextFileManager = {
-          cleanupContextFiles: mockCleanupContextFiles
+          cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
         };
         
         // 초기화
@@ -596,7 +596,8 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
             env: expect.objectContaining({
               ANTHROPIC_API_KEY: 'test-api-key'
             }),
-            stdio: ['pipe', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe'],
+            detached: true
           })
         );
       });
@@ -730,7 +731,8 @@ Test complete
           expect.objectContaining({
             env: expect.objectContaining({
               ANTHROPIC_API_KEY: 'test-api-key'
-            })
+            }),
+            detached: true
           })
         );
       });
@@ -795,6 +797,7 @@ Test complete
         ['-c', expect.stringMatching(/cat ".*\.txt" \| "claude" --dangerously-skip-permissions -p/)],
         expect.objectContaining({
           cwd: '/tmp/workspace',
+          detached: true,
           stdio: ['pipe', 'pipe', 'pipe']
         })
       );

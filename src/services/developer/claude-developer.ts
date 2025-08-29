@@ -226,7 +226,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         await this.killProcessGroup(child.pid, 'SIGTERM');
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
-        // Promise 생성자 내에서 리소스 정리를 처리하여 메모리 누수 방지
+        // 이벤트와 타임아웃을 함께 처리하여 프로세스가 정상적으로 종료되었는지 확인
         const exitedGracefully = await new Promise<boolean>(resolve => {
           const onExit = () => {
             clearTimeout(timeoutId);
@@ -566,7 +566,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
       // SIGTERM은 정상 종료 시도(/f 없음), SIGKILL은 강제 종료(/f 포함)
       const forceFlag = signal === 'SIGKILL' ? ' /f' : '';
       try {
-        await execAsync(`taskkill /pid ${pid} /t${forceFlag}`, { encoding: 'utf8' });
+        await execAsync(`taskkill /pid ${pid} /t${forceFlag}`, { encoding: 'utf8', timeout: 5000 });
         this.dependencies.logger.debug(`Terminated process tree on Windows with signal ${signal}`, { pid });
       } catch (error: unknown) {
         // 프로세스가 이미 종료된 경우는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
@@ -574,7 +574,6 @@ export class ClaudeDeveloper implements DeveloperInterface {
         const isAlreadyExitedError =
           error instanceof Error && 
           'code' in error && 
-          typeof (error as { code: unknown }).code === 'number' &&
           (error as { code: number }).code === 128;
 
         if (!isAlreadyExitedError) {
@@ -598,7 +597,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         const isNoSuchProcessError =
           error instanceof Error && 
           'code' in error && 
-          (error as { code: unknown }).code === 'ESRCH';
+          (error as { code: string }).code === 'ESRCH';
 
         if (!isNoSuchProcessError) {
           this.dependencies.logger.warn('Failed to kill process group', {
