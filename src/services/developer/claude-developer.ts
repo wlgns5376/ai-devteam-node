@@ -574,7 +574,6 @@ export class ClaudeDeveloper implements DeveloperInterface {
         const isAlreadyExitedError =
           error instanceof Error && 
           'code' in error && 
-          typeof (error as { code: unknown }).code === 'number' &&
           (error as { code: number }).code === 128;
 
         if (!isAlreadyExitedError) {
@@ -663,10 +662,10 @@ export class ClaudeDeveloper implements DeveloperInterface {
           });
           
           // 5초 후에도 종료되지 않으면 SIGKILL
-          const forceKillTimeout = setTimeout(() => {
+          const forceKillTimeout = setTimeout(async () => {
             if (child.exitCode === null) {
               // 프로세스 그룹에 SIGKILL 전송
-              this.killProcessGroup(child.pid, 'SIGKILL').catch(err => {
+              await this.killProcessGroup(child.pid, 'SIGKILL').catch(err => {
                 this.dependencies.logger.warn('Failed to send SIGKILL to process group', {
                   pid: child.pid,
                   error: err
