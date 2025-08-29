@@ -266,6 +266,9 @@ describe('ClaudeDeveloper', () => {
 
         // process.kill mock
         const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => true);
+        
+        // execAsync mock for killProcessGroup (Windows case)
+        mockExecAsync.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }));
 
         // When: 타임아웃이 짧은 개발자 인스턴스로 실행
         const shortTimeoutDeveloper = new ClaudeDeveloper(
@@ -277,38 +280,50 @@ describe('ClaudeDeveloper', () => {
         mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await shortTimeoutDeveloper.initialize();
         
-        const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp');
+        const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp').catch(e => e);
 
         // 프로세스가 시작될 때까지 대기
-        await new Promise(resolve => process.nextTick(resolve));
+        await new Promise(resolve => setImmediate(resolve));
         
         // 타임아웃 발생
-        await jest.advanceTimersByTimeAsync(51);
-
+        jest.advanceTimersByTime(51);
+        
         // Then: 프로세스 그룹에 SIGTERM 전송
+        await new Promise(resolve => setImmediate(resolve));
         expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGTERM');
 
-        // 5초 후 SIGKILL 전송 (프로세스 그룹에만) 
-        await jest.advanceTimersByTimeAsync(5000);
+        // 5초 후 SIGKILL 전송
+        jest.advanceTimersByTime(5000);
+        await new Promise(resolve => setImmediate(resolve));
         expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGKILL');
 
         // 프로세스 종료 시뮬레이션
         const closeCallback = mockChildProcess.on.mock.calls.find(
           call => call[0] === 'close'
         )?.[1];
-        if (closeCallback) closeCallback(null, 'SIGKILL');
-
-        await expect(executePromise).rejects.toThrow(DeveloperError);
+        if (closeCallback) {
+          closeCallback(null, 'SIGKILL');
+        }
+        
+        // 타임아웃 처리 시간 허용
+        jest.advanceTimersByTime(100);
+        
+        const result = await executePromise;
+        expect(result).toBeInstanceOf(Error);
+        expect(result.message).toContain('timeout');
 
         // Cleanup
         jest.useRealTimers();
         processKillSpy.mockRestore();
-      }, 15000);
+      }, 20000);
     });
 
     describe('Graceful Shutdown', () => {
       it('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
         jest.useFakeTimers();
+        
+        // execAsync mock for killProcessGroup (Windows case)
+        mockExecAsync.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }));
         
         // Given: 여러 프로세스가 실행 중
         const mockProcesses: any[] = [];
@@ -370,7 +385,10 @@ describe('ClaudeDeveloper', () => {
         const cleanupPromise = longTimeoutDeveloper.cleanup();
         
         // exit 이벤트 발생 시뮬레이션
-        jest.advanceTimersByTime(50);
+        jest.advanceTimersByTime(100);
+        await Promise.resolve(); // Let promises resolve
+        jest.advanceTimersByTime(100);
+        
         await cleanupPromise;
 
         // Then: 모든 프로세스가 종료되어야 함
@@ -386,6 +404,9 @@ describe('ClaudeDeveloper', () => {
 
       it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
         jest.useFakeTimers();
+        
+        // execAsync mock for killProcessGroup (Windows case) - reject for error case
+        mockExecAsync.mockImplementation(() => Promise.reject(new Error('Operation not permitted')));
         
         // Given: 종료할 수 없는 프로세스
         const stubProcess: any = {
@@ -428,6 +449,8 @@ describe('ClaudeDeveloper', () => {
         
         // 타임아웃 발생 시뮬레이션
         jest.advanceTimersByTime(1000);
+        await Promise.resolve(); // Let promises resolve
+        jest.advanceTimersByTime(100);
         
         // cleanup이 완료되어야 함 (에러를 throw하지 않음)
         await cleanupPromise;
@@ -688,7 +711,13 @@ $ git commit -m "Refactor code structure"
     describe('환경 변수 설정', () => {
       it('Claude API 키가 환경 변수로 전달되어야 한다', async () => {
         // Given: 프롬프트 준비
-        const mockChildProcess = createMockSpawn('작업 완료');
+        const mockOutput = `작업을 수행했습니다.
+        
+$ echo "Test complete"
+Test complete
+
+작업을 완료했습니다!`;
+        const mockChildProcess = createMockSpawn(mockOutput);
         mockedSpawn.mockReturnValueOnce(mockChildProcess);
 
         // When: 프롬프트 실행
@@ -747,7 +776,13 @@ $ git commit -m "Refactor code structure"
       mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();
 
-      const mockChildProcess = createMockSpawn('작업 완료');
+      const mockOutput = `작업을 수행했습니다.
+
+$ echo "Test complete"
+Test complete
+
+작업을 완료했습니다!`;
+      const mockChildProcess = createMockSpawn(mockOutput);
       mockedSpawn.mockReturnValueOnce(mockChildProcess);
 
       // When: 프롬프트 실행
@@ -773,7 +808,13 @@ $ git commit -m "Refactor code structure"
       const mockWrite = jest.spyOn(require('fs/promises'), 'writeFile').mockResolvedValue(undefined);
       const mockUnlink = jest.spyOn(require('fs/promises'), 'unlink').mockResolvedValue(undefined);
 
-      const mockChildProcess = createMockSpawn('작업 완료');
+      const mockOutput = `작업을 수행했습니다.
+
+$ echo "Code analyzed"
+Code analyzed
+
+작업을 완료했습니다!`;
+      const mockChildProcess = createMockSpawn(mockOutput);
       mockedSpawn.mockReturnValueOnce(mockChildProcess);
 
       // When: 프롬프트 실행

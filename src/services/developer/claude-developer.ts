@@ -226,7 +226,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         await this.killProcessGroup(child.pid, 'SIGTERM');
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
-        // 이벤트와 타임아웃을 함께 처리하여 프로세스가 정상적으로 종료되었는지 확인
+        // Promise 생성자 내에서 리소스 정리를 처리하여 메모리 누수 방지
         const exitedGracefully = await new Promise<boolean>(resolve => {
           const onExit = () => {
             clearTimeout(timeoutId);
@@ -572,7 +572,10 @@ export class ClaudeDeveloper implements DeveloperInterface {
         // 프로세스가 이미 종료된 경우는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
         // execAsync가 실패할 때 'code' 속성에 종료 코드가 담김
         const isAlreadyExitedError =
-          error instanceof Error && 'code' in error && (error as { code: number }).code === 128;
+          error instanceof Error && 
+          'code' in error && 
+          typeof (error as { code: unknown }).code === 'number' &&
+          (error as { code: number }).code === 128;
 
         if (!isAlreadyExitedError) {
           this.dependencies.logger.warn('Failed to kill process tree on Windows', {
@@ -595,7 +598,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         const isNoSuchProcessError =
           error instanceof Error && 
           'code' in error && 
-          (error as NodeJS.ErrnoException).code === 'ESRCH';
+          (error as { code: unknown }).code === 'ESRCH';
 
         if (!isNoSuchProcessError) {
           this.dependencies.logger.warn('Failed to kill process group', {
