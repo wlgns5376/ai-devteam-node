@@ -220,7 +220,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         this.killProcessGroup(child.pid, 'SIGTERM');
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
-        // exit 이벤트와 타임아웃을 처리하여 프로세스가 정상적으로 종료되었는지 확인
+        // 이벤트와 타임아웃을 함께 처리하여 프로세스가 정상적으로 종료되었는지 확인
         const exitedGracefully = await new Promise<boolean>(resolve => {
           const onExit = () => {
             clearTimeout(timeoutId);
@@ -654,7 +654,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
           }, this.FORCE_KILL_TIMEOUT_MS);
           child.once('exit', () => clearTimeout(forceKillTimeout));
           
-          reject(new Error(`Claude execution timeout after ${this.timeoutMs}ms`));
+          reject(new Error('Claude execution timeout'));
         }
       }, this.timeoutMs);
 
