@@ -26,11 +26,12 @@ jest.mock('os', () => ({
 }));
 
 // ContextFileManager mock
+const mockCleanupContextFiles = jest.fn().mockResolvedValue(undefined);
 jest.mock('@/services/developer/context-file-manager', () => ({
   ContextFileManager: jest.fn().mockImplementation(() => ({
     initialize: jest.fn().mockResolvedValue(undefined),
     createContextFile: jest.fn().mockResolvedValue('test-context-file.md'),
-    cleanupContextFiles: jest.fn().mockResolvedValue(undefined),
+    cleanupContextFiles: mockCleanupContextFiles,
     getContextFilePath: jest.fn().mockReturnValue('/tmp/test-context.md'),
     splitLongContext: jest.fn().mockResolvedValue([]),
     shouldSplitContext: jest.fn().mockReturnValue(false),
@@ -143,6 +144,11 @@ describe('ClaudeDeveloper', () => {
     };
 
     claudeDeveloper = new ClaudeDeveloper(config, { logger: mockLogger });
+    
+    // contextFileManager mock 설정
+    (claudeDeveloper as any).contextFileManager = {
+      cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
+    };
     
     // Mock 기본 설정
     jest.clearAllMocks();
@@ -345,6 +351,10 @@ describe('ClaudeDeveloper', () => {
           { logger: mockLogger }
         );
         
+        // contextFileManager mock 설정
+        (longTimeoutDeveloper as any).contextFileManager = {
+          cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
+        };
         
         // 초기화
         mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
@@ -357,6 +367,7 @@ describe('ClaudeDeveloper', () => {
         ];
 
         // 프로세스가 시작될 때까지 대기
+        await new Promise(resolve => process.nextTick(resolve));
         jest.advanceTimersByTime(10);
 
         // When: cleanup 호출 (cleanupActiveProcesses가 내부적으로 호출됨)

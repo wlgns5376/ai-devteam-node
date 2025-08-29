@@ -226,7 +226,6 @@ export class ClaudeDeveloper implements DeveloperInterface {
         await this.killProcessGroup(child.pid, 'SIGTERM');
 
         // 프로세스가 종료될 때까지 최대 1초 대기하고, 그렇지 않으면 강제 종료
-        // 이벤트와 타임아웃을 함께 처리하여 프로세스가 정상적으로 종료되었는지 확인
         const exitedGracefully = await new Promise<boolean>(resolve => {
           const onExit = () => {
             clearTimeout(timeoutId);
@@ -592,7 +591,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
       } catch (error) {
         // ESRCH: No such process. 프로세스가 이미 종료된 경우이므로 무시합니다.
         const isNoSuchProcessError =
-          error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ESRCH';
+          error instanceof Error && 'code' in error && (error as { code: string }).code === 'ESRCH';
 
         if (!isNoSuchProcessError) {
           this.dependencies.logger.warn('Failed to kill process group', {
