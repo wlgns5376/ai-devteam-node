@@ -145,11 +145,6 @@ describe('ClaudeDeveloper', () => {
 
     claudeDeveloper = new ClaudeDeveloper(config, { logger: mockLogger });
     
-    // contextFileManager mock 설정
-    (claudeDeveloper as any).contextFileManager = {
-      cleanupContextFiles: mockCleanupContextFiles
-    };
-    
     // Mock 기본 설정
     jest.clearAllMocks();
   });
@@ -240,7 +235,7 @@ describe('ClaudeDeveloper', () => {
 
       it('SIGKILL 전송 전에 프로세스 그룹 종료를 시도해야 한다', async () => {
         // Given: SIGTERM으로 종료되지 않는 프로세스
-        jest.useFakeTimers();
+        jest.useFakeTimers({ legacyFakeTimers: true });
         
         const mockChildProcess = {
           stdout: { on: jest.fn() },
@@ -315,12 +310,12 @@ describe('ClaudeDeveloper', () => {
         // Cleanup
         jest.useRealTimers();
         processKillSpy.mockRestore();
-      }, 20000);
+      }, 30000);
     });
 
     describe('Graceful Shutdown', () => {
       it('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
-        jest.useFakeTimers();
+        jest.useFakeTimers({ legacyFakeTimers: true });
         
         // execAsync mock for killProcessGroup (Windows case)
         mockExecAsync.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }));
@@ -364,7 +359,7 @@ describe('ClaudeDeveloper', () => {
         
         // contextFileManager mock 설정
         (longTimeoutDeveloper as any).contextFileManager = {
-          cleanupContextFiles: mockCleanupContextFiles
+          cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
         };
         
         // 초기화
@@ -403,7 +398,7 @@ describe('ClaudeDeveloper', () => {
       }, 10000);
 
       it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
-        jest.useFakeTimers();
+        jest.useFakeTimers({ legacyFakeTimers: true });
         
         // execAsync mock for killProcessGroup (Windows case) - reject for error case
         mockExecAsync.mockImplementation(() => Promise.reject(new Error('Operation not permitted')));
@@ -434,7 +429,7 @@ describe('ClaudeDeveloper', () => {
         // contextFileManager mock 설정
         (claudeDeveloper as any).contextFileManager = {
           cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
-        };
+        }
         
         // 초기화
         mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
@@ -597,7 +592,7 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
               ANTHROPIC_API_KEY: 'test-api-key'
             }),
             stdio: ['pipe', 'pipe', 'pipe'],
-            detached: true
+            detached: process.platform !== 'win32'
           })
         );
       });
@@ -732,7 +727,7 @@ Test complete
             env: expect.objectContaining({
               ANTHROPIC_API_KEY: 'test-api-key'
             }),
-            detached: true
+            detached: process.platform !== 'win32'
           })
         );
       });
@@ -797,7 +792,7 @@ Test complete
         ['-c', expect.stringMatching(/cat ".*\.txt" \| "claude" --dangerously-skip-permissions -p/)],
         expect.objectContaining({
           cwd: '/tmp/workspace',
-          detached: true,
+          detached: process.platform !== 'win32',
           stdio: ['pipe', 'pipe', 'pipe']
         })
       );

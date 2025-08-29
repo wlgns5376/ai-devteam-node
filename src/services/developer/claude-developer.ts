@@ -566,7 +566,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
       // SIGTERM은 정상 종료 시도(/f 없음), SIGKILL은 강제 종료(/f 포함)
       const forceFlag = signal === 'SIGKILL' ? ' /f' : '';
       try {
-        await execAsync(`taskkill /pid ${pid} /t${forceFlag}`, { encoding: 'utf8', timeout: 5000 });
+        await execAsync(`taskkill /pid ${pid} /t${forceFlag}`, { encoding: 'utf8', timeout: this.FORCE_KILL_TIMEOUT_MS });
         this.dependencies.logger.debug(`Terminated process tree on Windows with signal ${signal}`, { pid });
       } catch (error: unknown) {
         // 프로세스가 이미 종료된 경우는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
@@ -574,6 +574,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         const isAlreadyExitedError =
           error instanceof Error && 
           'code' in error && 
+          typeof (error as { code: unknown }).code === 'number' &&
           (error as { code: number }).code === 128;
 
         if (!isAlreadyExitedError) {
@@ -597,7 +598,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         const isNoSuchProcessError =
           error instanceof Error && 
           'code' in error && 
-          (error as { code: string }).code === 'ESRCH';
+          (error as NodeJS.ErrnoException).code === 'ESRCH';
 
         if (!isNoSuchProcessError) {
           this.dependencies.logger.warn('Failed to kill process group', {
