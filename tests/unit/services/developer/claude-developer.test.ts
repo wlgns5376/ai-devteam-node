@@ -31,7 +31,8 @@ jest.mock('@/services/developer/context-file-manager', () => ({
     initialize: jest.fn().mockResolvedValue(undefined),
     createContextFile: jest.fn().mockResolvedValue('test-context-file.md'),
     cleanupContextFiles: jest.fn().mockResolvedValue(undefined),
-    getContextFilePath: jest.fn().mockReturnValue('/tmp/test-context.md')
+    getContextFilePath: jest.fn().mockReturnValue('/tmp/test-context.md'),
+    splitLongContext: jest.fn().mockResolvedValue([])
   }))
 }));
 
@@ -65,14 +66,16 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
     stdout: {
       on: jest.fn((event, callback) => {
         if (event === 'data' && stdout) {
-          process.nextTick(() => callback(stdout));
+          // 데이터를 약간의 지연 후 전송
+          setTimeout(() => callback(stdout), 1);
         }
       })
     },
     stderr: {
       on: jest.fn((event, callback) => {
         if (event === 'data' && stderr) {
-          process.nextTick(() => callback(stderr));
+          // 데이터를 약간의 지연 후 전송
+          setTimeout(() => callback(stderr), 1);
         }
       })
     },
@@ -82,16 +85,12 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
     on: jest.fn((event, callback) => {
       if (event === 'close') {
         callbacks.close.push(callback);
-        // 정상 종료 시 즉시 close 이벤트 발생
-        if (exitCode === 0) {
-          process.nextTick(() => callback(exitCode, signal));
-        }
+        // 정상 종료 시 close 이벤트 발생 (약간의 지연 추가)
+        setTimeout(() => callback(exitCode, signal), 10);
       } else if (event === 'exit') {
         callbacks.exit.push(callback);
-        // exit 이벤트도 등록
-        if (exitCode === 0) {
-          process.nextTick(() => callback());
-        }
+        // exit 이벤트 등록
+        setTimeout(() => callback(), 5);
       } else if (event === 'error') {
         callbacks.error.push(callback);
       }
@@ -100,10 +99,8 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
     once: jest.fn((event, callback) => {
       if (event === 'exit') {
         callbacks.exit.push(callback);
-        // 정상 종료 시 exit 이벤트 발생
-        if (exitCode === 0) {
-          process.nextTick(() => callback());
-        }
+        // exit 이벤트 발생
+        setTimeout(() => callback(), 5);
       }
       return mockChildProcess;
     }),
