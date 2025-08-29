@@ -397,6 +397,10 @@ describe('ClaudeDeveloper', () => {
         const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => {
           throw new Error('Operation not permitted');
         });
+        
+        // 초기화
+        mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
+        await claudeDeveloper.initialize();
 
         // When: 프로세스 시작 후 cleanup
         const executePromise = claudeDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {});
