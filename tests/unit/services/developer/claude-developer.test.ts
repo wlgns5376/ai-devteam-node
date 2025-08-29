@@ -30,7 +30,8 @@ jest.mock('@/services/developer/context-file-manager', () => ({
   ContextFileManager: jest.fn().mockImplementation(() => ({
     initialize: jest.fn().mockResolvedValue(undefined),
     createContextFile: jest.fn().mockResolvedValue('test-context-file.md'),
-    cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
+    cleanupContextFiles: jest.fn().mockResolvedValue(undefined),
+    getContextFilePath: jest.fn().mockReturnValue('/tmp/test-context.md')
   }))
 }));
 
@@ -356,8 +357,8 @@ describe('ClaudeDeveloper', () => {
         // 프로세스가 시작될 때까지 대기
         jest.advanceTimersByTime(10);
 
-        // When: cleanupActiveProcesses 호출
-        const cleanupPromise = longTimeoutDeveloper.cleanupActiveProcesses();
+        // When: cleanup 호출 (cleanupActiveProcesses가 내부적으로 호출됨)
+        const cleanupPromise = longTimeoutDeveloper.cleanup();
         
         // exit 이벤트 발생 시뮬레이션
         jest.advanceTimersByTime(50);
@@ -404,8 +405,8 @@ describe('ClaudeDeveloper', () => {
         const executePromise = claudeDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {});
         jest.advanceTimersByTime(10);
         
-        // cleanupActiveProcesses 호출
-        const cleanupPromise = claudeDeveloper.cleanupActiveProcesses();
+        // cleanup 호출 (cleanupActiveProcesses가 내부적으로 호출됨)
+        const cleanupPromise = claudeDeveloper.cleanup();
         
         // 타임아웃 발생 시뮬레이션
         jest.advanceTimersByTime(1000);

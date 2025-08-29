@@ -191,6 +191,9 @@ export class ClaudeDeveloper implements DeveloperInterface {
   }
 
   async cleanup(): Promise<void> {
+    // 활성 프로세스 정리
+    await this.cleanupActiveProcesses();
+    
     // 컨텍스트 파일 정리 (contextFileManager가 초기화된 경우에만)
     if (this.contextFileManager) {
       await this.contextFileManager.cleanupContextFiles();
@@ -203,9 +206,9 @@ export class ClaudeDeveloper implements DeveloperInterface {
   /**
    * 모든 활성 프로세스를 정리하는 메서드 (graceful shutdown용)
    */
-  async cleanupActiveProcesses(): Promise<void> {
+  private async cleanupActiveProcesses(): Promise<void> {
     const processesToClean = Array.from(this.activeProcesses);
-    this.activeProcesses.clear();
+    this.activeProcesses.clear(); // 경쟁 상태 방지를 위해 즉시 clear
 
     this.dependencies.logger.debug('Cleaning up active Claude processes', {
       activeProcessCount: processesToClean.length
@@ -561,11 +564,17 @@ export class ClaudeDeveloper implements DeveloperInterface {
         this.dependencies.logger.debug(`Terminated process tree on Windows with signal ${signal}`, { pid });
       } catch (error: unknown) {
         // 프로세스가 이미 종료된 경우(exit code 128)는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
-        if (!(error && typeof error === 'object' && 'status' in error && (error as { status: unknown }).status === 128)) {
+        const isAlreadyExitedError =
+          error &&
+          typeof error === 'object' &&
+          'status' in error &&
+          (error as { status: unknown }).status === 128;
+
+        if (!isAlreadyExitedError) {
           this.dependencies.logger.warn('Failed to kill process tree on Windows', {
             pid,
             signal,
-            error
+            error,
           });
         }
       }
@@ -578,8 +587,11 @@ export class ClaudeDeveloper implements DeveloperInterface {
           groupPid: -pid
         });
       } catch (error) {
-        // 프로세스가 이미 종료된 경우 무시
-        if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) {
+        // ESRCH: No such process. 프로세스가 이미 종료된 경우이므로 무시합니다.
+        const isNoSuchProcessError =
+          error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ESRCH';
+
+        if (!isNoSuchProcessError) {
           this.dependencies.logger.warn('Failed to kill process group', {
             pid,
             signal,
