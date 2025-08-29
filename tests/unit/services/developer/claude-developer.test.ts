@@ -15,12 +15,23 @@ jest.mock('fs/promises', () => ({
   writeFile: jest.fn().mockResolvedValue(undefined),
   unlink: jest.fn().mockResolvedValue(undefined),
   access: jest.fn().mockResolvedValue(undefined),
-  readFile: jest.fn().mockResolvedValue('')
+  readFile: jest.fn().mockResolvedValue(''),
+  mkdir: jest.fn().mockResolvedValue(undefined),
+  readdir: jest.fn().mockResolvedValue([])
 }));
 
 // os mock
 jest.mock('os', () => ({
   tmpdir: jest.fn(() => '/tmp')
+}));
+
+// ContextFileManager mock
+jest.mock('@/services/developer/context-file-manager', () => ({
+  ContextFileManager: jest.fn().mockImplementation(() => ({
+    initialize: jest.fn().mockResolvedValue(undefined),
+    createContextFile: jest.fn().mockResolvedValue('test-context-file.md'),
+    cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
+  }))
 }));
 
 import { ClaudeDeveloper } from '@/services/developer/claude-developer';
@@ -148,21 +159,27 @@ describe('ClaudeDeveloper', () => {
 
     describe('프로세스 그룹 종료', () => {
       it('타임아웃 시 프로세스 그룹 전체를 종료해야 한다', async () => {
-        // Given: 타임아웃이 발생하는 긴 실행 명령
-        const mockChildProcess = createMockSpawn('', '', 0);
-        mockChildProcess.on = jest.fn((event, callback) => {
-          // 타임아웃 시간 후에 close 이벤트 발생
-          if (event === 'close') {
-            setTimeout(() => callback(null, 'SIGTERM'), 100);
-          }
-        });
-        mockChildProcess.once = jest.fn((event, callback) => {
-          // exit 이벤트를 발생시키지 않음 (타임아웃 테스트를 위해)
-        });
-        mockChildProcess.pid = 54321;
-        mockChildProcess.kill = jest.fn();
+        jest.useFakeTimers();
         
-        mockedSpawn.mockReturnValue(mockChildProcess);
+        // Given: 타임아웃이 발생하는 긴 실행 명령
+        const mockChildProcess: any = {
+          stdout: { on: jest.fn() },
+          stderr: { on: jest.fn() },
+          stdin: { end: jest.fn() },
+          on: jest.fn(),
+          once: jest.fn(),
+          removeListener: jest.fn(),
+          kill: jest.fn(),
+          killed: false,
+          exitCode: null,
+          pid: 54321
+        };
+        
+        // on 메서드가 자기 자신을 반환하도록 설정
+        mockChildProcess.on.mockReturnValue(mockChildProcess);
+        mockChildProcess.once.mockReturnValue(mockChildProcess);
+        
+        mockedSpawn.mockReturnValue(mockChildProcess as any);
 
         // process.kill mock
         const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => true);
@@ -177,17 +194,20 @@ describe('ClaudeDeveloper', () => {
         mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await shortTimeoutDeveloper.initialize();
         
+        // 프롬프트 실행 시작 (await 하지 않음)
+        const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp');
+        
+        // 타임아웃 발생시킴
+        await jest.advanceTimersByTimeAsync(51);
+        
         // Then: 타임아웃 에러 발생 및 프로세스 그룹 종료
-        await expect(
-          shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp')
-        ).rejects.toThrow(DeveloperError)
-
-        // 프로세스 그룹에만 SIGTERM을 보냄 (개별 kill은 하지 않음)
+        await expect(executePromise).rejects.toThrow('Claude execution timeout');
         
         // 프로세스 그룹 종료 (-pid로 호출)
         expect(processKillSpy).toHaveBeenCalledWith(-54321, 'SIGTERM');
 
         // Cleanup
+        jest.useRealTimers();
         processKillSpy.mockRestore();
       });
 
@@ -336,8 +356,8 @@ describe('ClaudeDeveloper', () => {
         // 프로세스가 시작될 때까지 대기
         jest.advanceTimersByTime(10);
 
-        // When: cleanup 호출
-        const cleanupPromise = longTimeoutDeveloper.cleanup();
+        // When: cleanupActiveProcesses 호출
+        const cleanupPromise = longTimeoutDeveloper.cleanupActiveProcesses();
         
         // exit 이벤트 발생 시뮬레이션
         jest.advanceTimersByTime(50);
@@ -384,8 +404,8 @@ describe('ClaudeDeveloper', () => {
         const executePromise = claudeDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {});
         jest.advanceTimersByTime(10);
         
-        // cleanup 호출
-        const cleanupPromise = claudeDeveloper.cleanup();
+        // cleanupActiveProcesses 호출
+        const cleanupPromise = claudeDeveloper.cleanupActiveProcesses();
         
         // 타임아웃 발생 시뮬레이션
         jest.advanceTimersByTime(1000);

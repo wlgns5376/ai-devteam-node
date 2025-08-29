@@ -191,9 +191,6 @@ export class ClaudeDeveloper implements DeveloperInterface {
   }
 
   async cleanup(): Promise<void> {
-    // 활성 프로세스 정리
-    await this.cleanupActiveProcesses();
-    
     // 컨텍스트 파일 정리 (contextFileManager가 초기화된 경우에만)
     if (this.contextFileManager) {
       await this.contextFileManager.cleanupContextFiles();
@@ -204,14 +201,17 @@ export class ClaudeDeveloper implements DeveloperInterface {
   }
 
   /**
-   * 활성 프로세스를 정리하는 메서드
+   * 모든 활성 프로세스를 정리하는 메서드 (graceful shutdown용)
    */
-  private async cleanupActiveProcesses(): Promise<void> {
+  async cleanupActiveProcesses(): Promise<void> {
+    const processesToClean = Array.from(this.activeProcesses);
+    this.activeProcesses.clear();
+
     this.dependencies.logger.debug('Cleaning up active Claude processes', {
-      activeProcessCount: this.activeProcesses.size
+      activeProcessCount: processesToClean.length
     });
 
-    const cleanupPromises = Array.from(this.activeProcesses).map(async (child) => {
+    const cleanupPromises = processesToClean.map(async (child) => {
       try {
         // 프로세스 그룹에 SIGTERM 전송
         this.killProcessGroup(child.pid, 'SIGTERM');
@@ -244,7 +244,6 @@ export class ClaudeDeveloper implements DeveloperInterface {
     });
 
     await Promise.all(cleanupPromises);
-    this.activeProcesses.clear();
   }
 
   async isAvailable(): Promise<boolean> {
@@ -562,7 +561,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         this.dependencies.logger.debug(`Terminated process tree on Windows with signal ${signal}`, { pid });
       } catch (error: unknown) {
         // 프로세스가 이미 종료된 경우(exit code 128)는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
-        if ((error as any).status !== 128) {
+        if (!(error && typeof error === 'object' && 'status' in error && (error as { status: unknown }).status === 128)) {
           this.dependencies.logger.warn('Failed to kill process tree on Windows', {
             pid,
             signal,
@@ -580,7 +579,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         });
       } catch (error) {
         // 프로세스가 이미 종료된 경우 무시
-        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+        if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) {
           this.dependencies.logger.warn('Failed to kill process group', {
             pid,
             signal,
