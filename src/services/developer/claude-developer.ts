@@ -565,10 +565,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
       } catch (error: unknown) {
         // 프로세스가 이미 종료된 경우(exit code 128)는 무시하고, 그 외의 경우에만 경고를 로깅합니다.
         const isAlreadyExitedError =
-          error &&
-          typeof error === 'object' &&
-          'status' in error &&
-          (error as { status: unknown }).status === 128;
+          error instanceof Error && (error as any).status === 128;
 
         if (!isAlreadyExitedError) {
           this.dependencies.logger.warn('Failed to kill process tree on Windows', {
