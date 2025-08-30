@@ -173,6 +173,12 @@ describe('Task Reassignment Integration Tests', () => {
         boardItem: {
           id: taskId,
           title: '테스트 작업 2',
+          status: 'IN_PROGRESS',
+          assignee: null,
+          labels: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          projectId: 'test-project',
           metadata: {
             repository: 'test-owner/test-repo'
           }
