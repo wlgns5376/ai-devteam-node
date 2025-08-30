@@ -233,7 +233,7 @@ describe('ClaudeDeveloper', () => {
         processKillSpy.mockRestore();
       });
 
-      it.skip('SIGKILL 전송 전에 프로세스 그룹 종료를 시도해야 한다', async () => {
+      it('SIGKILL 전송 전에 프로세스 그룹 종료를 시도해야 한다', async () => {
         // Given: SIGTERM으로 종료되지 않는 프로세스
         jest.useFakeTimers({ legacyFakeTimers: true });
         
@@ -279,18 +279,34 @@ describe('ClaudeDeveloper', () => {
 
         // 프로세스가 시작될 때까지 대기
         await new Promise(resolve => setImmediate(resolve));
+        jest.advanceTimersByTime(10);
         
         // 타임아웃 발생
         jest.advanceTimersByTime(51);
         
-        // Then: 프로세스 그룹에 SIGTERM 전송
+        // async killProcessGroup이 실행될 시간을 주기
         await new Promise(resolve => setImmediate(resolve));
-        expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGTERM');
+        await new Promise(resolve => process.nextTick(resolve));
+        
+        // Then: 프로세스 그룹에 SIGTERM 전송
+        if (process.platform !== 'win32') {
+          expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGTERM');
+        } else {
+          // Windows의 경우 execAsync가 호출됨
+          expect(mockExecAsync).toHaveBeenCalled();
+        }
 
         // 5초 후 SIGKILL 전송
         jest.advanceTimersByTime(5000);
         await new Promise(resolve => setImmediate(resolve));
-        expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGKILL');
+        await new Promise(resolve => process.nextTick(resolve));
+        
+        if (process.platform !== 'win32') {
+          expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGKILL');
+        } else {
+          // Windows의 경우 execAsync가 호출됨 (SIGKILL로)
+          expect(mockExecAsync).toHaveBeenCalledTimes(2);
+        }
 
         // 프로세스 종료 시뮬레이션
         const closeCallback = mockChildProcess.on.mock.calls.find(
@@ -314,7 +330,7 @@ describe('ClaudeDeveloper', () => {
     });
 
     describe('Graceful Shutdown', () => {
-      it.skip('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
+      it('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
         jest.useFakeTimers({ legacyFakeTimers: true });
         
         // execAsync mock for killProcessGroup (Windows case)
@@ -357,14 +373,17 @@ describe('ClaudeDeveloper', () => {
           { logger: mockLogger }
         );
         
-        // contextFileManager mock 설정
-        (longTimeoutDeveloper as any).contextFileManager = {
-          cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
-        };
-        
-        // 초기화
+        // 초기화 먼저
         mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await longTimeoutDeveloper.initialize();
+        
+        // contextFileManager를 mock으로 설정
+        const mockCleanupContextFiles = jest.fn().mockResolvedValue(undefined);
+        (longTimeoutDeveloper as any).contextFileManager = {
+          cleanupContextFiles: mockCleanupContextFiles,
+          shouldSplitContext: jest.fn().mockReturnValue(false),
+          generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
+        };
 
         const promises = [
           longTimeoutDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {}),
@@ -397,11 +416,11 @@ describe('ClaudeDeveloper', () => {
         processKillSpy.mockRestore();
       }, 10000);
 
-      it.skip('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
+      it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
         jest.useFakeTimers({ legacyFakeTimers: true });
         
-        // execAsync mock for killProcessGroup (Windows case) - reject for error case
-        mockExecAsync.mockImplementation(() => Promise.reject(new Error('Operation not permitted')));
+        // 먼저 기본 mock 설정
+        mockExecAsync.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }));
         
         // Given: 종료할 수 없는 프로세스
         const stubProcess: any = {
@@ -421,19 +440,25 @@ describe('ClaudeDeveloper', () => {
 
         mockedSpawn.mockReturnValue(stubProcess as any);
 
-        // process.kill mock
+        // process.kill mock - Unix 시스템에서 프로세스 종료 실패 시뮬레이션
         const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => {
-          throw new Error('Operation not permitted');
+          if (process.platform !== 'win32') {
+            throw new Error('Operation not permitted');
+          }
+          return true;
         });
         
-        // contextFileManager mock 설정
-        (claudeDeveloper as any).contextFileManager = {
-          cleanupContextFiles: jest.fn().mockResolvedValue(undefined)
-        }
-        
-        // 초기화
+        // 초기화 먼저
         mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await claudeDeveloper.initialize();
+        
+        // contextFileManager를 mock으로 설정
+        const mockCleanupContextFiles = jest.fn().mockResolvedValue(undefined);
+        (claudeDeveloper as any).contextFileManager = {
+          cleanupContextFiles: mockCleanupContextFiles,
+          shouldSplitContext: jest.fn().mockReturnValue(false),
+          generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
+        };
 
         // When: 프로세스 시작 후 cleanup
         const executePromise = claudeDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {});
