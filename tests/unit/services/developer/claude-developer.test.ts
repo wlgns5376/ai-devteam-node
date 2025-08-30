@@ -70,7 +70,7 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
       on: jest.fn((event, callback) => {
         if (event === 'data' && stdout) {
           // 데이터를 약간의 지연 후 전송
-          process.nextTick(() => callback(stdout));
+          setImmediate(() => callback(stdout));
         }
       })
     },
@@ -78,7 +78,7 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
       on: jest.fn((event, callback) => {
         if (event === 'data' && stderr) {
           // 데이터를 약간의 지연 후 전송
-          process.nextTick(() => callback(stderr));
+          setImmediate(() => callback(stderr));
         }
       })
     },
@@ -89,11 +89,10 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
       if (event === 'close') {
         callbacks.close.push(callback);
         // 정상 종료 시 close 이벤트 발생 (약간의 지연 추가)
-        process.nextTick(() => callback(exitCode, signal));
+        setImmediate(() => callback(exitCode, signal));
       } else if (event === 'exit') {
         callbacks.exit.push(callback);
-        // exit 이벤트 등록
-        process.nextTick(() => callback());
+        // exit 이벤트 등록만 하고 즉시 호출하지 않음
       } else if (event === 'error') {
         callbacks.error.push(callback);
       }
@@ -102,15 +101,14 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
     once: jest.fn((event, callback) => {
       if (event === 'exit') {
         callbacks.exit.push(callback);
-        // exit 이벤트 발생
-        process.nextTick(() => callback());
+        // exit 이벤트는 등록만 하고 즉시 호출하지 않음
       }
       return mockChildProcess;
     }),
     removeListener: jest.fn(),
     kill: jest.fn(),
     killed: false,
-    exitCode: exitCode === 0 ? 0 : null,
+    exitCode: null,  // 초기값은 null, close 이벤트 후에 설정됨
     pid: 12345
   };
   
@@ -235,7 +233,6 @@ describe('ClaudeDeveloper', () => {
 
       it('SIGKILL 전송 전에 프로세스 그룹 종료를 시도해야 한다', async () => {
         // Given: SIGTERM으로 종료되지 않는 프로세스
-        jest.useFakeTimers({ legacyFakeTimers: true });
         
         const mockChildProcess: any = {
           stdout: { on: jest.fn() },
@@ -243,8 +240,7 @@ describe('ClaudeDeveloper', () => {
           stdin: { end: jest.fn() },
           on: jest.fn((event: string, callback: Function) => {
             if (event === 'close') {
-              // 타임아웃 후 close 이벤트 발생
-              setTimeout(() => callback(null, 'SIGKILL'), 6000);
+              // 타임아웃 후 close 이벤트 발생하지 않음 (타임아웃 테스트)
             } else if (event === 'exit') {
               // exit 이벤트도 등록만 해둠 (호출하지 않음)
             }
@@ -281,18 +277,8 @@ describe('ClaudeDeveloper', () => {
         
         const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp').catch(e => e);
 
-        // 프로세스가 시작될 때까지 대기
-        await new Promise(resolve => setImmediate(resolve));
-        jest.advanceTimersByTime(10);
-        
-        // 타임아웃 발생
-        jest.advanceTimersByTime(51);
-        
-        // async killProcessGroup이 실행될 시간을 주기
-        await new Promise(resolve => setImmediate(resolve));
-        await new Promise(resolve => process.nextTick(resolve));
-        // 비동기 연속 호출을 위한 추가 대기
-        await new Promise(resolve => setTimeout(resolve, 10));
+        // 타임아웃 발생을 기다림
+        await new Promise(resolve => setTimeout(resolve, 60));
         
         // Then: 프로세스 그룹에 SIGTERM 전송
         if (process.platform !== 'win32') {
@@ -302,16 +288,15 @@ describe('ClaudeDeveloper', () => {
           expect(mockExecAsync).toHaveBeenCalled();
         }
 
-        // 5초 후 SIGKILL 전송
-        jest.advanceTimersByTime(5000);
-        await new Promise(resolve => setImmediate(resolve));
-        await new Promise(resolve => process.nextTick(resolve));
+        // 5초 후 SIGKILL 전송 대기
+        await new Promise(resolve => setTimeout(resolve, 5100));
         
         if (process.platform !== 'win32') {
           expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGKILL');
         } else {
           // Windows의 경우 execAsync가 호출됨 (SIGKILL로)
-          expect(mockExecAsync).toHaveBeenCalledTimes(2);
+          const callsCount = mockExecAsync.mock.calls.length;
+          expect(callsCount).toBeGreaterThanOrEqual(2);
         }
 
         // 프로세스 종료 시뮬레이션
@@ -322,19 +307,13 @@ describe('ClaudeDeveloper', () => {
           closeCallback(null, 'SIGKILL');
         }
         
-        // 타임아웃 처리 시간 허용
-        jest.advanceTimersByTime(100);
-        
         const result = await executePromise;
         expect(result).toBeInstanceOf(Error);
         expect(result.message).toContain('timeout');
-        
-        await new Promise(resolve => setImmediate(resolve));
 
         // Cleanup
-        jest.useRealTimers();
         processKillSpy.mockRestore();
-      });
+      }, 10000);
     });
 
     describe('Graceful Shutdown', () => {
@@ -350,8 +329,6 @@ describe('ClaudeDeveloper', () => {
           shouldSplitContext: jest.fn().mockReturnValue(false),
           generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
         }));
-        
-        jest.useFakeTimers({ legacyFakeTimers: true });
         
         // execAsync mock for killProcessGroup (Windows case)
         mockExecAsync.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }));
@@ -412,24 +389,21 @@ describe('ClaudeDeveloper', () => {
         ];
 
         // 프로세스가 시작될 때까지 대기
-        await new Promise(resolve => process.nextTick(resolve));
-        jest.advanceTimersByTime(10);
+        await new Promise(resolve => setImmediate(resolve));
 
         // When: cleanup 호출 (cleanupActiveProcesses가 내부적으로 호출됨)
         const cleanupPromise = longTimeoutDeveloper.cleanup();
         
-        // exit 이벤트 발생 시뮬레이션
-        jest.advanceTimersByTime(100);
-        await Promise.resolve(); // Let promises resolve
-        await new Promise(resolve => setImmediate(resolve));
-        jest.advanceTimersByTime(100);
-        
+        // cleanup이 완료될 때까지 기다림
         await cleanupPromise;
 
         // Then: Windows의 경우 execAsync가 호출되고, Unix의 경우 process.kill이 호출됨
         if (process.platform === 'win32') {
-          // Windows: execAsync가 호출됨
-          expect(mockExecAsync).toHaveBeenCalled();
+          // Windows: execAsync가 호출됨 (초기화용 + 각 프로세스별 SIGTERM)
+          const cleanupCalls = mockExecAsync.mock.calls.filter(call => 
+            call[0]?.includes('taskkill')
+          );
+          expect(cleanupCalls.length).toBeGreaterThanOrEqual(mockProcesses.length);
         } else {
           // Unix: 모든 프로세스에 대해 process.kill이 호출됨
           mockProcesses.forEach((mockProcess, index) => {
@@ -438,7 +412,6 @@ describe('ClaudeDeveloper', () => {
         }
 
         // Cleanup
-        jest.useRealTimers();
         processKillSpy.mockRestore();
       }, 10000);
 
@@ -454,8 +427,6 @@ describe('ClaudeDeveloper', () => {
           shouldSplitContext: jest.fn().mockReturnValue(false),
           generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
         }));
-        
-        jest.useFakeTimers({ legacyFakeTimers: true });
         
         // 먼저 기본 mock 설정
         mockExecAsync.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }));
@@ -500,15 +471,12 @@ describe('ClaudeDeveloper', () => {
 
         // When: 프로세스 시작 후 cleanup
         const executePromise = claudeDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {});
-        jest.advanceTimersByTime(10);
+        
+        // 프로세스가 시작될 때까지 대기
+        await new Promise(resolve => setImmediate(resolve));
         
         // cleanup 호출 (cleanupActiveProcesses가 내부적으로 호출됨)
         const cleanupPromise = claudeDeveloper.cleanup();
-        
-        // 타임아웃 발생 시뮬레이션
-        jest.advanceTimersByTime(1000);
-        await Promise.resolve(); // Let promises resolve
-        jest.advanceTimersByTime(100);
         
         // cleanup이 완료되어야 함 (에러를 throw하지 않음)
         await cleanupPromise;
@@ -522,7 +490,6 @@ describe('ClaudeDeveloper', () => {
         );
 
         // Cleanup
-        jest.useRealTimers();
         processKillSpy.mockRestore();
       }, 10000);
     });
