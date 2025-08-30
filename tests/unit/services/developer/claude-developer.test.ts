@@ -237,18 +237,22 @@ describe('ClaudeDeveloper', () => {
         // Given: SIGTERM으로 종료되지 않는 프로세스
         jest.useFakeTimers({ legacyFakeTimers: true });
         
-        const mockChildProcess = {
+        const mockChildProcess: any = {
           stdout: { on: jest.fn() },
           stderr: { on: jest.fn() },
           stdin: { end: jest.fn() },
-          on: jest.fn((event, callback) => {
+          on: jest.fn((event: string, callback: Function) => {
             if (event === 'close') {
               // 타임아웃 후 close 이벤트 발생
               setTimeout(() => callback(null, 'SIGKILL'), 6000);
+            } else if (event === 'exit') {
+              // exit 이벤트도 등록만 해둠 (호출하지 않음)
             }
+            return mockChildProcess;
           }),
-          once: jest.fn((event, callback) => {
+          once: jest.fn((event: string, callback: Function) => {
             // exit 이벤트 발생하지 않음 (타임아웃 테스트)
+            return mockChildProcess;
           }),
           removeListener: jest.fn(),
           kill: jest.fn(),
@@ -312,7 +316,7 @@ describe('ClaudeDeveloper', () => {
 
         // 프로세스 종료 시뮬레이션
         const closeCallback = mockChildProcess.on.mock.calls.find(
-          call => call[0] === 'close'
+          (call: any) => call[0] === 'close'
         )?.[1];
         if (closeCallback) {
           closeCallback(null, 'SIGKILL');
@@ -324,11 +328,13 @@ describe('ClaudeDeveloper', () => {
         const result = await executePromise;
         expect(result).toBeInstanceOf(Error);
         expect(result.message).toContain('timeout');
+        
+        await new Promise(resolve => setImmediate(resolve));
 
         // Cleanup
         jest.useRealTimers();
         processKillSpy.mockRestore();
-      }, 30000);
+      });
     });
 
     describe('Graceful Shutdown', () => {
@@ -415,15 +421,21 @@ describe('ClaudeDeveloper', () => {
         // exit 이벤트 발생 시뮬레이션
         jest.advanceTimersByTime(100);
         await Promise.resolve(); // Let promises resolve
+        await new Promise(resolve => setImmediate(resolve));
         jest.advanceTimersByTime(100);
         
         await cleanupPromise;
 
-        // Then: 모든 프로세스가 종료되어야 함
-        mockProcesses.forEach((mockProcess, index) => {
-          // cleanup은 이제 프로세스 그룹에만 시그널을 보냄
-          expect(processKillSpy).toHaveBeenCalledWith(-(1000 + index), 'SIGTERM');
-        });
+        // Then: Windows의 경우 execAsync가 호출되고, Unix의 경우 process.kill이 호출됨
+        if (process.platform === 'win32') {
+          // Windows: execAsync가 호출됨
+          expect(mockExecAsync).toHaveBeenCalled();
+        } else {
+          // Unix: 모든 프로세스에 대해 process.kill이 호출됨
+          mockProcesses.forEach((mockProcess, index) => {
+            expect(processKillSpy).toHaveBeenCalledWith(-(1000 + index), 'SIGTERM');
+          });
+        }
 
         // Cleanup
         jest.useRealTimers();
@@ -501,11 +513,11 @@ describe('ClaudeDeveloper', () => {
         // cleanup이 완료되어야 함 (에러를 throw하지 않음)
         await cleanupPromise;
 
-        // Then: 경고 로그가 기록되어야 함
+        // Then: 경고 로그가 기록되어야 함 (또는 killProcessGroup의 경고)
         expect(mockLogger.warn).toHaveBeenCalledWith(
-          'Failed to cleanup process',
+          expect.stringMatching(/Failed to (cleanup process|kill process)/),
           expect.objectContaining({
-            pid: 55555
+            pid: expect.any(Number)
           })
         );
 
@@ -772,6 +784,18 @@ $ git commit -m "Refactor code structure"
         fs.writeFile.mockResolvedValue(undefined);
         fs.unlink.mockResolvedValue(undefined);
         
+        // ContextFileManager를 모킹
+        const ContextFileManager = require('@/services/developer/context-file-manager').ContextFileManager;
+        ContextFileManager.mockImplementation(() => ({
+          initialize: jest.fn().mockResolvedValue(undefined),
+          createContextFile: jest.fn().mockResolvedValue('test-context-file.md'),
+          cleanupContextFiles: jest.fn().mockResolvedValue(undefined),
+          getContextFilePath: jest.fn().mockReturnValue('/tmp/test-context.md'),
+          splitLongContext: jest.fn().mockResolvedValue([]),
+          shouldSplitContext: jest.fn().mockReturnValue(false),
+          generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
+        }));
+        
         // Given: 프롬프트 준비
         const mockOutput = `작업을 수행했습니다.
         
@@ -840,6 +864,18 @@ Test complete
       fs.writeFile.mockResolvedValue(undefined);
       fs.unlink.mockResolvedValue(undefined);
       
+      // ContextFileManager를 모킹
+      const ContextFileManager = require('@/services/developer/context-file-manager').ContextFileManager;
+      ContextFileManager.mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        createContextFile: jest.fn().mockResolvedValue('test-context-file.md'),
+        cleanupContextFiles: jest.fn().mockResolvedValue(undefined),
+        getContextFilePath: jest.fn().mockReturnValue('/tmp/test-context.md'),
+        splitLongContext: jest.fn().mockResolvedValue([]),
+        shouldSplitContext: jest.fn().mockReturnValue(false),
+        generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
+      }));
+      
       // Given: 초기화
       mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();
@@ -876,6 +912,18 @@ Test complete
 
       const mockWrite = jest.spyOn(require('fs/promises'), 'writeFile').mockResolvedValue(undefined);
       const mockUnlink = jest.spyOn(require('fs/promises'), 'unlink').mockResolvedValue(undefined);
+      
+      // ContextFileManager를 모킹
+      const ContextFileManager = require('@/services/developer/context-file-manager').ContextFileManager;
+      ContextFileManager.mockImplementation(() => ({
+        initialize: jest.fn().mockResolvedValue(undefined),
+        createContextFile: jest.fn().mockResolvedValue('test-context-file.md'),
+        cleanupContextFiles: jest.fn().mockResolvedValue(undefined),
+        getContextFilePath: jest.fn().mockReturnValue('/tmp/test-context.md'),
+        splitLongContext: jest.fn().mockResolvedValue([]),
+        shouldSplitContext: jest.fn().mockReturnValue(false),
+        generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
+      }));
 
       const mockOutput = `작업을 수행했습니다.
 

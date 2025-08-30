@@ -9,7 +9,7 @@ import {
 } from '@/types/developer.types';
 import { ResponseParser } from './response-parser';
 import { ContextFileManager, ContextFileConfig } from './context-file-manager';
-import { exec, spawn, ChildProcess, execSync } from 'child_process';
+import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -575,6 +575,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         const isAlreadyExitedError =
           error instanceof Error && 
           'code' in error && 
+          typeof (error as { code: unknown }).code === 'number' &&
           (error as { code: number }).code === this.WINDOWS_ERROR_PROCESS_NOT_FOUND;
 
         if (!isAlreadyExitedError) {
@@ -598,7 +599,7 @@ export class ClaudeDeveloper implements DeveloperInterface {
         const isNoSuchProcessError =
           error instanceof Error && 
           'code' in error && 
-          (error as NodeJS.ErrnoException).code === 'ESRCH';
+          (error as { code: unknown }).code === 'ESRCH';
 
         if (!isNoSuchProcessError) {
           this.dependencies.logger.warn('Failed to kill process group', {
