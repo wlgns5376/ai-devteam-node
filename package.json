@@ -1,6 +1,6 @@
 {
   "name": "ai-devteam-node",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "AI DevTeam automation system using Claude Code and Gemini CLI for terminal-based development",
   "main": "dist/index.js",
   "directories": {

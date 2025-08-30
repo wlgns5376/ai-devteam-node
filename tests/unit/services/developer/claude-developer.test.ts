@@ -287,6 +287,8 @@ describe('ClaudeDeveloper', () => {
         // async killProcessGroup이 실행될 시간을 주기
         await new Promise(resolve => setImmediate(resolve));
         await new Promise(resolve => process.nextTick(resolve));
+        // 비동기 연속 호출을 위한 추가 대기
+        await new Promise(resolve => setTimeout(resolve, 10));
         
         // Then: 프로세스 그룹에 SIGTERM 전송
         if (process.platform !== 'win32') {
@@ -331,6 +333,18 @@ describe('ClaudeDeveloper', () => {
 
     describe('Graceful Shutdown', () => {
       it('cleanup 메서드가 모든 활성 프로세스를 종료해야 한다', async () => {
+        // ContextFileManager를 모킹
+        const ContextFileManager = require('@/services/developer/context-file-manager').ContextFileManager;
+        ContextFileManager.mockImplementation(() => ({
+          initialize: jest.fn().mockResolvedValue(undefined),
+          createContextFile: jest.fn().mockResolvedValue('test-context-file.md'),
+          cleanupContextFiles: jest.fn().mockResolvedValue(undefined),
+          getContextFilePath: jest.fn().mockReturnValue('/tmp/test-context.md'),
+          splitLongContext: jest.fn().mockResolvedValue([]),
+          shouldSplitContext: jest.fn().mockReturnValue(false),
+          generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
+        }));
+        
         jest.useFakeTimers({ legacyFakeTimers: true });
         
         // execAsync mock for killProcessGroup (Windows case)
@@ -417,6 +431,18 @@ describe('ClaudeDeveloper', () => {
       }, 10000);
 
       it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
+        // ContextFileManager를 모킹
+        const ContextFileManager = require('@/services/developer/context-file-manager').ContextFileManager;
+        ContextFileManager.mockImplementation(() => ({
+          initialize: jest.fn().mockResolvedValue(undefined),
+          createContextFile: jest.fn().mockResolvedValue('test-context-file.md'),
+          cleanupContextFiles: jest.fn().mockResolvedValue(undefined),
+          getContextFilePath: jest.fn().mockReturnValue('/tmp/test-context.md'),
+          splitLongContext: jest.fn().mockResolvedValue([]),
+          shouldSplitContext: jest.fn().mockReturnValue(false),
+          generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
+        }));
+        
         jest.useFakeTimers({ legacyFakeTimers: true });
         
         // 먼저 기본 mock 설정
@@ -560,7 +586,12 @@ describe('ClaudeDeveloper', () => {
     });
 
     describe('성공 시나리오', () => {
-      it.skip('PR 생성과 함께 성공해야 한다', async () => {
+      it('PR 생성과 함께 성공해야 한다', async () => {
+        // fs/promises를 임시 파일 처리를 위해 모킹
+        const fs = require('fs/promises');
+        fs.writeFile.mockResolvedValue(undefined);
+        fs.unlink.mockResolvedValue(undefined);
+        
         // Given: Claude CLI 성공 응답
         const mockOutput = `작업을 시작합니다...
 
@@ -622,7 +653,12 @@ PR이 생성되었습니다: https://github.com/test/repo/pull/123
         );
       });
 
-      it.skip('코드 수정만으로 성공해야 한다', async () => {
+      it('코드 수정만으로 성공해야 한다', async () => {
+        // fs/promises를 임시 파일 처리를 위해 모킹
+        const fs = require('fs/promises');
+        fs.writeFile.mockResolvedValue(undefined);
+        fs.unlink.mockResolvedValue(undefined);
+        
         // Given: PR 없는 성공 응답
         const mockOutput = `작업을 시작합니다...
 
@@ -730,7 +766,12 @@ $ git commit -m "Refactor code structure"
     });
 
     describe('환경 변수 설정', () => {
-      it.skip('Claude API 키가 환경 변수로 전달되어야 한다', async () => {
+      it('Claude API 키가 환경 변수로 전달되어야 한다', async () => {
+        // fs/promises를 임시 파일 처리를 위해 모킹
+        const fs = require('fs/promises');
+        fs.writeFile.mockResolvedValue(undefined);
+        fs.unlink.mockResolvedValue(undefined);
+        
         // Given: 프롬프트 준비
         const mockOutput = `작업을 수행했습니다.
         
@@ -793,7 +834,12 @@ Test complete
   });
 
   describe('명령어 구성', () => {
-    it.skip('올바른 Claude CLI 명령어가 구성되어야 한다', async () => {
+    it('올바른 Claude CLI 명령어가 구성되어야 한다', async () => {
+      // fs/promises를 임시 파일 처리를 위해 모킹
+      const fs = require('fs/promises');
+      fs.writeFile.mockResolvedValue(undefined);
+      fs.unlink.mockResolvedValue(undefined);
+      
       // Given: 초기화
       mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();
@@ -823,7 +869,7 @@ Test complete
       );
     });
 
-    it.skip('프롬프트가 임시 파일을 통해 전달되어야 한다', async () => {
+    it('프롬프트가 임시 파일을 통해 전달되어야 한다', async () => {
       // Given: 초기화
       mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
       await claudeDeveloper.initialize();
