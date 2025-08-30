@@ -70,7 +70,7 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
       on: jest.fn((event, callback) => {
         if (event === 'data' && stdout) {
           // 데이터를 약간의 지연 후 전송
-          setImmediate(() => callback(stdout));
+          setTimeout(() => callback(stdout), 10);
         }
       })
     },
@@ -78,7 +78,7 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
       on: jest.fn((event, callback) => {
         if (event === 'data' && stderr) {
           // 데이터를 약간의 지연 후 전송
-          setImmediate(() => callback(stderr));
+          setTimeout(() => callback(stderr), 10);
         }
       })
     },
@@ -88,8 +88,8 @@ const createMockSpawn = (stdout: string, stderr: string = '', exitCode: number =
     on: jest.fn((event, callback) => {
       if (event === 'close') {
         callbacks.close.push(callback);
-        // 정상 종료 시 close 이벤트 발생 (약간의 지연 추가)
-        setImmediate(() => callback(exitCode, signal));
+        // 정상 종료 시 close 이벤트 발생 (stdout/stderr 후에 발생하도록 지연)
+        setTimeout(() => callback(exitCode, signal), 20);
       } else if (event === 'exit') {
         callbacks.exit.push(callback);
         // exit 이벤트 등록만 하고 즉시 호출하지 않음
@@ -182,6 +182,20 @@ describe('ClaudeDeveloper', () => {
 
         // process.kill mock
         const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => true);
+        
+        // execAsync mock for Windows killProcessGroup
+        const originalMockExecAsync = mockExecAsync.getMockImplementation();
+        mockExecAsync.mockImplementation((cmd) => {
+          // Allow claude --help for initialization
+          if (cmd.includes('claude') && cmd.includes('--help')) {
+            return Promise.resolve({ stdout: 'claude version 1.0.0', stderr: '' });
+          }
+          // Allow taskkill commands for Windows
+          if (cmd.includes('taskkill')) {
+            return Promise.resolve({ stdout: '', stderr: '' });
+          }
+          return Promise.resolve({ stdout: '', stderr: '' });
+        });
 
         // When: 짧은 타임아웃으로 실행
         const shortTimeoutDeveloper = new ClaudeDeveloper(
@@ -190,7 +204,6 @@ describe('ClaudeDeveloper', () => {
         );
         
         // 초기화
-        mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await shortTimeoutDeveloper.initialize();
         
         // Then: 타임아웃 에러 발생 및 프로세스 그룹 종료
@@ -199,11 +212,21 @@ describe('ClaudeDeveloper', () => {
         // 짧은 대기 후 프로세스 그룹 종료 확인
         await new Promise(resolve => setTimeout(resolve, 20));
         
-        // 프로세스 그룹 종료 (-pid로 호출)
-        expect(processKillSpy).toHaveBeenCalledWith(-54321, 'SIGTERM');
+        // Platform-specific assertions
+        if (process.platform !== 'win32') {
+          // Unix: process.kill이 호출됨
+          expect(processKillSpy).toHaveBeenCalledWith(-54321, 'SIGTERM');
+        } else {
+          // Windows: execAsync가 taskkill과 함께 호출됨
+          expect(mockExecAsync).toHaveBeenCalledWith(
+            expect.stringContaining('taskkill'),
+            expect.any(Object)
+          );
+        }
 
         // Cleanup
         processKillSpy.mockRestore();
+        mockExecAsync.mockImplementation(originalMockExecAsync);
       });
 
       it('정상 종료 시에는 프로세스 그룹 종료를 호출하지 않아야 한다', async () => {
@@ -262,8 +285,19 @@ describe('ClaudeDeveloper', () => {
         // process.kill mock
         const processKillSpy = jest.spyOn(process, 'kill').mockImplementation(() => true);
         
-        // execAsync mock for killProcessGroup (Windows case)
-        mockExecAsync.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }));
+        // execAsync mock for killProcessGroup (Windows case) and initialization
+        const originalMockExecAsync = mockExecAsync.getMockImplementation();
+        mockExecAsync.mockImplementation((cmd) => {
+          // Allow claude --help for initialization
+          if (cmd && cmd.includes('claude') && cmd.includes('--help')) {
+            return Promise.resolve({ stdout: 'claude version 1.0.0', stderr: '' });
+          }
+          // Allow taskkill commands for Windows
+          if (cmd && cmd.includes('taskkill')) {
+            return Promise.resolve({ stdout: '', stderr: '' });
+          }
+          return Promise.resolve({ stdout: '', stderr: '' });
+        });
 
         // When: 타임아웃이 짧은 개발자 인스턴스로 실행
         const shortTimeoutDeveloper = new ClaudeDeveloper(
@@ -272,20 +306,22 @@ describe('ClaudeDeveloper', () => {
         );
         
         // 초기화
-        mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await shortTimeoutDeveloper.initialize();
         
         const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp').catch(e => e);
 
         // 타임아웃 발생을 기다림
-        await new Promise(resolve => setTimeout(resolve, 60));
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Then: 프로세스 그룹에 SIGTERM 전송
         if (process.platform !== 'win32') {
           expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGTERM');
         } else {
           // Windows의 경우 execAsync가 호출됨
-          expect(mockExecAsync).toHaveBeenCalled();
+          expect(mockExecAsync).toHaveBeenCalledWith(
+            expect.stringContaining('taskkill'),
+            expect.any(Object)
+          );
         }
 
         // 5초 후 SIGKILL 전송 대기
@@ -294,9 +330,11 @@ describe('ClaudeDeveloper', () => {
         if (process.platform !== 'win32') {
           expect(processKillSpy).toHaveBeenCalledWith(-99999, 'SIGKILL');
         } else {
-          // Windows의 경우 execAsync가 호출됨 (SIGKILL로)
-          const callsCount = mockExecAsync.mock.calls.length;
-          expect(callsCount).toBeGreaterThanOrEqual(2);
+          // Windows의 경우 execAsync가 호출됨 (SIGKILL로 /f 플래그 포함)
+          const callsWithForceFlag = mockExecAsync.mock.calls.filter(call => 
+            call[0].includes('taskkill') && call[0].includes('/f')
+          );
+          expect(callsWithForceFlag.length).toBeGreaterThanOrEqual(1);
         }
 
         // 프로세스 종료 시뮬레이션
@@ -313,6 +351,7 @@ describe('ClaudeDeveloper', () => {
 
         // Cleanup
         processKillSpy.mockRestore();
+        mockExecAsync.mockImplementation(originalMockExecAsync);
       }, 10000);
     });
 
@@ -330,8 +369,19 @@ describe('ClaudeDeveloper', () => {
           generateFileReference: jest.fn().mockImplementation((path, desc) => `@${path}`)
         }));
         
-        // execAsync mock for killProcessGroup (Windows case)
-        mockExecAsync.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }));
+        // execAsync mock for killProcessGroup (Windows case) and initialization
+        const originalMockExecAsync = mockExecAsync.getMockImplementation();
+        mockExecAsync.mockImplementation((cmd) => {
+          // Allow claude --help for initialization
+          if (cmd && cmd.includes('claude') && cmd.includes('--help')) {
+            return Promise.resolve({ stdout: 'claude version 1.0.0', stderr: '' });
+          }
+          // Allow taskkill commands for Windows
+          if (cmd && cmd.includes('taskkill')) {
+            return Promise.resolve({ stdout: '', stderr: '' });
+          }
+          return Promise.resolve({ stdout: '', stderr: '' });
+        });
         
         // Given: 여러 프로세스가 실행 중
         const mockProcesses: any[] = [];
@@ -371,7 +421,6 @@ describe('ClaudeDeveloper', () => {
         );
         
         // 초기화 먼저
-        mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await longTimeoutDeveloper.initialize();
         
         // contextFileManager를 mock으로 설정
@@ -413,6 +462,7 @@ describe('ClaudeDeveloper', () => {
 
         // Cleanup
         processKillSpy.mockRestore();
+        mockExecAsync.mockImplementation(originalMockExecAsync);
       }, 10000);
 
       it('cleanup 중 프로세스 종료 실패를 처리해야 한다', async () => {
@@ -429,7 +479,18 @@ describe('ClaudeDeveloper', () => {
         }));
         
         // 먼저 기본 mock 설정
-        mockExecAsync.mockImplementation(() => Promise.resolve({ stdout: '', stderr: '' }));
+        const originalMockExecAsync = mockExecAsync.getMockImplementation();
+        mockExecAsync.mockImplementation((cmd) => {
+          // Allow claude --help for initialization
+          if (cmd && cmd.includes('claude') && cmd.includes('--help')) {
+            return Promise.resolve({ stdout: 'claude version 1.0.0', stderr: '' });
+          }
+          // Allow taskkill commands for Windows - simulate failure
+          if (cmd && cmd.includes('taskkill')) {
+            throw new Error('Operation not permitted');
+          }
+          return Promise.resolve({ stdout: '', stderr: '' });
+        });
         
         // Given: 종료할 수 없는 프로세스
         const stubProcess: any = {
@@ -458,7 +519,6 @@ describe('ClaudeDeveloper', () => {
         });
         
         // 초기화 먼저
-        mockExecAsync.mockResolvedValueOnce({ stdout: 'claude version 1.0.0', stderr: '' });
         await claudeDeveloper.initialize();
         
         // contextFileManager를 mock으로 설정
@@ -491,6 +551,7 @@ describe('ClaudeDeveloper', () => {
 
         // Cleanup
         processKillSpy.mockRestore();
+        mockExecAsync.mockImplementation(originalMockExecAsync);
       }, 10000);
     });
   });
