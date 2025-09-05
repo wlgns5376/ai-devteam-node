@@ -27,6 +27,7 @@ export interface Task {
   readonly retryCount?: number;
   readonly lastRetryAt?: Date;
   readonly failureReasons?: ReadonlyArray<string>;
+  readonly lastSyncTime?: Date; // 이 작업에 대한 마지막 동기화 시간 (PR 코멘트 확인 시점)
 }
 
 export interface TaskUpdate {

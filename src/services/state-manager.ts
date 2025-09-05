@@ -182,6 +182,20 @@ export class StateManager {
   }
 
   async getTaskLastSyncTime(taskId: string): Promise<Date | null> {
+    // 먼저 Task에서 직접 lastSyncTime을 가져옴
+    const task = this.tasks.get(taskId);
+    if (task?.lastSyncTime) {
+      // 문자열로 저장된 경우 Date 객체로 변환
+      if (typeof task.lastSyncTime === 'string') {
+        return new Date(task.lastSyncTime);
+      }
+      // 이미 Date 객체인 경우 그대로 반환
+      if (task.lastSyncTime instanceof Date) {
+        return task.lastSyncTime;
+      }
+    }
+    
+    // Task에 없으면 Worker에서 가져옴 (호환성 유지)
     const worker = await this.getWorkerByTaskId(taskId);
     const lastSyncTime = worker?.currentTask?.lastSyncTime;
     
@@ -204,6 +218,19 @@ export class StateManager {
 
   async updateTaskLastSyncTime(taskId: string, lastSyncTime: Date): Promise<void> {
     await this.withLock(async () => {
+      // Task에 직접 lastSyncTime 저장
+      const task = this.tasks.get(taskId);
+      if (task) {
+        const updatedTask: Task = {
+          ...task,
+          lastSyncTime,
+          updatedAt: new Date()
+        };
+        this.tasks.set(taskId, updatedTask);
+        await this.persistTasks();
+      }
+      
+      // Worker에도 업데이트 (호환성 유지)
       for (const [workerId, worker] of this.workers.entries()) {
         if (worker.currentTask?.taskId === taskId) {
           const updatedWorker: Worker = {
@@ -543,7 +570,7 @@ export class StateManager {
   }
 
   private dateReviver(key: string, value: unknown): unknown {
-    if (typeof value === 'string' && (key.endsWith('At') || key.endsWith('Date'))) {
+    if (typeof value === 'string' && (key.endsWith('At') || key.endsWith('Date') || key.endsWith('Time'))) {
       return new Date(value);
     }
     return value;

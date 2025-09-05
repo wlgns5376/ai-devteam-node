@@ -371,4 +371,103 @@ describe('리뷰 중복 피드백 방지 테스트', () => {
       );
     });
   });
+
+  describe('Worker 상태 전환시 lastSyncTime 유지', () => {
+    it('Worker가 대기 상태일 때도 Task의 lastSyncTime이 유지되어야 한다', async () => {
+      // Given: 리뷰 작업과 이전에 저장된 lastSyncTime
+      const reviewItem = {
+        id: 'task-worker-idle',
+        title: 'Worker Idle Test Task',
+        pullRequestUrls: ['https://github.com/owner/repo/pull/20']
+      };
+      
+      mockDependencies.projectBoardService.getItems.mockResolvedValue([reviewItem]);
+      
+      // Task에 저장된 lastSyncTime (Worker는 대기 상태)
+      const savedLastSyncTime = new Date('2024-01-05T10:00:00Z');
+      mockDependencies.stateManager.getTaskLastSyncTime.mockResolvedValue(savedLastSyncTime);
+      
+      // lastSyncTime 이후의 코멘트만 반환되는지 확인
+      const recentComments: PullRequestComment[] = [
+        {
+          id: 'comment-after-sync',
+          content: 'Comment after last sync',
+          author: 'reviewer1',
+          createdAt: new Date('2024-01-05T11:00:00Z'),
+        }
+      ];
+      
+      mockDependencies.pullRequestService.getNewComments.mockImplementation((repoId: string, prNumber: number, since: Date) => {
+        // since가 올바른 lastSyncTime인지 확인
+        expect(since).toEqual(savedLastSyncTime);
+        return Promise.resolve(recentComments);
+      });
+      
+      mockDependencies.stateManager.getProcessedCommentsForTask.mockResolvedValue([]);
+
+      // When: 리뷰 작업을 처리하면
+      await reviewTaskHandler.handle();
+
+      // Then: 저장된 lastSyncTime을 사용하여 코멘트를 조회해야 함
+      expect(mockDependencies.pullRequestService.getNewComments).toHaveBeenCalledWith(
+        'owner/repo',
+        20,
+        savedLastSyncTime,
+        expect.any(Object)
+      );
+      
+      // 새로운 lastSyncTime이 업데이트되어야 함
+      expect(mockDependencies.stateManager.updateTaskLastSyncTime).toHaveBeenCalledWith(
+        'task-worker-idle',
+        expect.any(Date)
+      );
+    });
+
+    it('Worker 재할당 후에도 이전 lastSyncTime을 사용해야 한다', async () => {
+      // Given: Worker가 재할당된 작업
+      const reviewItem = {
+        id: 'task-reassigned',
+        title: 'Reassigned Task',
+        pullRequestUrls: ['https://github.com/owner/repo/pull/21']
+      };
+      
+      mockDependencies.projectBoardService.getItems.mockResolvedValue([reviewItem]);
+      
+      // Task에 저장된 이전 lastSyncTime
+      const previousSyncTime = new Date('2024-01-06T14:00:00Z');
+      mockDependencies.stateManager.getTaskLastSyncTime.mockResolvedValue(previousSyncTime);
+      
+      // 이전 동기화 이후의 오래된 코멘트와 새 코멘트
+      const allCommentsSinceLastSync: PullRequestComment[] = [
+        {
+          id: 'old-unprocessed',
+          content: 'Old but unprocessed comment',
+          author: 'reviewer1',
+          createdAt: new Date('2024-01-06T15:00:00Z'),
+        },
+        {
+          id: 'new-comment',
+          content: 'New comment',
+          author: 'reviewer2',
+          createdAt: new Date('2024-01-06T18:00:00Z'),
+        }
+      ];
+      
+      mockDependencies.pullRequestService.getNewComments.mockResolvedValue(allCommentsSinceLastSync);
+      // old-unprocessed는 이미 처리됨
+      mockDependencies.stateManager.getProcessedCommentsForTask.mockResolvedValue(['old-unprocessed']);
+
+      // When: 리뷰 작업을 처리하면
+      await reviewTaskHandler.handle();
+
+      // Then: processedCommentIds로 필터링하여 실제 새 코멘트만 처리
+      expect(mockDependencies.managerCommunicator.sendTaskToManager).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-reassigned',
+          action: 'process_feedback',
+          comments: [allCommentsSinceLastSync[1]] // new-comment만
+        })
+      );
+    });
+  });
 });

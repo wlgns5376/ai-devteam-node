@@ -537,6 +537,126 @@ describe('StateManager', () => {
       expect(result).toBeInstanceOf(Date);
       expect(result?.getTime()).toBe(syncTime.getTime());
     });
+
+    it('should store and retrieve lastSyncTime from Task directly', async () => {
+      // Given: lastSyncTime이 있는 Task
+      await stateManager.initialize();
+      
+      const task: Task = {
+        id: 'task-lastsync',
+        title: 'Task with Last Sync',
+        description: 'Test task',
+        status: TaskStatus.IN_REVIEW,
+        priority: TaskPriority.HIGH,
+        projectId: 'project-1',
+        createdAt: new Date('2024-01-01T10:00:00Z'),
+        updatedAt: new Date('2024-01-01T10:00:00Z'),
+        lastSyncTime: new Date('2024-01-05T15:00:00Z')
+      };
+      await stateManager.saveTask(task);
+
+      // When: lastSyncTime을 조회하면 (Worker 없이)
+      const result = await stateManager.getTaskLastSyncTime('task-lastsync');
+
+      // Then: Task의 lastSyncTime이 반환되어야 함
+      expect(result).toBeInstanceOf(Date);
+      expect(result?.getTime()).toBe(task.lastSyncTime?.getTime());
+    });
+
+    it('should update lastSyncTime in both Task and Worker', async () => {
+      // Given: Task와 Worker가 있을 때
+      await stateManager.initialize();
+      
+      const task: Task = {
+        id: 'task-update-sync',
+        title: 'Task Update Sync',
+        description: 'Test task',
+        status: TaskStatus.IN_REVIEW,
+        priority: TaskPriority.HIGH,
+        projectId: 'project-1',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      await stateManager.saveTask(task);
+
+      const currentTask = {
+        taskId: 'task-update-sync',
+        action: WorkerAction.PROCESS_FEEDBACK,
+        assignedAt: new Date(),
+        repositoryId: 'repo-1'
+      };
+
+      const worker: Worker = {
+        id: 'worker-update-sync',
+        status: WorkerStatus.WAITING,
+        workspaceDir: '/workspace/worker-update-sync',
+        developerType: 'claude',
+        createdAt: new Date(),
+        lastActiveAt: new Date(),
+        workerType: 'pool',
+        currentTask
+      };
+      await stateManager.saveWorker(worker);
+
+      // When: lastSyncTime을 업데이트하면
+      const newSyncTime = new Date('2024-01-06T20:00:00Z');
+      await stateManager.updateTaskLastSyncTime('task-update-sync', newSyncTime);
+
+      // Then: Task와 Worker 모두에서 업데이트되어야 함
+      const updatedTask = await stateManager.getTask('task-update-sync');
+      expect(updatedTask?.lastSyncTime).toEqual(newSyncTime);
+
+      const updatedWorker = await stateManager.getWorker('worker-update-sync');
+      expect(updatedWorker?.currentTask?.lastSyncTime).toEqual(newSyncTime);
+    });
+
+    it('should prioritize Task lastSyncTime over Worker lastSyncTime', async () => {
+      // Given: Task와 Worker가 서로 다른 lastSyncTime을 가질 때
+      await stateManager.initialize();
+      
+      const taskSyncTime = new Date('2024-01-07T10:00:00Z');
+      const workerSyncTime = new Date('2024-01-07T08:00:00Z');
+      
+      const task: Task = {
+        id: 'task-priority',
+        title: 'Task Priority',
+        description: 'Test task',
+        status: TaskStatus.IN_REVIEW,
+        priority: TaskPriority.HIGH,
+        projectId: 'project-1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastSyncTime: taskSyncTime
+      };
+      await stateManager.saveTask(task);
+
+      const currentTask = {
+        taskId: 'task-priority',
+        action: WorkerAction.PROCESS_FEEDBACK,
+        assignedAt: new Date(),
+        repositoryId: 'repo-1',
+        lastSyncTime: workerSyncTime
+      };
+
+      const worker: Worker = {
+        id: 'worker-priority',
+        status: WorkerStatus.WAITING,
+        workspaceDir: '/workspace/worker-priority',
+        developerType: 'claude',
+        createdAt: new Date(),
+        lastActiveAt: new Date(),
+        workerType: 'pool',
+        currentTask
+      };
+      await stateManager.saveWorker(worker);
+
+      // When: lastSyncTime을 조회하면
+      const result = await stateManager.getTaskLastSyncTime('task-priority');
+
+      // Then: Task의 lastSyncTime이 우선되어야 함
+      expect(result).toEqual(taskSyncTime);
+      expect(result).not.toEqual(workerSyncTime);
+    });
   });
 
   describe('파일 시스템 오류 처리', () => {
