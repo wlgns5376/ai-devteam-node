@@ -765,4 +765,12 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   getWorkspaceManager(): WorkspaceManagerInterface | undefined {
     return this.dependencies.workspaceManager;
   }
+
+  /**
+   * StateManager 인스턴스를 반환합니다.
+   * TaskRequestHandler에서 Task의 lastSyncTime을 가져오기 위해 사용됩니다.
+   */
+  getStateManager(): StateManager {
+    return this.dependencies.stateManager;
+  }
 }

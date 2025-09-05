@@ -17,10 +17,12 @@ import { Logger } from '../services/logger';
 import { WorkerTaskExecutor } from './WorkerTaskExecutor';
 import { TaskAssignmentValidator, TaskReassignmentCheck } from '../services/worker/task-assignment-validator';
 import { BaseBranchExtractor } from '../services/git';
+import { StateManager } from '../services/state-manager';
 
 export class TaskRequestHandler {
   private readonly workerTaskExecutor: WorkerTaskExecutor;
   private readonly taskAssignmentValidator: TaskAssignmentValidator;
+  private readonly stateManager: StateManager;
 
   constructor(
     private readonly workerPoolManager: WorkerPoolManager,
@@ -35,6 +37,8 @@ export class TaskRequestHandler {
       logger: this.logger || console as any,
       workspaceManager: this.workerPoolManager.getWorkspaceManager()
     });
+    // WorkerPoolManager에서 StateManager 가져오기
+    this.stateManager = this.workerPoolManager.getStateManager();
   }
 
   async handleTaskRequest(request: TaskRequest): Promise<TaskResponse> {
@@ -96,6 +100,9 @@ export class TaskRequestHandler {
       };
     }
 
+    // StateManager에서 Task의 lastSyncTime 가져오기
+    const taskLastSyncTime = await this.stateManager.getTaskLastSyncTime(request.taskId);
+
     // PRD 요구사항에 맞는 전체 작업 정보 생성
     const repositoryId = this.getRepositoryIdFromRequest(request);
     const workerTask = await this.enrichTaskWithBaseBranch({
@@ -103,7 +110,8 @@ export class TaskRequestHandler {
       action: WorkerAction.START_NEW_TASK,
       boardItem: request.boardItem,
       repositoryId,
-      assignedAt: new Date()
+      assignedAt: new Date(),
+      ...(taskLastSyncTime && { lastSyncTime: taskLastSyncTime })
     });
 
     // 작업 할당 및 즉시 실행 (Planner가 결과를 감지하도록 WorkerTaskExecutor 사용)
@@ -179,6 +187,9 @@ export class TaskRequestHandler {
       // 새 워커에 피드백 작업 할당
       const repositoryId = this.getRepositoryIdFromRequest(request);
         
+      // StateManager에서 Task의 lastSyncTime 가져오기
+      const taskLastSyncTime = await this.stateManager.getTaskLastSyncTime(request.taskId);
+
       const feedbackTask = await this.enrichTaskWithBaseBranch({
         taskId: request.taskId,
         action: WorkerAction.PROCESS_FEEDBACK,
@@ -186,7 +197,8 @@ export class TaskRequestHandler {
         ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
         ...(request.comments && { comments: request.comments }),
         repositoryId,
-        assignedAt: new Date()
+        assignedAt: new Date(),
+        ...(taskLastSyncTime && { lastSyncTime: taskLastSyncTime })
       });
       await this.workerPoolManager.assignWorkerTask(workerId, feedbackTask);
     } else {
@@ -203,6 +215,9 @@ export class TaskRequestHandler {
         };
       }
       
+      // StateManager에서 Task의 lastSyncTime 가져오기
+      const taskLastSyncTime = await this.stateManager.getTaskLastSyncTime(request.taskId);
+
       // 기존 작업에 피드백 정보 추가
       let feedbackTask: WorkerTask = {
         ...worker.currentTask,
@@ -210,7 +225,8 @@ export class TaskRequestHandler {
         action: WorkerAction.PROCESS_FEEDBACK,
         ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
         ...(request.comments && { comments: request.comments }),
-        assignedAt: new Date()
+        assignedAt: new Date(),
+        ...(taskLastSyncTime && { lastSyncTime: taskLastSyncTime })
       };
 
       feedbackTask = await this.enrichTaskWithBaseBranch(feedbackTask);
@@ -292,6 +308,9 @@ export class TaskRequestHandler {
       });
     }
 
+    // StateManager에서 Task의 lastSyncTime 가져오기
+    const taskLastSyncTime = await this.stateManager.getTaskLastSyncTime(request.taskId);
+
     // 병합 요청을 위한 작업 정보 생성
     const repositoryId = this.getRepositoryIdFromRequest(request);
     const mergeTask: WorkerTask = {
@@ -300,7 +319,8 @@ export class TaskRequestHandler {
       ...(request.pullRequestUrl && { pullRequestUrl: request.pullRequestUrl }),
       ...(request.boardItem && { boardItem: request.boardItem }),
       repositoryId,
-      assignedAt: new Date()
+      assignedAt: new Date(),
+      ...(taskLastSyncTime && { lastSyncTime: taskLastSyncTime })
     };
 
     // Worker에 병합 작업 할당
@@ -428,6 +448,9 @@ export class TaskRequestHandler {
       });
     }
 
+    // StateManager에서 Task의 lastSyncTime 가져오기
+    const taskLastSyncTime = await this.stateManager.getTaskLastSyncTime(request.taskId);
+
     // 작업 재할당 (RESUME_TASK 액션으로)
     const repositoryId = this.getRepositoryIdFromRequest(request);
     let resumeTask: WorkerTask = {
@@ -435,7 +458,8 @@ export class TaskRequestHandler {
       action: WorkerAction.RESUME_TASK,
       boardItem: request.boardItem,
       repositoryId,
-      assignedAt: new Date()
+      assignedAt: new Date(),
+      ...(taskLastSyncTime && { lastSyncTime: taskLastSyncTime })
     };
 
     // Base branch 추출
