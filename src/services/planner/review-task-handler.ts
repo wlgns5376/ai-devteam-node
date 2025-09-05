@@ -287,6 +287,11 @@ export class ReviewTaskHandler {
     );
 
     // 이미 처리된 코멘트 필터링
+    // processedCommentIds를 사용하는 이유:
+    // 1. lastSyncTime 업데이트가 실패한 경우의 안전망
+    // 2. Worker가 중간에 실패하여 lastSyncTime은 업데이트되었지만 
+    //    실제로는 코멘트 처리가 완료되지 않은 경우 대비
+    // 3. 동시에 여러 인스턴스가 실행되는 경우의 동시성 문제 방지
     const processedCommentIds = await this.dependencies.stateManager.getProcessedCommentsForTask(item.id);
     const unprocessedComments = newComments.filter(
       (comment: PullRequestComment) => !processedCommentIds.includes(comment.id)
