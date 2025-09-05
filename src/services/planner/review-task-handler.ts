@@ -258,9 +258,37 @@ export class ReviewTaskHandler {
     });
 
     // 작업별 lastSyncTime 가져오기 (Worker의 currentTask에서 조회)
-    const taskLastSyncTime = await this.dependencies.stateManager.getTaskLastSyncTime(item.id);
-    // since는 항상 Date 객체가 되도록 보장
-    const since = taskLastSyncTime ? new Date(taskLastSyncTime) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    let taskLastSyncTime: Date | null = null;
+    try {
+      taskLastSyncTime = await this.dependencies.stateManager.getTaskLastSyncTime(item.id);
+    } catch (error) {
+      this.logger.warn('Failed to get task lastSyncTime, using default', {
+        taskId: item.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    
+    // since는 항상 Date 객체가 되도록 보장하고, 미래 시간 방지
+    const now = Date.now();
+    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    let since: Date;
+    
+    if (taskLastSyncTime) {
+      const syncTime = new Date(taskLastSyncTime);
+      // 미래 시간인 경우 현재 시간으로 제한
+      if (syncTime.getTime() > now) {
+        this.logger.warn('Task lastSyncTime is in the future, using current time', {
+          taskId: item.id,
+          futureTime: syncTime.toISOString(),
+          currentTime: new Date(now).toISOString()
+        });
+        since = new Date(now);
+      } else {
+        since = syncTime;
+      }
+    } else {
+      since = sevenDaysAgo;
+    }
     
     this.logger.debug('Using sync time for comment filtering', {
       taskId: item.id,
@@ -292,7 +320,18 @@ export class ReviewTaskHandler {
     // 2. Worker가 중간에 실패하여 lastSyncTime은 업데이트되었지만 
     //    실제로는 코멘트 처리가 완료되지 않은 경우 대비
     // 3. 동시에 여러 인스턴스가 실행되는 경우의 동시성 문제 방지
-    const processedCommentIds = await this.dependencies.stateManager.getProcessedCommentsForTask(item.id);
+    let processedCommentIds: ReadonlyArray<string> = [];
+    try {
+      const ids = await this.dependencies.stateManager.getProcessedCommentsForTask(item.id);
+      // null 또는 undefined 처리
+      processedCommentIds = ids || [];
+    } catch (error) {
+      this.logger.warn('Failed to get processed comment IDs, assuming none processed', {
+        taskId: item.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    
     const unprocessedComments = newComments.filter(
       (comment: PullRequestComment) => !processedCommentIds.includes(comment.id)
     );
