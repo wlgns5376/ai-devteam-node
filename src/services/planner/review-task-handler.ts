@@ -286,11 +286,19 @@ export class ReviewTaskHandler {
       filterOptions
     );
 
+    // 이미 처리된 코멘트 필터링
+    const processedCommentIds = await this.dependencies.stateManager.getProcessedCommentsForTask(item.id);
+    const unprocessedComments = newComments.filter(
+      (comment: PullRequestComment) => !processedCommentIds.includes(comment.id)
+    );
+
     this.logger.debug('Comment check result', {
       taskId: item.id,
       since: since.toISOString(),
-      newCommentCount: newComments.length,
-      commentDetails: newComments.map((c: PullRequestComment) => ({
+      totalNewComments: newComments.length,
+      processedCommentIds: processedCommentIds.length,
+      unprocessedComments: unprocessedComments.length,
+      commentDetails: unprocessedComments.map((c: PullRequestComment) => ({
         id: c.id,
         author: c.author,
         createdAt: c.createdAt.toISOString(),
@@ -298,14 +306,14 @@ export class ReviewTaskHandler {
       }))
     });
 
-    if (newComments.length > 0) {
-      this.logger.info('Found new comments for processing', {
+    if (unprocessedComments.length > 0) {
+      this.logger.info('Found new unprocessed comments for processing', {
         taskId: item.id,
-        commentCount: newComments.length
+        commentCount: unprocessedComments.length
       });
-      await this.handleNewComments(item, prUrl, newComments);
+      await this.handleNewComments(item, prUrl, unprocessedComments);
     } else {
-      this.logger.debug('No new comments found since last sync', {
+      this.logger.debug('No new unprocessed comments found since last sync', {
         taskId: item.id,
         lastSyncTime: since.toISOString()
       });
@@ -333,25 +341,7 @@ export class ReviewTaskHandler {
     const response = await this.dependencies.managerCommunicator.sendTaskToManager(request);
 
     if (response.status === ResponseStatus.ACCEPTED) {
-      // 처리된 코멘트로 기록
-      for (const comment of newComments) {
-        this.workflowStateManager.getState().processedComments.add(comment.id);
-      }
-      
-      // 작업별 lastSyncTime 업데이트
-      const currentTime = new Date();
-      this.workflowStateManager.updateActiveTaskStatus(item.id, 'IN_REVIEW');
-      
-      this.logger.info('Feedback processed', {
-        taskId: item.id,
-        commentCount: newComments.length,
-        updatedLastSyncTime: currentTime.toISOString()
-      });
-    } else if (response.status === ResponseStatus.COMPLETED && response.pullRequestUrl) {
-      // 피드백 처리 완료 시 새로운 PR URL 추가
-      await this.dependencies.projectBoardService.addPullRequestToItem(item.id, response.pullRequestUrl);
-      
-      // 처리된 코멘트로 기록
+      // 처리된 코멘트로 기록 (StateManager의 task에 저장)
       const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
       await this.dependencies.stateManager.addProcessedCommentsToTask(item.id, commentIds);
       
@@ -359,9 +349,39 @@ export class ReviewTaskHandler {
       const currentTime = new Date();
       await this.dependencies.stateManager.updateTaskLastSyncTime(item.id, currentTime);
       
+      // WorkflowStateManager에도 기록 (호환성 유지)
+      for (const comment of newComments) {
+        this.workflowStateManager.getState().processedComments.add(comment.id);
+      }
+      this.workflowStateManager.updateActiveTaskStatus(item.id, 'IN_REVIEW');
+      
+      this.logger.info('Feedback processed and recorded', {
+        taskId: item.id,
+        commentCount: newComments.length,
+        processedCommentIds: commentIds,
+        updatedLastSyncTime: currentTime.toISOString()
+      });
+    } else if (response.status === ResponseStatus.COMPLETED && response.pullRequestUrl) {
+      // 피드백 처리 완료 시 새로운 PR URL 추가
+      await this.dependencies.projectBoardService.addPullRequestToItem(item.id, response.pullRequestUrl);
+      
+      // 처리된 코멘트로 기록 (이미 위의 ACCEPTED 경로와 동일하게 처리)
+      const commentIds = newComments.map((comment: PullRequestComment) => comment.id);
+      await this.dependencies.stateManager.addProcessedCommentsToTask(item.id, commentIds);
+      
+      // 작업별 lastSyncTime 업데이트
+      const currentTime = new Date();
+      await this.dependencies.stateManager.updateTaskLastSyncTime(item.id, currentTime);
+      
+      // WorkflowStateManager에도 기록 (호환성 유지)
+      for (const comment of newComments) {
+        this.workflowStateManager.getState().processedComments.add(comment.id);
+      }
+      
       this.logger.info('Feedback processing completed with new PR', {
         taskId: item.id,
         newPullRequestUrl: response.pullRequestUrl,
+        processedCommentIds: commentIds,
         updatedLastSyncTime: currentTime.toISOString()
       });
     } else if (response.status === ResponseStatus.ERROR) {

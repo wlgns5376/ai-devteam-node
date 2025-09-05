@@ -98,10 +98,26 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       getTaskLastSyncTime: jest.fn().mockResolvedValue(null), // 기본적으로 null 반환 (7일 전 기본값 사용)
       updateTaskLastSyncTime: jest.fn().mockResolvedValue(undefined),
       getWorkerByTaskId: jest.fn().mockResolvedValue(null),
+      // 처리된 코멘트 관련 메서드들
+      getProcessedCommentsForTask: jest.fn().mockResolvedValue([]),
+      isCommentProcessedForTask: jest.fn().mockResolvedValue(false),
+      addProcessedCommentToTask: jest.fn().mockResolvedValue(undefined),
       // 작업별 lastSyncTime 설정을 위한 헬퍼 메서드
       setTaskLastSyncTime: function(taskId: string, time: Date | null) {
         this.getTaskLastSyncTime = jest.fn().mockImplementation((id: string) => {
           return Promise.resolve(id === taskId ? time : null);
+        });
+      },
+      // 작업별 처리된 코멘트 시뮬레이션을 위한 헬퍼 메서드
+      processedComments: {} as Record<string, string[]>,
+      simulateProcessedComments: function(taskId: string, commentIds: string[]) {
+        this.processedComments[taskId] = commentIds;
+        this.getProcessedCommentsForTask = jest.fn().mockImplementation((id: string) => {
+          return Promise.resolve(this.processedComments[id] || []);
+        });
+        this.isCommentProcessedForTask = jest.fn().mockImplementation((tId: string, cId: string) => {
+          const processed = this.processedComments[tId] || [];
+          return Promise.resolve(processed.includes(cId));
         });
       }
     } as any;
@@ -275,7 +291,10 @@ describe('피드백 처리 통합 플로우 테스트', () => {
       expect(firstRequest).toBeDefined();
       expect(firstRequest.comments).toHaveLength(2); // 두 코멘트 모두 포함
       
-      // MockPullRequestService와 StateManager 모두에 처리된 코멘트 기록
+      // StateManager에 처리된 코멘트 기록 시뮬레이션
+      mockStateManager.simulateProcessedComments('board-1-item-4', ['comment-old-1', 'comment-new-1']);
+      
+      // MockPullRequestService에도 처리된 코멘트 기록 (호환성)
       await mockPullRequestService.markCommentsAsProcessed(['comment-old-1', 'comment-new-1']);
       
       mockManagerCommunicator.clearRequests();
