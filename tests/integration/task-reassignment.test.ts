@@ -3,6 +3,7 @@ import { WorkerPoolManager } from '../../src/services/manager/worker-pool-manage
 import { WorkspaceManager } from '../../src/services/manager/workspace-manager';
 import { StateManager } from '../../src/services/state-manager';
 import { Logger } from '../../src/services/logger';
+import { BaseBranchExtractor } from '../../src/services/git';
 import { TaskRequest, ResponseStatus, WorkerAction } from '../../src/types';
 import { ManagerServiceConfig } from '../../src/types/manager.types';
 import { DeveloperConfig } from '../../src/types/developer.types';
@@ -94,13 +95,17 @@ describe('Task Reassignment Integration Tests', () => {
       }
     };
 
+    // BaseBranchExtractor 생성
+    const baseBranchExtractor = new BaseBranchExtractor(logger);
+
     workerPoolManager = new WorkerPoolManager(
       managerConfig,
       {
         logger,
         stateManager,
         workspaceManager,
-        developerConfig
+        developerConfig,
+        baseBranchExtractor
       }
     );
 
@@ -127,14 +132,20 @@ describe('Task Reassignment Integration Tests', () => {
       // Given: 작업 요청
       const taskRequest: TaskRequest = {
         taskId: 'test-task-1',
-        action: 'check_status',
+        action: TaskAction.CHECK_STATUS,
         boardItem: {
           id: 'test-task-1',
           title: '테스트 작업',
+          status: 'in-progress',
+          assignee: undefined,
+          labels: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          pullRequestUrls: [],
           metadata: {
             repository: 'test-owner/test-repo'
           }
-        }
+        } as ProjectBoardItem
       };
 
       // When: 작업 상태 확인 요청 (Worker가 없어서 재할당 시도)
@@ -169,20 +180,20 @@ describe('Task Reassignment Integration Tests', () => {
       // Given: 작업 요청
       const taskRequest: TaskRequest = {
         taskId,
-        action: 'check_status',
+        action: TaskAction.CHECK_STATUS,
         boardItem: {
           id: taskId,
           title: '테스트 작업 2',
-          status: 'IN_PROGRESS',
-          assignee: null,
+          status: 'in-progress',
+          assignee: undefined,
           labels: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          projectId: 'test-project',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          pullRequestUrls: [],
           metadata: {
             repository: 'test-owner/test-repo'
           }
-        }
+        } as ProjectBoardItem
       };
 
       // When: 작업 상태 확인 요청

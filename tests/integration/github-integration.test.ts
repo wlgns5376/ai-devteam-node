@@ -103,10 +103,15 @@ describe('GitHub Integration Tests', () => {
       const originalToken = process.env.GITHUB_TOKEN;
       const originalOwner = process.env.GITHUB_OWNER;
       const originalProjectNumber = process.env.GITHUB_PROJECT_NUMBER;
+      const originalRepos = process.env.GITHUB_REPOS;
+      const originalRepo = process.env.GITHUB_REPO;
       
       process.env.GITHUB_TOKEN = 'env-test-token';
       process.env.GITHUB_OWNER = 'test-owner';
       process.env.GITHUB_PROJECT_NUMBER = '1';
+      // GITHUB_REPOS와 GITHUB_REPO를 명시적으로 제거
+      delete process.env.GITHUB_REPOS;
+      delete process.env.GITHUB_REPO;
 
       try {
         // When: 환경변수에서 v2 설정을 생성하면
@@ -129,6 +134,10 @@ describe('GitHub Integration Tests', () => {
         else delete process.env.GITHUB_OWNER; 
         if (originalProjectNumber) process.env.GITHUB_PROJECT_NUMBER = originalProjectNumber;
         else delete process.env.GITHUB_PROJECT_NUMBER;
+        if (originalRepos) process.env.GITHUB_REPOS = originalRepos;
+        else delete process.env.GITHUB_REPOS;
+        if (originalRepo) process.env.GITHUB_REPO = originalRepo;
+        else delete process.env.GITHUB_REPO;
       }
     });
 

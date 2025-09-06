@@ -20,21 +20,25 @@ export function createMockChildProcess(
   
   // stdout mock
   mockProcess.stdout = new EventEmitter() as any;
-  mockProcess.stdout.on = jest.fn((event, callback) => {
-    if (event === 'data' && stdout) {
-      process.nextTick(() => callback(Buffer.from(stdout)));
-    }
-    return mockProcess.stdout!;
-  });
+  if (mockProcess.stdout) {
+    mockProcess.stdout.on = jest.fn((event, callback) => {
+      if (event === 'data' && stdout) {
+        process.nextTick(() => callback(Buffer.from(stdout)));
+      }
+      return mockProcess.stdout!;
+    });
+  }
   
   // stderr mock
   mockProcess.stderr = new EventEmitter() as any;
-  mockProcess.stderr.on = jest.fn((event, callback) => {
-    if (event === 'data' && stderr) {
-      process.nextTick(() => callback(Buffer.from(stderr)));
-    }
-    return mockProcess.stderr!;
-  });
+  if (mockProcess.stderr) {
+    mockProcess.stderr.on = jest.fn((event, callback) => {
+      if (event === 'data' && stderr) {
+        process.nextTick(() => callback(Buffer.from(stderr)));
+      }
+      return mockProcess.stderr!;
+    });
+  }
   
   // stdin mock
   mockProcess.stdin = {
@@ -53,8 +57,8 @@ export function createMockChildProcess(
   }) as any;
   
   mockProcess.kill = jest.fn(() => true);
-  mockProcess.killed = false;
-  mockProcess.pid = Math.floor(Math.random() * 10000);
+  (mockProcess as any).killed = false;
+  (mockProcess as any).pid = Math.floor(Math.random() * 10000);
   
   return mockProcess;
 }
@@ -170,7 +174,14 @@ export function setupGitMocks(config: GitMockConfig = {}): void {
     }
   });
   
-  mockExec.mockImplementation((command, callback: any) => {
+  mockExec.mockImplementation((command: string, ...args: any[]) => {
+    // Find the callback function (could be in different positions)
+    const callback = args.find((arg: any) => typeof arg === 'function');
+    
+    if (!callback) {
+      return createMockChildProcess('', '', 0);
+    }
+    
     if (command.includes('git status')) {
       callback(
         config.status?.success ? null : new Error('Command failed'),
@@ -186,6 +197,8 @@ export function setupGitMocks(config: GitMockConfig = {}): void {
     } else {
       callback(null, '', '');
     }
+    
+    return createMockChildProcess('', '', 0);
   });
 }
 

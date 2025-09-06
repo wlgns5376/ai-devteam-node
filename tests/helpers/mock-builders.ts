@@ -142,13 +142,22 @@ export class MockWorkerPoolManagerBuilder {
     this.methods.set('shutdown', jest.fn());
     this.methods.set('storeTaskResult', jest.fn());
     this.methods.set('getTaskResult', jest.fn());
-    this.methods.set('clearTaskResult', jest.fn());
-    this.methods.set('getWorkspaceManager', jest.fn(() => ({
-      // Mock WorkspaceManager
-      getWorkspaceInfo: jest.fn(),
-      createWorkspace: jest.fn(),
-      cleanupWorkspace: jest.fn()
+    this.methods.set('getStateManager', jest.fn(() => ({
+      saveWorkerState: jest.fn(),
+      getWorkerState: jest.fn(),
+      getAllWorkerStates: jest.fn(),
+      deleteWorkerState: jest.fn(),
+      saveTaskResult: jest.fn(),
+      getTaskResult: jest.fn(),
+      getTaskLastSyncTime: jest.fn(),
+      saveTaskLastSyncTime: jest.fn()
     })));
+    this.methods.set('getWorkspaceManager', jest.fn(() => ({
+      prepareWorkspace: jest.fn(),
+      cleanupWorkspace: jest.fn(),
+      getWorkspaceInfo: jest.fn()
+    })));
+    this.methods.set('clearTaskResult', jest.fn());
   }
 
   withWorker(worker: Worker): this {
