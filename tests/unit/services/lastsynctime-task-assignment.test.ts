@@ -33,7 +33,8 @@ describe('LastSyncTime Task Assignment Tests', () => {
       getAvailableWorker: jest.fn(),
       assignWorkerTask: jest.fn(),
       getWorkerInstance: jest.fn(),
-      getWorkerByTaskId: jest.fn()
+      getWorkerByTaskId: jest.fn(),
+      storeTaskResult: jest.fn()
     } as any;
 
     mockWorkerInstance = {

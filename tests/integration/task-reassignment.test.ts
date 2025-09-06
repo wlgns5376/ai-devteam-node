@@ -2,11 +2,13 @@ import { TaskRequestHandler } from '../../src/app/TaskRequestHandler';
 import { WorkerPoolManager } from '../../src/services/manager/worker-pool-manager';
 import { WorkspaceManager } from '../../src/services/manager/workspace-manager';
 import { StateManager } from '../../src/services/state-manager';
-import { Logger } from '../../src/services/logger';
+import { Logger, LogLevel } from '../../src/services/logger';
 import { BaseBranchExtractor } from '../../src/services/git';
 import { TaskRequest, ResponseStatus, WorkerAction } from '../../src/types';
 import { ManagerServiceConfig } from '../../src/types/manager.types';
 import { DeveloperConfig } from '../../src/types/developer.types';
+import { TaskAction } from '../../src/types/planner.types';
+import { ProjectBoardItem } from '../../src/types/project-board.types';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
@@ -27,8 +29,7 @@ describe('Task Reassignment Integration Tests', () => {
     
     // Logger 초기화
     logger = new Logger({
-      serviceName: 'task-reassignment-test',
-      logLevel: 'debug',
+      level: LogLevel.DEBUG,
       enableConsole: false
     });
 
@@ -37,7 +38,7 @@ describe('Task Reassignment Integration Tests', () => {
     await stateManager.initialize();
 
     // WorkspaceManager 초기화
-    const workspaceConfig = {
+    const workspaceConfig: any = {
       workspaceBasePath: testWorkspaceDir,
       repositoriesBasePath: testWorkspaceDir,
       workerLifecycle: {
@@ -79,7 +80,9 @@ describe('Task Reassignment Integration Tests', () => {
       minWorkers: 1,
       maxWorkers: 3,
       workspaceBasePath: testWorkspaceDir,
-      repositoriesBasePath: testWorkspaceDir,
+      workerRecoveryTimeoutMs: 30000,
+      gitOperationTimeoutMs: 60000,
+      repositoryCacheTimeoutMs: 300000,
       workerLifecycle: {
         idleTimeoutMinutes: 30,
         cleanupIntervalMinutes: 60,
@@ -88,6 +91,9 @@ describe('Task Reassignment Integration Tests', () => {
     };
 
     const developerConfig: DeveloperConfig = {
+      timeoutMs: 30000,
+      maxRetries: 3,
+      retryDelayMs: 1000,
       claude: {
         apiKey: 'test-key',
         model: 'claude-3-sonnet-20240229',
@@ -96,7 +102,10 @@ describe('Task Reassignment Integration Tests', () => {
     };
 
     // BaseBranchExtractor 생성
-    const baseBranchExtractor = new BaseBranchExtractor(logger);
+    const baseBranchExtractor = new BaseBranchExtractor({
+      logger,
+      getRepositoryDefaultBranch: async () => 'main'
+    });
 
     workerPoolManager = new WorkerPoolManager(
       managerConfig,
@@ -137,7 +146,7 @@ describe('Task Reassignment Integration Tests', () => {
           id: 'test-task-1',
           title: '테스트 작업',
           status: 'in-progress',
-          assignee: undefined,
+          assignee: null,
           labels: [],
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -185,7 +194,7 @@ describe('Task Reassignment Integration Tests', () => {
           id: taskId,
           title: '테스트 작업 2',
           status: 'in-progress',
-          assignee: undefined,
+          assignee: null,
           labels: [],
           createdAt: new Date(),
           updatedAt: new Date(),
