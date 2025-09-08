@@ -382,10 +382,46 @@ export class Worker implements WorkerInterface {
 
   async cleanup(): Promise<void> {
     try {
-      if (this._currentTask) {
-        await this.dependencies.workspaceSetup.cleanupWorkspace(this._currentTask.taskId);
+      this.dependencies.logger.info('Starting worker cleanup', {
+        workerId: this.id,
+        currentTask: this._currentTask?.taskId
+      });
+
+      // 1. Developer cleanup (가장 중요)
+      if (this.dependencies.developer && typeof this.dependencies.developer.cleanup === 'function') {
+        try {
+          await this.dependencies.developer.cleanup();
+          this.dependencies.logger.debug('Developer cleanup completed', {
+            workerId: this.id,
+            developerType: this.developerType
+          });
+        } catch (developerError) {
+          this.dependencies.logger.error('Developer cleanup failed', {
+            workerId: this.id,
+            developerType: this.developerType,
+            error: developerError
+          });
+        }
       }
 
+      // 2. Workspace cleanup  
+      if (this._currentTask) {
+        try {
+          await this.dependencies.workspaceSetup.cleanupWorkspace(this._currentTask.taskId);
+          this.dependencies.logger.debug('Workspace cleanup completed', {
+            workerId: this.id,
+            taskId: this._currentTask.taskId
+          });
+        } catch (workspaceError) {
+          this.dependencies.logger.error('Workspace cleanup failed', {
+            workerId: this.id,
+            taskId: this._currentTask.taskId,
+            error: workspaceError
+          });
+        }
+      }
+
+      // 3. Worker state cleanup
       this.completeTask();
 
       this.dependencies.logger.info('Worker cleanup completed', {

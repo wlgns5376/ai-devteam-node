@@ -28,13 +28,14 @@ RUN pnpm run build
 # Stage 2: Production stage
 FROM node:20-alpine AS production
 
-# Install system dependencies
+# Install system dependencies including tini for zombie process handling
 RUN apk add --no-cache \
     git \
     openssh-client \
     curl \
     bash \
-    sudo
+    sudo \
+    tini
 
 # Install utilities
 RUN apk add --no-cache \
@@ -109,8 +110,8 @@ USER root
 RUN chmod +x /app/entrypoint.sh
 USER appuser
 
-# Set entrypoint and default command
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Set entrypoint and default command with tini as init process
+ENTRYPOINT ["/sbin/tini", "--", "/app/entrypoint.sh"]
 CMD ["node", "dist/index.js"]
 
 # Labels for metadata
