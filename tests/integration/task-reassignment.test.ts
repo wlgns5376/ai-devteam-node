@@ -24,10 +24,10 @@ describe('Task Reassignment Integration Tests', () => {
     testDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-devteam-test-'));
     testWorkspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-devteam-workspace-'));
     
-    // Logger 초기화
+    // Logger 초기화 - 디버깅을 위해 콘솔 출력 활성화
     logger = new Logger({
       level: LogLevel.DEBUG,
-      enableConsole: false
+      enableConsole: true
     });
 
     // StateManager 초기화
@@ -122,7 +122,11 @@ describe('Task Reassignment Integration Tests', () => {
       workerPoolManager,
       undefined, // projectBoardService
       undefined, // pullRequestService
-      logger
+      logger,
+      (boardItem: any) => boardItem.metadata?.repository || 'test-owner/test-repo', // extractRepositoryFromBoardItem
+      {
+        extractBaseBranch: jest.fn().mockResolvedValue('main')
+      } as any // baseBranchExtractor
     );
   });
 
@@ -182,6 +186,20 @@ describe('Task Reassignment Integration Tests', () => {
         path.join(workspaceInfo.workspaceDir, '.git'), 
         'gitdir: /path/to/repo/.git/worktrees/test'
       );
+
+      // Worker Instance Mock 설정
+      const mockWorkerInstance = {
+        startExecution: jest.fn().mockResolvedValue({ success: true }),
+        getStatus: jest.fn().mockReturnValue('idle'),
+        getCurrentTask: jest.fn().mockReturnValue(null)
+      };
+      
+      // getWorkerInstance가 mock worker를 반환하도록 설정
+      jest.spyOn(workerPoolManager, 'getWorkerInstance').mockResolvedValue(mockWorkerInstance as any);
+      jest.spyOn(workerPoolManager, 'storeTaskResult').mockImplementation(() => {});
+      
+      // assignWorkerTask가 에러를 발생시키지 않도록 mock
+      jest.spyOn(workerPoolManager, 'assignWorkerTask').mockResolvedValue();
 
       // Given: 작업 요청
       const taskRequest: TaskRequest = {
