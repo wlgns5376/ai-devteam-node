@@ -190,7 +190,9 @@ describe('Logger', () => {
       // 추가 대기 (파일 시스템 동기화를 위해)
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Then: 올바른 형식으로 로깅되어야 함
+      // Then: 파일이 존재하고 올바른 형식으로 로깅되어야 함
+      const fileExists = await fs.access(uniqueFile).then(() => true).catch(() => false);
+      expect(fileExists).toBe(true);
       const logContent = await fs.readFile(uniqueFile, 'utf-8');
       expect(logContent).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[INFO\] Test message/);
     });

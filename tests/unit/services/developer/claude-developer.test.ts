@@ -310,8 +310,9 @@ describe('ClaudeDeveloper', () => {
         
         const executePromise = shortTimeoutDeveloper.executePrompt('sleep 10', '/tmp').catch(e => e);
 
-        // 타임아웃 발생을 기다림
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // 타임아웃 발생을 충분히 기다림 - executePromise가 완료될 때까지
+        const timeoutResult = await executePromise;
+        expect(timeoutResult).toBeDefined(); // 타임아웃 에러가 발생했는지 확인
         
         // Then: 프로세스 그룹에 SIGTERM 전송
         if (process.platform !== 'win32') {
@@ -345,9 +346,9 @@ describe('ClaudeDeveloper', () => {
           closeCallback(null, 'SIGKILL');
         }
         
-        const result = await executePromise;
-        expect(result).toBeInstanceOf(Error);
-        expect(result.message).toContain('timeout');
+        const killResult = await executePromise;
+        expect(killResult).toBeInstanceOf(Error);
+        expect(killResult.message).toContain('timeout');
 
         // Cleanup
         processKillSpy.mockRestore();
@@ -437,8 +438,8 @@ describe('ClaudeDeveloper', () => {
           longTimeoutDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {})
         ];
 
-        // 프로세스가 시작될 때까지 대기
-        await new Promise(resolve => setImmediate(resolve));
+        // 프로세스가 시작되고 activeProcesses에 추가될 때까지 대기
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         // When: cleanup 호출 (cleanupActiveProcesses가 내부적으로 호출됨)
         const cleanupPromise = longTimeoutDeveloper.cleanup();
@@ -532,8 +533,8 @@ describe('ClaudeDeveloper', () => {
         // When: 프로세스 시작 후 cleanup
         const executePromise = claudeDeveloper.executePrompt('sleep 10', '/tmp').catch(() => {});
         
-        // 프로세스가 시작될 때까지 대기
-        await new Promise(resolve => setImmediate(resolve));
+        // 프로세스가 시작되고 activeProcesses에 추가될 때까지 대기
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // cleanup 호출 (cleanupActiveProcesses가 내부적으로 호출됨)
         const cleanupPromise = claudeDeveloper.cleanup();
@@ -881,7 +882,7 @@ Test complete
       // Then: 사용 불가능 상태
       const isAvailable = await claudeDeveloper.isAvailable();
       expect(isAvailable).toBe(false);
-      expect(mockLogger.info).toHaveBeenCalledWith('Claude Developer cleaned up');
+      expect(mockLogger.info).toHaveBeenCalledWith('Claude Developer cleanup completed successfully');
     });
   });
 

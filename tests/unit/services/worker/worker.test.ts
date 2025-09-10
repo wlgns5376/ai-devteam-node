@@ -779,8 +779,8 @@ describe('Worker', () => {
 
       // Then: 에러 로그만 남기고 정상 처리
       expect(mockLogger.error).toHaveBeenCalledWith(
-        'Worker cleanup failed',
-        { workerId: worker.id, error }
+        'Workspace cleanup failed',
+        { workerId: worker.id, taskId: task.taskId, error }
       );
     });
   });
