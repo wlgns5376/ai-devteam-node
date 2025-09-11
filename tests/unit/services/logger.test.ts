@@ -18,8 +18,13 @@ describe('Logger', () => {
   const getTestSpecificPath = (basePath: string, isDirectory: boolean = false) => {
     const testName = expect.getState().currentTestName || 'unknown';
     const timestamp = Date.now();
-    const cleanTestName = testName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50); // 파일명 길이 제한
-    const uniqueName = `${cleanTestName}-${timestamp}`;
+    // 파일명에서 문제가 될 수 있는 모든 특수문자를 언더스코어로 치환
+    const cleanTestName = testName
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/_+/g, '_') // 연속된 언더스코어를 하나로
+      .replace(/^_+|_+$/g, '') // 시작과 끝의 언더스코어 제거
+      .substring(0, 30); // 파일명 길이 제한을 더 짧게
+    const uniqueName = `${cleanTestName}_${timestamp}`;
     
     let resultPath: string;
     if (isDirectory) {
@@ -30,7 +35,7 @@ describe('Logger', () => {
       const dir = path.dirname(basePath);
       const ext = path.extname(basePath);
       const name = path.basename(basePath, ext);
-      resultPath = path.join(dir, `${name}-${uniqueName}${ext}`);
+      resultPath = path.join(dir, `${name}_${uniqueName}${ext}`);
     }
     
     // 생성된 경로 추적
