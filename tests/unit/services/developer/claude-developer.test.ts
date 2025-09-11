@@ -750,12 +750,24 @@ $ git commit -m "Refactor code structure"
 
 작업을 완료했습니다!`;
 
-        // executeClaude 메서드를 mock하여 성공 결과 반환
-        const spy = jest.spyOn(claudeDeveloper as any, 'executeClaude');
-        spy.mockResolvedValue({
+        // 모든 private 메서드들을 모킹
+        const initSpy = jest.spyOn(claudeDeveloper as any, 'initializeContextFileManager');
+        initSpy.mockResolvedValue(undefined);
+
+        const processContextSpy = jest.spyOn(claudeDeveloper as any, 'processLongContext');
+        processContextSpy.mockImplementation((prompt) => Promise.resolve(prompt));
+
+        const createPromptSpy = jest.spyOn(claudeDeveloper as any, 'createPromptFile');
+        createPromptSpy.mockResolvedValue('/tmp/test-prompt-file.txt');
+
+        const executeSpy = jest.spyOn(claudeDeveloper as any, 'executeClaude');
+        executeSpy.mockResolvedValue({
           stdout: mockOutput,
           stderr: ''
         });
+
+        const cleanupSpy = jest.spyOn(claudeDeveloper as any, 'cleanupPromptFile');
+        cleanupSpy.mockResolvedValue(undefined);
 
         const prompt = '코드 리팩토링을 수행해주세요';
         const workspaceDir = '/tmp/test-workspace';
@@ -767,6 +779,13 @@ $ git commit -m "Refactor code structure"
         expect(output.result.success).toBe(true);
         expect(output.result.prLink).toBeUndefined();
         expect(output.executedCommands).toHaveLength(2);
+        
+        // 스파이 정리
+        initSpy.mockRestore();
+        processContextSpy.mockRestore();
+        createPromptSpy.mockRestore();
+        executeSpy.mockRestore();
+        cleanupSpy.mockRestore();
       });
     });
 
@@ -869,24 +888,44 @@ $ echo "Test complete"
 Test complete
 
 작업을 완료했습니다!`;
-        // executeClaude 메서드를 mock하여 성공 결과 반환
-        const spy = jest.spyOn(claudeDeveloper as any, 'executeClaude');
-        spy.mockResolvedValue({
+
+        // 모든 private 메서드들을 모킹
+        const initSpy = jest.spyOn(claudeDeveloper as any, 'initializeContextFileManager');
+        initSpy.mockResolvedValue(undefined);
+
+        const processContextSpy = jest.spyOn(claudeDeveloper as any, 'processLongContext');
+        processContextSpy.mockImplementation((prompt) => Promise.resolve(prompt));
+
+        const createPromptSpy = jest.spyOn(claudeDeveloper as any, 'createPromptFile');
+        createPromptSpy.mockResolvedValue('/tmp/test-prompt-file.txt');
+
+        const executeSpy = jest.spyOn(claudeDeveloper as any, 'executeClaude');
+        executeSpy.mockResolvedValue({
           stdout: mockOutput,
           stderr: ''
         });
+
+        const cleanupSpy = jest.spyOn(claudeDeveloper as any, 'cleanupPromptFile');
+        cleanupSpy.mockResolvedValue(undefined);
 
         // When: 프롬프트 실행
         await claudeDeveloper.executePrompt('test prompt', '/tmp/workspace');
 
         // Then: executeClaude가 적절한 환경으로 호출되었는지 확인
-        expect(spy).toHaveBeenCalledWith(
+        expect(executeSpy).toHaveBeenCalledWith(
           expect.any(String), // command
           '/tmp/workspace',   // workspaceDir
           expect.objectContaining({
             ANTHROPIC_API_KEY: 'test-api-key'
           }) // env
         );
+        
+        // 스파이 정리
+        initSpy.mockRestore();
+        processContextSpy.mockRestore();
+        createPromptSpy.mockRestore();
+        executeSpy.mockRestore();
+        cleanupSpy.mockRestore();
       });
     });
   });
@@ -948,23 +987,42 @@ $ echo "Test complete"
 Test complete
 
 작업을 완료했습니다!`;
-      // executeClaude 메서드를 mock하여 성공 결과 반환
-      const spy = jest.spyOn(claudeDeveloper as any, 'executeClaude');
-      spy.mockResolvedValue({
+      // 모든 private 메서드들을 모킹
+      const initSpy = jest.spyOn(claudeDeveloper as any, 'initializeContextFileManager');
+      initSpy.mockResolvedValue(undefined);
+
+      const processContextSpy = jest.spyOn(claudeDeveloper as any, 'processLongContext');
+      processContextSpy.mockImplementation((prompt) => Promise.resolve(prompt));
+
+      const createPromptSpy = jest.spyOn(claudeDeveloper as any, 'createPromptFile');
+      createPromptSpy.mockResolvedValue('/tmp/test-prompt-file.txt');
+
+      const executeSpy = jest.spyOn(claudeDeveloper as any, 'executeClaude');
+      executeSpy.mockResolvedValue({
         stdout: mockOutput,
         stderr: ''
       });
+
+      const cleanupSpy = jest.spyOn(claudeDeveloper as any, 'cleanupPromptFile');
+      cleanupSpy.mockResolvedValue(undefined);
 
       // When: 프롬프트 실행
       const prompt = '테스트 프롬프트';
       await claudeDeveloper.executePrompt(prompt, '/tmp/workspace');
 
       // Then: executeClaude가 올바른 명령어로 호출되었는지 확인
-      expect(spy).toHaveBeenCalledWith(
+      expect(executeSpy).toHaveBeenCalledWith(
         expect.stringMatching(/bash -c 'cat ".*\.txt" \| "claude" --dangerously-skip-permissions -p'/),
         '/tmp/workspace',
         expect.any(Object)
       );
+      
+      // 스파이 정리
+      initSpy.mockRestore();
+      processContextSpy.mockRestore();
+      createPromptSpy.mockRestore();
+      executeSpy.mockRestore();
+      cleanupSpy.mockRestore();
     });
 
     it('프롬프트가 임시 파일을 통해 전달되어야 한다', async () => {
@@ -988,29 +1046,41 @@ $ echo "Code analyzed"
 Code analyzed
 
 작업을 완료했습니다!`;
-      // executeClaude 메서드를 mock하여 성공 결과 반환
-      const spy = jest.spyOn(claudeDeveloper as any, 'executeClaude');
-      spy.mockResolvedValue({
+      // 모든 private 메서드들을 모킹
+      const initSpy = jest.spyOn(claudeDeveloper as any, 'initializeContextFileManager');
+      initSpy.mockResolvedValue(undefined);
+
+      const processContextSpy = jest.spyOn(claudeDeveloper as any, 'processLongContext');
+      processContextSpy.mockImplementation((prompt) => Promise.resolve(prompt));
+
+      const createPromptSpy = jest.spyOn(claudeDeveloper as any, 'createPromptFile');
+      createPromptSpy.mockResolvedValue('/tmp/test-prompt-file.txt');
+
+      const executeSpy = jest.spyOn(claudeDeveloper as any, 'executeClaude');
+      executeSpy.mockResolvedValue({
         stdout: mockOutput,
         stderr: ''
       });
+
+      const cleanupSpy = jest.spyOn(claudeDeveloper as any, 'cleanupPromptFile');
+      cleanupSpy.mockResolvedValue(undefined);
 
       // When: 프롬프트 실행
       const prompt = '이 "코드"를 분석해주세요';
       await claudeDeveloper.executePrompt(prompt, '/tmp/workspace');
 
-      // Then: 파일 쓰기와 삭제가 호출되어야 함
-      expect(mockWrite).toHaveBeenCalledWith(
-        expect.stringMatching(/.*claude-prompt-.*\.txt$/),
-        prompt,
-        'utf-8'
-      );
-      expect(mockUnlink).toHaveBeenCalledWith(
-        expect.stringMatching(/.*claude-prompt-.*\.txt$/)
-      );
+      // Then: 파일 생성 및 정리 메서드가 호출되어야 함
+      expect(createPromptSpy).toHaveBeenCalledWith(prompt);
+      expect(cleanupSpy).toHaveBeenCalledWith('/tmp/test-prompt-file.txt');
 
+      // 모든 스파이 정리
       mockWrite.mockRestore();
       mockUnlink.mockRestore();
+      initSpy.mockRestore();
+      processContextSpy.mockRestore();
+      createPromptSpy.mockRestore();
+      executeSpy.mockRestore();
+      cleanupSpy.mockRestore();
     });
   });
 });
