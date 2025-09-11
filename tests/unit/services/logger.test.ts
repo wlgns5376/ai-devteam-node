@@ -416,6 +416,9 @@ describe('Logger', () => {
       const currentDate = getCurrentDateString();
       const dailyLogFile = path.join(uniqueLogDir, `${currentDate}.log`);
       
+      // 생성된 파일도 추적하여 cleanup 대상에 포함
+      createdPaths.add(dailyLogFile);
+      
       // 안전한 파일 생성을 위해 재시도 로직 추가
       let retries = 3;
       while (retries > 0) {
