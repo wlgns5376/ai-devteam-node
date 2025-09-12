@@ -590,32 +590,68 @@ export class WorkerPoolManager implements WorkerPoolManagerInterface {
   }
 
   async shutdown(): Promise<void> {
-    this.dependencies.logger.info('Shutting down worker pool');
+    this.dependencies.logger.info('Shutting down worker pool', {
+      activeWorkers: this.workerInstances.size,
+      poolWorkers: this.workers.size
+    });
     
     // 정리 타이머 중지
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
+      this.dependencies.logger.debug('Cleanup timer stopped');
     }
     
-    // // 모든 Worker 인스턴스 정리
-    // for (const [workerId, workerInstance] of this.workerInstances) {
-    //   try {
-    //     await workerInstance.cleanup();
-    //   } catch (error) {
-    //     this.dependencies.logger.warn('Failed to cleanup worker instance', {
-    //       workerId,
-    //       error
-    //     });
-    //   }
-    // }
+    // 모든 Worker 인스턴스 정리 (병렬로 처리하되 각각 시간 제한)
+    const cleanupPromises = Array.from(this.workerInstances.entries()).map(async ([workerId, workerInstance]) => {
+      try {
+        this.dependencies.logger.debug('Cleaning up worker instance', { workerId });
+        
+        // Worker 정리에 타임아웃 설정 (30초)
+        const cleanupPromise = workerInstance.cleanup();
+        const timeoutPromise = new Promise<void>((_, reject) => {
+          setTimeout(() => reject(new Error('Worker cleanup timeout')), 30000);
+        });
+        
+        await Promise.race([cleanupPromise, timeoutPromise]);
+        
+        this.dependencies.logger.debug('Worker instance cleanup completed', { workerId });
+      } catch (error) {
+        this.dependencies.logger.warn('Failed to cleanup worker instance', {
+          workerId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    });
     
-    // // 모든 Worker 정리
-    // this.workers.clear();
-    // this.workerInstances.clear();
+    // 모든 Worker cleanup 완료 대기 (최대 60초)
+    try {
+      await Promise.allSettled(cleanupPromises);
+      this.dependencies.logger.info('All worker instances cleanup completed');
+    } catch (error) {
+      this.dependencies.logger.error('Worker instances cleanup failed', { error });
+    }
+    
+    // WorkspaceManager cleanup
+    if (this.dependencies.workspaceManager && typeof this.dependencies.workspaceManager.cleanup === 'function') {
+      try {
+        await this.dependencies.workspaceManager.cleanup();
+        this.dependencies.logger.debug('WorkspaceManager cleanup completed');
+      } catch (error) {
+        this.dependencies.logger.warn('WorkspaceManager cleanup failed', { error });
+      }
+    }
+    
+    // 모든 컬렉션 정리
+    this.workers.clear();
+    this.workerInstances.clear();
+    this.completedTaskResults.clear();
+    this.workerAllocationLock.clear();
+    this.errors = [];
+    
     this.isInitialized = false;
     
-    this.dependencies.logger.info('Worker pool shutdown completed');
+    this.dependencies.logger.info('Worker pool shutdown completed successfully');
   }
 
   private createWorker(workerType: 'pool' | 'temporary' = 'pool'): WorkerType {

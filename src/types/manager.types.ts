@@ -68,6 +68,7 @@ export interface WorkspaceManagerInterface {
   cleanupWorkspace(taskId: string): Promise<void>;
   getWorkspaceInfo(taskId: string): Promise<WorkspaceInfo | null>;
   isWorktreeValid(workspaceInfo: WorkspaceInfo): Promise<boolean>;
+  cleanup?(): Promise<void>;
 }
 
 export interface RepositoryManagerInterface {
@@ -78,6 +79,7 @@ export interface RepositoryManagerInterface {
   isRepositoryCloned(repositoryId: string): Promise<boolean>;
   addWorktree(repositoryId: string, worktreePath: string): Promise<void>;
   removeWorktree(repositoryId: string, worktreePath: string): Promise<void>;
+  cleanup?(): Promise<void>;
 }
 
 export interface TaskRouterInterface {
@@ -106,6 +108,7 @@ export interface GitServiceInterface {
   createWorktree(repoPath: string, branchName: string, worktreePath: string, baseBranch?: string): Promise<void>;
   removeWorktree(repoPath: string, worktreePath: string): Promise<void>;
   isValidRepository(path: string): Promise<boolean>;
+  cleanupActiveProcesses?(): Promise<void>;
 }
 
 export interface ManagerService {

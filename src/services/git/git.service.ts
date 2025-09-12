@@ -1,7 +1,7 @@
 import { GitServiceInterface } from '@/types/manager.types';
 import { Logger } from '../logger';
 import { GitLockService } from './git-lock.service';
-import { exec } from 'child_process';
+import { exec, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -15,9 +15,206 @@ interface GitServiceDependencies {
 }
 
 export class GitService implements GitServiceInterface {
+  private activeProcesses: Set<ChildProcess> = new Set();
+  private readonly FORCE_KILL_TIMEOUT_MS = 5000;
+
   constructor(
     private readonly dependencies: GitServiceDependencies
   ) {}
+
+  /**
+   * 프로세스 추적을 포함한 안전한 exec 실행
+   */
+  private async safeExec(command: string, options: { cwd?: string; timeout?: number } = {}): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      const timeoutMs = options.timeout || this.dependencies.gitOperationTimeoutMs;
+      
+      this.dependencies.logger.debug('Executing git command', { 
+        command: command.substring(0, 100),
+        cwd: options.cwd,
+        timeout: timeoutMs
+      });
+
+      // spawn을 사용하여 프로세스 추적
+      const parts = command.split(' ').filter(part => part.length > 0);
+      const cmd = parts[0];
+      const args = parts.slice(1);
+      
+      if (!cmd) {
+        reject(new Error('Invalid command: empty command string'));
+        return;
+      }
+      
+      const child: ChildProcess = spawn(cmd, args, {
+        cwd: options.cwd,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32'
+      });
+
+      // 프로세스 추적
+      this.activeProcesses.add(child);
+      
+      const cleanupProcess = () => {
+        this.activeProcesses.delete(child);
+      };
+      
+      child.once('exit', cleanupProcess);
+      child.once('close', cleanupProcess);
+
+      let stdout = '';
+      let stderr = '';
+      let isResolved = false;
+
+      // 타임아웃 설정
+      const timeout = setTimeout(async () => {
+        if (!isResolved) {
+          isResolved = true;
+          this.dependencies.logger.warn('Git command timeout, terminating', {
+            command: command.substring(0, 100),
+            pid: child.pid,
+            timeoutMs
+          });
+          
+          // 프로세스 정리
+          await this.killGitProcess(child);
+          reject(new Error(`Git command timeout after ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
+
+      // stdout 수집
+      child.stdout?.on('data', (data: any) => {
+        stdout += data.toString();
+      });
+
+      // stderr 수집
+      child.stderr?.on('data', (data: any) => {
+        stderr += data.toString();
+      });
+
+      // 프로세스 완료 처리
+      child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+        clearTimeout(timeout);
+        
+        if (!isResolved) {
+          isResolved = true;
+          
+          if (code === 0) {
+            resolve({ stdout, stderr });
+          } else {
+            reject(new Error(`Git command failed with code ${code}${signal ? ` (${signal})` : ''}: ${stderr}`));
+          }
+        }
+      });
+
+      // 에러 처리
+      child.on('error', async (error: Error) => {
+        clearTimeout(timeout);
+        
+        if (!isResolved) {
+          isResolved = true;
+          await this.killGitProcess(child);
+          reject(error);
+        }
+      });
+
+      // stdin 닫기
+      child.stdin?.end();
+    });
+  }
+
+  /**
+   * Git 프로세스 안전 종료
+   */
+  private async killGitProcess(child: ChildProcess): Promise<void> {
+    if (child.killed || child.exitCode !== null) {
+      return;
+    }
+
+    try {
+      // 1단계: SIGTERM
+      if (child.pid) {
+        if (process.platform === 'win32') {
+          try {
+            child.kill('SIGTERM');
+          } catch (error) {
+            this.dependencies.logger.debug('SIGTERM failed on Windows', { error });
+          }
+        } else {
+          try {
+            process.kill(-child.pid, 'SIGTERM'); // 프로세스 그룹
+          } catch (error) {
+            this.dependencies.logger.debug('Process group SIGTERM failed', { error });
+          }
+          try {
+            child.kill('SIGTERM');
+          } catch (error) {
+            this.dependencies.logger.debug('Individual SIGTERM failed', { error });
+          }
+        }
+      }
+
+      // 짧은 대기 후 SIGKILL
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      if (!child.killed && child.exitCode === null) {
+        if (child.pid) {
+          if (process.platform === 'win32') {
+            try {
+              child.kill('SIGKILL');
+            } catch (error) {
+              this.dependencies.logger.debug('SIGKILL failed on Windows', { error });
+            }
+          } else {
+            try {
+              process.kill(-child.pid, 'SIGKILL'); // 프로세스 그룹
+            } catch (error) {
+              this.dependencies.logger.debug('Process group SIGKILL failed', { error });
+            }
+            try {
+              child.kill('SIGKILL');
+            } catch (error) {
+              this.dependencies.logger.debug('Individual SIGKILL failed', { error });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      this.dependencies.logger.warn('Failed to kill git process', { error });
+    }
+  }
+
+  /**
+   * 모든 활성 Git 프로세스 정리
+   */
+  async cleanupActiveProcesses(): Promise<void> {
+    const processesToClean = Array.from(this.activeProcesses);
+    this.activeProcesses.clear();
+
+    this.dependencies.logger.debug('Cleaning up active git processes', {
+      activeProcessCount: processesToClean.length
+    });
+
+    if (processesToClean.length === 0) {
+      return;
+    }
+
+    const cleanupPromises = processesToClean.map(async (child) => {
+      try {
+        await this.killGitProcess(child);
+      } catch (error) {
+        this.dependencies.logger.warn('Failed to cleanup git process', {
+          pid: child.pid,
+          error
+        });
+      }
+    });
+
+    await Promise.allSettled(cleanupPromises);
+    
+    this.dependencies.logger.info('Git processes cleanup completed', {
+      processCount: processesToClean.length
+    });
+  }
 
   async clone(repositoryUrl: string, localPath: string): Promise<void> {
     // URL에서 repository ID 추출 (예: owner/repo)
@@ -34,8 +231,8 @@ export class GitService implements GitServiceInterface {
         const parentDir = path.dirname(localPath);
         await fs.mkdir(parentDir, { recursive: true });
 
-        // git clone 실행
-        const { stdout, stderr } = await execAsync(
+        // git clone 실행 (장시간 실행 가능하므로 safeExec 사용)
+        const { stdout, stderr } = await this.safeExec(
           `git clone "${repositoryUrl}" "${localPath}"`,
           {
             timeout: this.dependencies.gitOperationTimeoutMs
@@ -78,8 +275,8 @@ export class GitService implements GitServiceInterface {
           throw new Error(`Invalid repository path: ${localPath}`);
         }
 
-        // git fetch 실행
-        const { stdout, stderr } = await execAsync(
+        // git fetch 실행 (장시간 실행 가능하므로 safeExec 사용)
+        const { stdout, stderr } = await this.safeExec(
           'git fetch --all --prune',
           {
             cwd: localPath,
@@ -165,8 +362,8 @@ export class GitService implements GitServiceInterface {
           });
         }
 
-        // git pull 실행
-        const { stdout, stderr } = await execAsync(
+        // git pull 실행 (장시간 실행 가능하므로 safeExec 사용)
+        const { stdout, stderr } = await this.safeExec(
           'git pull --ff-only',
           {
             cwd: localPath,
@@ -285,7 +482,7 @@ export class GitService implements GitServiceInterface {
             });
           }
 
-          const { stderr } = await execAsync(
+          const { stderr } = await this.safeExec(
             command,
             {
               cwd: repoPath,
@@ -337,7 +534,7 @@ export class GitService implements GitServiceInterface {
       });
 
       // git worktree remove 실행
-      const { stdout, stderr } = await execAsync(
+      const { stdout, stderr } = await this.safeExec(
         `git worktree remove --force "${worktreePath}"`,
         {
           cwd: repoPath,
@@ -509,7 +706,7 @@ export class GitService implements GitServiceInterface {
       });
 
       // 새 브랜치로 worktree 생성
-      const { stdout } = await execAsync(
+      const { stdout } = await this.safeExec(
         `git worktree add -b "${branchName}" "${worktreePath}" "${baseBranch}"`,
         {
           cwd: repoPath,

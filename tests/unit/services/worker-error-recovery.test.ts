@@ -178,6 +178,16 @@ describe('Worker Error Recovery', () => {
   });
 
   describe('Developer 초기화 재시도', () => {
+    beforeEach(() => {
+      // Timer mock 설정
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      // Timer mock 정리
+      jest.useRealTimers();
+    });
+
     it('Developer 초기화 실패 시 최대 3회까지 재시도해야 함', async () => {
       // Given: Developer 초기화가 2번 실패 후 성공하도록 설정
       let initCallCount = 0;
@@ -205,7 +215,14 @@ describe('Worker Error Recovery', () => {
 
       // When: 작업 실행
       await worker.assignTask(mockTask);
-      const result = await worker.startExecution();
+      
+      // 비동기로 실행하고 timer를 제어
+      const executionPromise = worker.startExecution();
+      
+      // 각 재시도 대기 시간을 즉시 진행
+      await jest.runAllTimersAsync();
+      
+      const result = await executionPromise;
 
       // Then: 초기화가 3번 시도되어야 함
       expect(mockDependencies.developer.initialize).toHaveBeenCalledTimes(3);
@@ -226,10 +243,17 @@ describe('Worker Error Recovery', () => {
       // When: 작업 실행
       await worker.assignTask(mockTask);
       
+      // 비동기로 실행하고 timer를 제어
+      const executionPromise = worker.startExecution().catch(err => err);
+      
+      // 각 재시도 대기 시간을 즉시 진행
+      await jest.runAllTimersAsync();
+      
+      const error = await executionPromise;
+      
       // Then: 에러가 발생해야 함
-      await expect(worker.startExecution()).rejects.toThrow(
-        'Failed to execute task task-1: Persistent init failure'
-      );
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toBe('Failed to execute task task-1: Persistent init failure');
 
       // 초기화가 3번 시도되어야 함
       expect(mockDependencies.developer.initialize).toHaveBeenCalledTimes(3);

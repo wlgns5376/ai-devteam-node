@@ -355,7 +355,7 @@ describe('WorkerPoolManager', () => {
       await workerPoolManager.shutdown();
 
       // Then: 종료 로그가 기록되고 초기화 상태가 false가 됨
-      expect(mockLogger.info).toHaveBeenCalledWith('Worker pool shutdown completed');
+      expect(mockLogger.info).toHaveBeenCalledWith('Worker pool shutdown completed successfully');
       
       // 실제 구현에서는 Worker들이 즉시 삭제되지 않고 정리 타이머만 중지됨
       // Worker들은 향후 cleanupExpiredWorkers에 의해 정리됨

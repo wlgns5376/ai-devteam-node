@@ -6,6 +6,7 @@ describe('Logger', () => {
   const testLogDir = path.join(__dirname, '../../../test-logs');
   const testLogFile = path.join(testLogDir, 'test.log');
   let logger: Logger | null = null;
+  const createdPaths: Set<string> = new Set(); // 생성된 경로들 추적
 
   // 현재 날짜를 YYYY-MM-DD 형식으로 가져오는 헬퍼 함수
   const getCurrentDateString = () => {
@@ -17,19 +18,29 @@ describe('Logger', () => {
   const getTestSpecificPath = (basePath: string, isDirectory: boolean = false) => {
     const testName = expect.getState().currentTestName || 'unknown';
     const timestamp = Date.now();
-    const cleanTestName = testName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50); // 파일명 길이 제한
-    const uniqueName = `${cleanTestName}-${timestamp}`;
+    // 파일명에서 문제가 될 수 있는 모든 특수문자를 언더스코어로 치환
+    const cleanTestName = testName
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .replace(/_+/g, '_') // 연속된 언더스코어를 하나로
+      .replace(/^_+|_+$/g, '') // 시작과 끝의 언더스코어 제거
+      .substring(0, 30); // 파일명 길이 제한을 더 짧게
+    const uniqueName = `${cleanTestName}_${timestamp}`;
     
+    let resultPath: string;
     if (isDirectory) {
       // 디렉토리의 경우 testLogDir 내부에 생성
-      return path.join(testLogDir, uniqueName);
+      resultPath = path.join(testLogDir, uniqueName);
     } else {
       // 파일의 경우 파일명에 고유 ID 추가
       const dir = path.dirname(basePath);
       const ext = path.extname(basePath);
       const name = path.basename(basePath, ext);
-      return path.join(dir, `${name}-${uniqueName}${ext}`);
+      resultPath = path.join(dir, `${name}_${uniqueName}${ext}`);
     }
+    
+    // 생성된 경로 추적
+    createdPaths.add(resultPath);
+    return resultPath;
   };
 
   beforeEach(async () => {
@@ -45,7 +56,19 @@ describe('Logger', () => {
       logger = null;
     }
 
-    // 테스트 로그 파일 정리 - 재시도 로직 추가
+    // 이번 테스트에서 생성된 개별 경로들을 정리
+    for (const createdPath of createdPaths) {
+      try {
+        await fs.rm(createdPath, { recursive: true, force: true });
+      } catch (error) {
+        // 무시 - 이미 정리되었거나 존재하지 않을 수 있음
+      }
+    }
+    createdPaths.clear();
+  });
+
+  afterAll(async () => {
+    // 모든 테스트가 완료된 후 전체 테스트 로그 디렉토리 정리
     let retries = 3;
     while (retries > 0) {
       try {
@@ -54,8 +77,7 @@ describe('Logger', () => {
       } catch (error) {
         retries--;
         if (retries === 0) {
-          // console.warn 대신 조용히 실패 (테스트 출력 깔끔하게 유지)
-          // 테스트 디렉토리는 다음 실행 시 재생성됨
+          // 조용히 실패 - 다음 실행 시 재생성됨
         } else {
           // 잠시 대기 후 재시도
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -190,7 +212,9 @@ describe('Logger', () => {
       // 추가 대기 (파일 시스템 동기화를 위해)
       await new Promise(resolve => setTimeout(resolve, 200));
 
-      // Then: 올바른 형식으로 로깅되어야 함
+      // Then: 파일이 존재하고 올바른 형식으로 로깅되어야 함
+      const fileExists = await fs.access(uniqueFile).then(() => true).catch(() => false);
+      expect(fileExists).toBe(true);
       const logContent = await fs.readFile(uniqueFile, 'utf-8');
       expect(logContent).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[INFO\] Test message/);
     });
@@ -391,7 +415,26 @@ describe('Logger', () => {
       
       const currentDate = getCurrentDateString();
       const dailyLogFile = path.join(uniqueLogDir, `${currentDate}.log`);
-      await fs.writeFile(dailyLogFile, 'Existing daily log\n');
+      
+      // 생성된 파일도 추적하여 cleanup 대상에 포함
+      createdPaths.add(dailyLogFile);
+      
+      // 안전한 파일 생성을 위해 재시도 로직 추가
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          await fs.writeFile(dailyLogFile, 'Existing daily log\n');
+          // 파일이 정상적으로 생성되었는지 확인
+          await fs.access(dailyLogFile);
+          break;
+        } catch (error) {
+          retries--;
+          if (retries === 0) {
+            throw new Error(`Failed to create test file after retries: ${dailyLogFile}`);
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
 
       logger = new Logger({
         level: LogLevel.INFO,
@@ -405,10 +448,29 @@ describe('Logger', () => {
       // 파일 쓰기 완료 대기
       await logger.flush();
       // 추가 대기 (파일 시스템 동기화를 위해)
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // 파일 존재 및 내용 확인을 위한 재시도 로직
+      retries = 5;
+      let logContent: string = '';
+      while (retries > 0) {
+        try {
+          const fileExists = await fs.access(dailyLogFile).then(() => true).catch(() => false);
+          if (!fileExists) {
+            throw new Error(`Test file does not exist: ${dailyLogFile}`);
+          }
+          logContent = await fs.readFile(dailyLogFile, 'utf-8');
+          break;
+        } catch (error) {
+          retries--;
+          if (retries === 0) {
+            throw error;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
 
       // Then: 기존 내용에 추가되어야 함
-      const logContent = await fs.readFile(dailyLogFile, 'utf-8');
       expect(logContent).toContain('Existing daily log');
       expect(logContent).toContain('New daily log entry');
     });

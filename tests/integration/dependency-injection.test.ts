@@ -193,6 +193,15 @@ describe('의존성 주입 테스트', () => {
     });
 
     it('일부 서비스만 주입하고 나머지는 기본값을 사용할 수 있어야 한다', async () => {
+      // GitHub 환경 변수 모킹
+      const originalEnv = process.env;
+      process.env = {
+        ...originalEnv,
+        GITHUB_OWNER: 'test-owner',
+        GITHUB_PROJECT_NUMBER: '123',
+        GITHUB_TOKEN: 'test-token'
+      };
+
       // Given: ProjectBoard 서비스와 GitService만 주입
       const externalServices: ExternalServices = {
         projectBoardService: mockProjectBoard,
@@ -217,6 +226,9 @@ describe('의존성 주입 테스트', () => {
           error: error instanceof Error ? error.message : String(error) 
         });
         throw error;
+      } finally {
+        // 환경 변수 복원
+        process.env = originalEnv;
       }
     });
   });

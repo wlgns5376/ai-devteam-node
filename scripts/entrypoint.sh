@@ -1,7 +1,24 @@
 #!/bin/bash
 set -e
 
+# Signal handling for graceful shutdown
+cleanup() {
+    echo "Received shutdown signal, cleaning up..."
+    # Send SIGTERM to all child processes
+    if [ -n "$MAIN_PID" ]; then
+        echo "Terminating main process (PID: $MAIN_PID)"
+        kill -TERM "$MAIN_PID" 2>/dev/null || true
+        wait "$MAIN_PID" 2>/dev/null || true
+    fi
+    echo "Cleanup completed"
+    exit 0
+}
+
+# Set up signal handlers
+trap cleanup SIGTERM SIGINT
+
 echo "=== AI DevTeam Starting ==="
+echo "Container init process: tini (zombie process reaper enabled)"
 echo "Node.js version: $(node --version)"
 echo "npm version: $(npm --version)"
 echo "Git version: $(git --version)"
@@ -56,7 +73,17 @@ if [ ! -z "$GIT_ACCEPT_HOST_KEY" ] && [ "$GIT_ACCEPT_HOST_KEY" = "true" ]; then
 fi
 
 echo "=== Configuration Complete ==="
-echo "Starting application..."
+echo "Starting application with PID tracking..."
 
-# Execute the main application
-exec "$@"
+# Execute the main application in background and track PID
+"$@" &
+MAIN_PID=$!
+
+echo "Main application started (PID: $MAIN_PID)"
+
+# Wait for the main process to complete
+wait "$MAIN_PID"
+EXIT_CODE=$?
+
+echo "Main application exited with code: $EXIT_CODE"
+exit $EXIT_CODE

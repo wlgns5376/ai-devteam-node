@@ -266,6 +266,42 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
     return await this.dependencies.stateManager.loadWorkspaceInfo(taskId);
   }
 
+  /**
+   * WorkspaceManager 전체 정리 (시스템 종료 시)
+   */
+  async cleanup(): Promise<void> {
+    try {
+      this.dependencies.logger.info('Starting WorkspaceManager cleanup');
+
+      // Git Service cleanup (가장 중요)
+      if (this.dependencies.gitService && typeof this.dependencies.gitService.cleanupActiveProcesses === 'function') {
+        try {
+          await this.dependencies.gitService.cleanupActiveProcesses();
+          this.dependencies.logger.debug('Git service cleanup completed');
+        } catch (gitError) {
+          this.dependencies.logger.warn('Git service cleanup failed', { error: gitError });
+        }
+      }
+
+      // Repository Manager cleanup
+      if (this.dependencies.repositoryManager && typeof this.dependencies.repositoryManager.cleanup === 'function') {
+        try {
+          await this.dependencies.repositoryManager.cleanup();
+          this.dependencies.logger.debug('Repository manager cleanup completed');
+        } catch (repoError) {
+          this.dependencies.logger.warn('Repository manager cleanup failed', { error: repoError });
+        }
+      }
+
+      // 에러 리스트 정리
+      this.errors = [];
+
+      this.dependencies.logger.info('WorkspaceManager cleanup completed');
+    } catch (error) {
+      this.dependencies.logger.error('WorkspaceManager cleanup failed', { error });
+    }
+  }
+
   private validateInputs(taskId: string, repositoryId: string): void {
     if (!taskId.trim()) {
       throw new Error('Task ID cannot be empty');
