@@ -101,6 +101,25 @@ describe('Base Branch Feature Integration Test', () => {
 
       // isWorktreeValid를 false로 모킹하여 새 worktree 생성을 강제
       jest.spyOn(workspaceManager, 'isWorktreeValid').mockResolvedValue(false);
+      
+      // 기타 필요한 메서드들도 모킹
+      jest.spyOn(workspaceManager, 'createWorkspace').mockResolvedValue({
+        taskId: 'task-123',
+        repositoryId: 'owner/repo',
+        workspaceDir: '/workspace/repo/task-123',
+        branchName: 'task-123',
+        worktreeCreated: false,
+        claudeLocalPath: '/workspace/repo/task-123/CLAUDE.local.md',
+        createdAt: new Date()
+      });
+      
+      // setupWorktree를 모킹하되, 실제로 createWorktree를 호출하도록 구현
+      jest.spyOn(workspaceManager, 'setupWorktree').mockImplementation(async (workspaceInfo, baseBranch) => {
+        // repositoryManager에서 repository path 가져오기
+        const repositoryPath = '/repos/owner/repo';
+        await gitService.createWorktree(repositoryPath, workspaceInfo.branchName, workspaceInfo.workspaceDir, baseBranch);
+      });
+      jest.spyOn(workspaceManager, 'setupClaudeLocal').mockResolvedValue();
 
       // WorkspaceSetup 설정
       workspaceSetup = new WorkspaceSetup({

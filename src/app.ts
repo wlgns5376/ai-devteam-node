@@ -370,20 +370,67 @@ export class AIDevTeamApp {
 
   // Graceful shutdown을 위한 신호 핸들러 설정
   setupSignalHandlers(): void {
+    let shutdownInProgress = false;
+
     const signalHandler = (signal: string) => {
+      if (shutdownInProgress) {
+        console.log(`\n⚠️  ${signal} 신호가 이미 처리 중입니다. 강제 종료하려면 다시 한 번 신호를 보내세요.`);
+        return;
+      }
+
+      shutdownInProgress = true;
       console.log(`\n📡 ${signal} 신호 수신됨. Graceful shutdown 시작...`);
+      
+      // 강제 종료 타이머 (30초 후)
+      const forceExitTimeout = setTimeout(() => {
+        console.error('⚠️  Graceful shutdown이 30초 내에 완료되지 않아 강제 종료합니다.');
+        process.exit(1);
+      }, 30000);
+
       this.stop()
         .then(() => {
+          clearTimeout(forceExitTimeout);
           console.log('✅ Graceful shutdown 완료');
           process.exit(0);
         })
         .catch((error) => {
+          clearTimeout(forceExitTimeout);
           console.error('❌ Graceful shutdown 실패:', error);
           process.exit(1);
         });
     };
 
-    process.on('SIGTERM', () => signalHandler('SIGTERM'));
-    process.on('SIGINT', () => signalHandler('SIGINT'));
+    // 두 번째 신호 수신 시 즉시 강제 종료
+    let signalCount = 0;
+    const forceSignalHandler = (signal: string) => {
+      signalCount++;
+      
+      if (signalCount === 1) {
+        signalHandler(signal);
+      } else if (signalCount >= 2) {
+        console.log(`\n⚡ 두 번째 ${signal} 신호 수신됨. 즉시 강제 종료합니다.`);
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGTERM', () => forceSignalHandler('SIGTERM'));
+    process.on('SIGINT', () => forceSignalHandler('SIGINT'));
+    
+    // 처리되지 않은 promise rejection 핸들링
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+      this.logger?.error('Unhandled promise rejection', { reason, promise });
+    });
+
+    // 처리되지 않은 예외 핸들링
+    process.on('uncaughtException', (error) => {
+      console.error('Uncaught Exception:', error);
+      this.logger?.error('Uncaught exception', { error });
+      
+      // 정리 후 종료
+      this.stop()
+        .finally(() => process.exit(1))
+        .catch(() => process.exit(1));
+    });
   }
 }

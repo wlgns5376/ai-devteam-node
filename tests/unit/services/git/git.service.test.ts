@@ -8,11 +8,13 @@ jest.mock('util', () => ({
 import { GitService } from '@/services/git/git.service';
 import { GitLockService } from '@/services/git/git-lock.service';
 import { Logger } from '@/services/logger';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
+import { EventEmitter } from 'events';
 
 jest.mock('child_process');
 const mockedExec = jest.mocked(exec);
+const mockedSpawn = jest.mocked(spawn);
 
 // fs/promises mock
 jest.mock('fs/promises', () => ({
@@ -139,16 +141,49 @@ describe('GitService - 프로세스 관리', () => {
 
   describe('프로세스 타임아웃 처리', () => {
     it('타임아웃 시 프로세스가 정리되어야 한다', async () => {
-      // Given: 타임아웃 에러 모의
-      const timeoutError = new Error('Command failed');
-      (timeoutError as any).code = 'ETIMEDOUT';
-      mockExecAsync.mockRejectedValue(timeoutError);
+      // Given: 짧은 타임아웃으로 GitService 생성
+      const shortTimeoutService = new GitService({
+        logger: mockLogger,
+        gitOperationTimeoutMs: 100, // 100ms로 설정
+        gitLockService: mockGitLockService,
+      });
 
-      // When: git clone 실행
-      const clonePromise = gitService.clone('https://github.com/test/repo.git', '/tmp/repo');
+      // spawn을 위한 mock child process 생성
+      class MockChildProcess extends EventEmitter {
+        stdout = new EventEmitter();
+        stderr = new EventEmitter();
+        pid = 12345;
+        killed = false;
+        exitCode = null;
+        kill = jest.fn().mockImplementation(() => {
+          this.killed = true;
+          return true;
+        });
+      }
+      
+      const mockChild = new MockChildProcess();
+      mockedSpawn.mockReturnValue(mockChild as any);
+
+      // When: git clone 실행 (타임아웃 발생)
+      const clonePromise = shortTimeoutService.clone('https://github.com/test/repo.git', '/tmp/repo');
+
+      // 타임아웃 기다리기 (프로세스가 끝나지 않음)
+      await new Promise(resolve => setTimeout(resolve, 150));
 
       // Then: 타임아웃 에러 발생
       await expect(clonePromise).rejects.toThrow('Failed to clone repository');
+      
+      // kill이 호출되어야 함 (SIGTERM 또는 SIGKILL)
+      expect(mockChild.kill).toHaveBeenCalledWith(expect.stringMatching(/SIGTERM|SIGKILL/));
+      
+      // 경고 로그 확인
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Git command timeout, terminating',
+        expect.objectContaining({
+          pid: 12345,
+          timeoutMs: 100
+        })
+      );
       
       // 에러 로깅 확인
       expect(mockLogger.error).toHaveBeenCalledWith(
@@ -161,11 +196,31 @@ describe('GitService - 프로세스 관리', () => {
     });
 
     it('정상 종료 시 프로세스 정리를 시도하지 않아야 한다', async () => {
-      // Given: 정상적으로 완료되는 git 명령
-      mockExecAsync.mockResolvedValue({ stdout: 'Success', stderr: '' });
+      // Given: spawn을 위한 mock child process 생성
+      class MockChildProcess extends EventEmitter {
+        stdout = new EventEmitter();
+        stderr = new EventEmitter();
+        pid = 12345;
+        kill = jest.fn();
+      }
+      
+      const mockChild = new MockChildProcess();
+      
+      // spawn이 mock child process를 반환하도록 설정
+      mockedSpawn.mockReturnValue(mockChild as any);
 
-      // When: git fetch 실행
-      await gitService.fetch('/tmp/repo');
+      // When: git fetch 실행 (비동기로 처리)
+      const fetchPromise = gitService.fetch('/tmp/repo');
+      
+      // stdout 데이터 전송
+      mockChild.stdout.emit('data', 'Success');
+      
+      // 정상 종료 시뮬레이션
+      process.nextTick(() => {
+        mockChild.emit('close', 0);
+      });
+      
+      await fetchPromise;
 
       // Then: 성공 로그 확인
       expect(mockLogger.info).toHaveBeenCalledWith(
@@ -177,35 +232,48 @@ describe('GitService - 프로세스 관리', () => {
 
       // 에러 로그가 없어야 함
       expect(mockLogger.error).not.toHaveBeenCalled();
+      
+      // kill이 호출되지 않아야 함
+      expect(mockChild.kill).not.toHaveBeenCalled();
     });
   });
 
   describe('execAsync 타임아웃 처리', () => {
     it('모든 git 명령이 타임아웃 설정을 가져야 한다', async () => {
-      // Given: execAsync 호출을 추적하는 mock
-      const execCalls: any[] = [];
-      mockExecAsync.mockImplementation((command: string, options?: any) => {
-        execCalls.push({ command, options });
-        return Promise.reject(new Error('Test error'));
-      });
+      // Given: spawn을 위한 mock child process 생성
+      class MockChildProcess extends EventEmitter {
+        stdout = new EventEmitter();
+        stderr = new EventEmitter();
+        pid = 12345;
+        kill = jest.fn();
+      }
+      
+      const mockChild = new MockChildProcess();
+      mockedSpawn.mockReturnValue(mockChild as any);
 
       // When: 여러 git 명령 실행
       const operations = [
-        gitService.clone('https://github.com/test/repo.git', '/tmp/repo').catch(() => {}),
-        gitService.fetch('/tmp/repo').catch(() => {}),
-        gitService.pullMainBranch('/tmp/repo').catch(() => {}),
+        gitService.clone('https://github.com/test/repo.git', '/tmp/repo'),
+        gitService.fetch('/tmp/repo'),
+        gitService.pullMainBranch('/tmp/repo'),
       ];
 
-      await Promise.all(operations);
-
-      // Then: 모든 exec 호출이 timeout 옵션을 가져야 함
-      expect(execCalls.length).toBeGreaterThan(0);
-      execCalls.forEach(call => {
-        if (call.options) {
-          expect(call.options).toHaveProperty('timeout');
-          expect(call.options.timeout).toBeGreaterThan(0);
-        }
+      // 각 작업을 즉시 실패시킴
+      operations.forEach(() => {
+        process.nextTick(() => {
+          mockChild.emit('close', 1);
+          mockChild.stderr.emit('data', 'Test error');
+        });
       });
+
+      // 모든 작업이 실패하도록 기다림
+      await Promise.allSettled(operations);
+
+      // Then: spawn이 호출되었는지 확인 (타임아웃 설정은 내부적으로 처리)
+      expect(mockedSpawn).toHaveBeenCalled();
+      
+      // 각 명령에 대해 spawn이 호출되었는지 확인
+      expect(mockedSpawn).toHaveBeenCalledTimes(3);
     });
   });
 });

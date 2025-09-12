@@ -2,8 +2,8 @@ import { TaskRequestHandler } from '../../src/app/TaskRequestHandler';
 import { WorkerPoolManager } from '../../src/services/manager/worker-pool-manager';
 import { WorkspaceManager } from '../../src/services/manager/workspace-manager';
 import { StateManager } from '../../src/services/state-manager';
-import { Logger } from '../../src/services/logger';
-import { TaskRequest, ResponseStatus, WorkerAction } from '../../src/types';
+import { Logger, LogLevel } from '../../src/services/logger';
+import { TaskRequest, ResponseStatus, WorkerAction, TaskAction } from '../../src/types';
 import { ManagerServiceConfig } from '../../src/types/manager.types';
 import { DeveloperConfig } from '../../src/types/developer.types';
 import fs from 'fs/promises';
@@ -24,11 +24,10 @@ describe('Task Reassignment Integration Tests', () => {
     testDataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-devteam-test-'));
     testWorkspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ai-devteam-workspace-'));
     
-    // Logger 초기화
+    // Logger 초기화 - 디버깅을 위해 콘솔 출력 활성화
     logger = new Logger({
-      serviceName: 'task-reassignment-test',
-      logLevel: 'debug',
-      enableConsole: false
+      level: LogLevel.DEBUG,
+      enableConsole: true
     });
 
     // StateManager 초기화
@@ -36,9 +35,13 @@ describe('Task Reassignment Integration Tests', () => {
     await stateManager.initialize();
 
     // WorkspaceManager 초기화
-    const workspaceConfig = {
+    const workspaceConfig: ManagerServiceConfig = {
       workspaceBasePath: testWorkspaceDir,
-      repositoriesBasePath: testWorkspaceDir,
+      minWorkers: 1,
+      maxWorkers: 3,
+      workerRecoveryTimeoutMs: 30000,
+      gitOperationTimeoutMs: 60000,
+      repositoryCacheTimeoutMs: 300000,
       workerLifecycle: {
         idleTimeoutMinutes: 30,
         cleanupIntervalMinutes: 60,
@@ -75,10 +78,12 @@ describe('Task Reassignment Integration Tests', () => {
 
     // WorkerPoolManager 초기화
     const managerConfig: ManagerServiceConfig = {
+      workspaceBasePath: testWorkspaceDir,
       minWorkers: 1,
       maxWorkers: 3,
-      workspaceBasePath: testWorkspaceDir,
-      repositoriesBasePath: testWorkspaceDir,
+      workerRecoveryTimeoutMs: 30000,
+      gitOperationTimeoutMs: 60000,
+      repositoryCacheTimeoutMs: 300000,
       workerLifecycle: {
         idleTimeoutMinutes: 30,
         cleanupIntervalMinutes: 60,
@@ -87,6 +92,9 @@ describe('Task Reassignment Integration Tests', () => {
     };
 
     const developerConfig: DeveloperConfig = {
+      timeoutMs: 30000,
+      maxRetries: 3,
+      retryDelayMs: 1000,
       claude: {
         apiKey: 'test-key',
         model: 'claude-3-sonnet-20240229',
@@ -100,7 +108,10 @@ describe('Task Reassignment Integration Tests', () => {
         logger,
         stateManager,
         workspaceManager,
-        developerConfig
+        developerConfig,
+        baseBranchExtractor: {
+          extractBaseBranch: jest.fn().mockReturnValue('main')
+        } as any
       }
     );
 
@@ -111,7 +122,11 @@ describe('Task Reassignment Integration Tests', () => {
       workerPoolManager,
       undefined, // projectBoardService
       undefined, // pullRequestService
-      logger
+      logger,
+      (boardItem: any) => boardItem.metadata?.repository || 'test-owner/test-repo', // extractRepositoryFromBoardItem
+      {
+        extractBaseBranch: jest.fn().mockResolvedValue('main')
+      } as any // baseBranchExtractor
     );
   });
 
@@ -127,10 +142,16 @@ describe('Task Reassignment Integration Tests', () => {
       // Given: 작업 요청
       const taskRequest: TaskRequest = {
         taskId: 'test-task-1',
-        action: 'check_status',
+        action: TaskAction.CHECK_STATUS,
         boardItem: {
           id: 'test-task-1',
           title: '테스트 작업',
+          status: 'In Progress',
+          assignee: null,
+          labels: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          pullRequestUrls: [],
           metadata: {
             repository: 'test-owner/test-repo'
           }
@@ -166,19 +187,33 @@ describe('Task Reassignment Integration Tests', () => {
         'gitdir: /path/to/repo/.git/worktrees/test'
       );
 
+      // Worker Instance Mock 설정
+      const mockWorkerInstance = {
+        startExecution: jest.fn().mockResolvedValue({ success: true }),
+        getStatus: jest.fn().mockReturnValue('idle'),
+        getCurrentTask: jest.fn().mockReturnValue(null)
+      };
+      
+      // getWorkerInstance가 mock worker를 반환하도록 설정
+      jest.spyOn(workerPoolManager, 'getWorkerInstance').mockResolvedValue(mockWorkerInstance as any);
+      jest.spyOn(workerPoolManager, 'storeTaskResult').mockImplementation(() => {});
+      
+      // assignWorkerTask가 에러를 발생시키지 않도록 mock
+      jest.spyOn(workerPoolManager, 'assignWorkerTask').mockResolvedValue();
+
       // Given: 작업 요청
       const taskRequest: TaskRequest = {
         taskId,
-        action: 'check_status',
+        action: TaskAction.CHECK_STATUS,
         boardItem: {
           id: taskId,
           title: '테스트 작업 2',
           status: 'IN_PROGRESS',
           assignee: null,
           labels: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          projectId: 'test-project',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          pullRequestUrls: [],
           metadata: {
             repository: 'test-owner/test-repo'
           }

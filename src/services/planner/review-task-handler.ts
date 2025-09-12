@@ -338,8 +338,9 @@ export class ReviewTaskHandler {
         this.workflowStateManager.getState().processedComments.add(comment.id);
       }
       
-      // 작업별 lastSyncTime 업데이트
+      // 작업별 lastSyncTime 업데이트 - 중복 처리 방지를 위해 ACCEPTED 상태에서도 업데이트
       const currentTime = new Date();
+      await this.dependencies.stateManager.updateTaskLastSyncTime(item.id, currentTime);
       this.workflowStateManager.updateActiveTaskStatus(item.id, 'IN_REVIEW');
       
       this.logger.info('Feedback processed', {
