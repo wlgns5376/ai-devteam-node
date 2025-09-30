@@ -60,11 +60,6 @@ RUN ARCH=$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/') && \
     chmod +x /usr/local/bin/gh && \
     rm -rf /tmp/gh*
 
-# Install Claude CLI
-# Install the official Claude CLI from npm
-RUN npm install -g @anthropic-ai/claude-code || \
-    echo "Warning: Claude CLI installation failed. Please install manually or ensure API access is configured."
-
 # Create app user and group
 RUN addgroup -g 1001 -S appgroup && \
     adduser -S appuser -u 1001 -G appgroup && \
@@ -97,6 +92,19 @@ RUN mkdir -p /workspace && \
 
 # Switch to non-root user
 USER appuser
+
+# Configure npm global directory for non-root user
+RUN mkdir -p /home/appuser/.npm-global && \
+    npm config set prefix '/home/appuser/.npm-global'
+
+# Set npm global path in environment
+ENV PATH="/home/appuser/.npm-global/bin:${PATH}"
+ENV NPM_CONFIG_PREFIX="/home/appuser/.npm-global"
+
+# Install Claude CLI
+# Install the official Claude CLI from npm (now can be updated without root)
+RUN npm install -g @anthropic-ai/claude-code || \
+    echo "Warning: Claude CLI installation failed. Please install manually or ensure API access is configured."
 
 # Set environment variables
 ENV NODE_ENV=production
