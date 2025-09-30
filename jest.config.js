@@ -59,6 +59,6 @@ module.exports = {
     }
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@octokit)/)'
+    'node_modules/(?!(@octokit|@anthropic-ai)/)'
   ]
 };

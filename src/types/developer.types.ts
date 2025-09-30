@@ -43,11 +43,14 @@ export interface DeveloperConfig {
   timeoutMs: number;
   maxRetries: number;
   retryDelayMs: number;
-  
+
+  // SDK 사용 여부 (true: SDK 사용, false: CLI 사용)
+  useSDK?: boolean;
+
   // CLI 실행 파일 경로
   claudeCodePath?: string;
   geminiCliPath?: string;
-  
+
   claude?: ClaudeConfig;
   gemini?: GeminiConfig;
   mock?: MockConfig;
