@@ -80,7 +80,13 @@ describe('ClaudeDeveloperSDK', () => {
 
     it('초기화 실패 - API 키 없음', async () => {
       // Given
-      const configWithoutKey = { ...config, claude: undefined };
+      const { claude, ...configBase } = config;
+      const configWithoutKey: DeveloperConfig = {
+        ...configBase,
+        timeoutMs: config.timeoutMs,
+        maxRetries: config.maxRetries,
+        retryDelayMs: config.retryDelayMs
+      };
       developer = new ClaudeDeveloperSDK(configWithoutKey, { logger: mockLogger });
 
       // When & Then
@@ -325,13 +331,46 @@ All changes committed successfully.
 
     it('cleanup 실패 시에도 상태는 정리됨', async () => {
       // Given
+      const workspaceDir = '/workspace/test';
       mockCleanupContextFiles.mockRejectedValueOnce(new Error('Cleanup failed'));
 
-      // When & Then
-      await expect(developer.cleanup()).rejects.toThrow();
+      // Setup mock stream for executePrompt
+      const mockStream = (async function* () {
+        yield {
+          type: 'text',
+          data: {
+            textDelta: '작업 완료',
+            text: '작업 완료'
+          }
+        };
+        return {
+          uuid: 'test-uuid',
+          session_id: 'test-session',
+          duration_ms: 1000,
+          duration_api_ms: 800,
+          num_turns: 1,
+          total_cost_usd: 0.01,
+          usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          modelUsage: {},
+          permission_denials: []
+        };
+      })();
+      mockQuery.mockReturnValue(mockStream);
+
+      // Execute to initialize context manager
+      await developer.executePrompt('test', workspaceDir);
+
+      // When
+      await developer.cleanup();
+
+      // Then
+      expect(await developer.isAvailable()).toBe(false);
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'Failed to cleanup context files',
         expect.any(Object)
+      );
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Claude Developer SDK cleanup completed successfully'
       );
     });
   });
