@@ -15,6 +15,7 @@ interface MockWorkspaceManager {
   setupClaudeLocal: jest.Mock;
   cleanupWorkspace: jest.Mock;
   getWorkspaceInfo: jest.Mock;
+  isWorktreeValid: jest.Mock;
 }
 
 describe('WorkspaceSetup', () => {
@@ -37,7 +38,8 @@ describe('WorkspaceSetup', () => {
       setupWorktree: jest.fn(),
       setupClaudeLocal: jest.fn(),
       cleanupWorkspace: jest.fn(),
-      getWorkspaceInfo: jest.fn()
+      getWorkspaceInfo: jest.fn(),
+      isWorktreeValid: jest.fn()
     };
 
     mockBaseBranchExtractor = {
@@ -190,6 +192,9 @@ describe('WorkspaceSetup', () => {
         isDirectory: () => true
       });
 
+      // isWorktreeValid가 true를 반환하도록 설정
+      mockWorkspaceManager.isWorktreeValid.mockResolvedValue(true);
+
       // When: 환경 검증
       const isValid = await workspaceSetup.validateEnvironment(workspaceInfo);
 
@@ -197,6 +202,7 @@ describe('WorkspaceSetup', () => {
       expect(isValid).toBe(true);
       expect(fs.access).toHaveBeenCalledWith(workspaceInfo.workspaceDir);
       expect(fs.access).toHaveBeenCalledWith(workspaceInfo.claudeLocalPath);
+      expect(mockWorkspaceManager.isWorktreeValid).toHaveBeenCalledWith(workspaceInfo);
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Workspace environment validation passed',
         { taskId: workspaceInfo.taskId }
@@ -233,6 +239,9 @@ describe('WorkspaceSetup', () => {
         isDirectory: () => true
       });
 
+      // isWorktreeValid가 true를 반환하도록 설정
+      mockWorkspaceManager.isWorktreeValid.mockResolvedValue(true);
+
       // When: 환경 검증
       const isValid = await workspaceSetup.validateEnvironment(workspaceInfo);
 
@@ -242,9 +251,36 @@ describe('WorkspaceSetup', () => {
         'CLAUDE.local.md not found, but workspace directory is valid',
         { taskId: workspaceInfo.taskId }
       );
+      expect(mockWorkspaceManager.isWorktreeValid).toHaveBeenCalledWith(workspaceInfo);
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Workspace environment validation passed',
         { taskId: workspaceInfo.taskId }
+      );
+    });
+
+    it('워크트리가 유효하지 않으면 워크스페이스도 유효하지 않아야 한다', async () => {
+      // Given: 디렉토리는 있지만 .git 워크트리가 유효하지 않음
+      const fs = require('fs/promises');
+      jest.spyOn(fs, 'access').mockResolvedValue(undefined);
+      jest.spyOn(fs, 'stat').mockResolvedValue({
+        isDirectory: () => true
+      });
+
+      // isWorktreeValid가 false를 반환하도록 설정
+      mockWorkspaceManager.isWorktreeValid = jest.fn().mockResolvedValue(false);
+
+      // When: 환경 검증
+      const isValid = await workspaceSetup.validateEnvironment(workspaceInfo);
+
+      // Then: 유효하지 않음 (워크트리가 유효하지 않으면 전체 워크스페이스도 유효하지 않음)
+      expect(isValid).toBe(false);
+      expect(mockWorkspaceManager.isWorktreeValid).toHaveBeenCalledWith(workspaceInfo);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Worktree validation failed, workspace is invalid',
+        {
+          taskId: workspaceInfo.taskId,
+          reason: 'Git worktree is not valid'
+        }
       );
     });
   });

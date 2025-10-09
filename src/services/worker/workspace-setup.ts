@@ -114,21 +114,23 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
         });
       }
 
-      // Git worktree 검증은 선택적으로 수행 - 실패해도 디렉토리가 있으면 재사용
+      // Git worktree 검증 - worktree가 유효하지 않으면 workspace도 유효하지 않음
       if (this.dependencies.workspaceManager && typeof this.dependencies.workspaceManager.isWorktreeValid === 'function') {
         try {
           const isWorktreeValid = await this.dependencies.workspaceManager.isWorktreeValid(workspaceInfo);
           if (!isWorktreeValid) {
-            this.dependencies.logger.info('Git worktree validation failed, but reusing existing directory', {
+            this.dependencies.logger.warn('Worktree validation failed, workspace is invalid', {
               taskId: workspaceInfo.taskId,
-              reason: 'Directory exists and will be reused'
+              reason: 'Git worktree is not valid'
             });
+            return false;
           }
         } catch (worktreeError) {
-          this.dependencies.logger.debug('Git worktree validation error, but continuing with existing directory', {
+          this.dependencies.logger.warn('Worktree validation error, workspace is invalid', {
             taskId: workspaceInfo.taskId,
             error: worktreeError
           });
+          return false;
         }
       }
 

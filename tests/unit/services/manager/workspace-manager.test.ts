@@ -437,7 +437,7 @@ describe('WorkspaceManager', () => {
 
       const repositoryPath = '/repositories/owner_repo';
       mockRepositoryManager.ensureRepository.mockResolvedValue(repositoryPath);
-      
+
       // Mock isWorktreeValid to return false (유효하지 않음)
       jest.spyOn(fs, 'access').mockRejectedValue(new Error('Directory not found'));
 
@@ -457,6 +457,51 @@ describe('WorkspaceManager', () => {
           taskId: existingWorkspaceInfo.taskId,
           workspaceDir: existingWorkspaceInfo.workspaceDir
         }
+      );
+    });
+
+    it('[BUG #40] 초기 셋팅 시 디렉토리만 존재하고 .git 파일이 없을 때 repository clone을 먼저 실행해야 한다', async () => {
+      // Given: workspace 디렉토리는 존재하지만 .git 파일이 없는 상태 (초기 셋팅)
+      const newWorkspaceInfo = {
+        ...workspaceInfo,
+        worktreeCreated: false
+      };
+
+      const repositoryPath = '/repositories/owner_repo';
+      mockRepositoryManager.ensureRepository.mockResolvedValue(repositoryPath);
+      mockRepositoryManager.addWorktree.mockResolvedValue(undefined);
+      mockGitService.createWorktree.mockResolvedValue(undefined);
+
+      // Mock: 디렉토리는 존재하지만 .git 파일이 없음
+      const accessSpy = jest.spyOn(fs, 'access');
+      const readFileSpy = jest.spyOn(fs, 'readFile');
+
+      // 첫 번째 호출: 디렉토리 존재 확인 - 성공
+      // 두 번째 호출: .git 파일 존재 확인 - 실패 (파일 없음)
+      accessSpy
+        .mockResolvedValueOnce(undefined) // 디렉토리 존재
+        .mockRejectedValueOnce(new Error('.git file not found')); // .git 파일 없음
+
+      // When: Worktree 설정
+      await workspaceManager.setupWorktree(newWorkspaceInfo);
+
+      // Then: Repository를 먼저 확인하고 worktree 생성
+      expect(mockRepositoryManager.ensureRepository).toHaveBeenCalledWith(newWorkspaceInfo.repositoryId, true);
+      expect(mockGitService.createWorktree).toHaveBeenCalledWith(
+        repositoryPath,
+        newWorkspaceInfo.branchName,
+        newWorkspaceInfo.workspaceDir,
+        undefined
+      );
+      expect(mockRepositoryManager.addWorktree).toHaveBeenCalledWith(
+        newWorkspaceInfo.repositoryId,
+        newWorkspaceInfo.workspaceDir
+      );
+
+      // 디렉토리만 존재하고 .git이 없는 경우 "Valid worktree already exists"가 아니어야 함
+      expect(mockLogger.info).not.toHaveBeenCalledWith(
+        'Valid worktree already exists, reusing existing worktree',
+        expect.anything()
       );
     });
   });
