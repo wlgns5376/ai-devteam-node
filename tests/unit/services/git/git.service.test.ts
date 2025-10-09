@@ -276,4 +276,113 @@ describe('GitService - 프로세스 관리', () => {
       expect(mockedSpawn).toHaveBeenCalledTimes(3);
     });
   });
+
+  describe('parseCommand - 명령어 파싱 테스트', () => {
+    it('따옴표가 포함된 URL을 올바르게 파싱해야 한다', async () => {
+      // Given: 따옴표가 포함된 clone 명령어
+      class MockChildProcess extends EventEmitter {
+        stdout = new EventEmitter();
+        stderr = new EventEmitter();
+        stdin = { end: jest.fn() };
+        pid = 12345;
+        kill = jest.fn();
+      }
+
+      const mockChild = new MockChildProcess();
+      mockedSpawn.mockReturnValue(mockChild as any);
+
+      // When: clone 실행
+      const clonePromise = gitService.clone('https://github.com/test/repo.git', '/tmp/test-repo');
+
+      // 비동기 실행을 위해 대기
+      process.nextTick(() => {
+        mockChild.stderr.emit('data', 'Cloning into...\n');
+        mockChild.emit('close', 0);
+      });
+
+      await clonePromise;
+
+      // Then: spawn이 올바른 인자로 호출되었는지 확인
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'git',
+        ['clone', 'https://github.com/test/repo.git', '/tmp/test-repo'],
+        expect.any(Object)
+      );
+    });
+
+    it('공백이 포함된 경로를 올바르게 파싱해야 한다', async () => {
+      // Given: 공백이 포함된 경로
+      class MockChildProcess extends EventEmitter {
+        stdout = new EventEmitter();
+        stderr = new EventEmitter();
+        stdin = { end: jest.fn() };
+        pid = 12345;
+        kill = jest.fn();
+      }
+
+      const mockChild = new MockChildProcess();
+      mockedSpawn.mockReturnValue(mockChild as any);
+
+      // When: clone 실행 (공백 포함 경로)
+      const clonePromise = gitService.clone('https://github.com/test/repo.git', '/tmp/test repo with spaces');
+
+      // 비동기 실행을 위해 대기
+      process.nextTick(() => {
+        mockChild.stderr.emit('data', 'Cloning into...\n');
+        mockChild.emit('close', 0);
+      });
+
+      await clonePromise;
+
+      // Then: spawn이 올바른 인자로 호출되었는지 확인
+      expect(mockedSpawn).toHaveBeenCalledWith(
+        'git',
+        ['clone', 'https://github.com/test/repo.git', '/tmp/test repo with spaces'],
+        expect.any(Object)
+      );
+    });
+
+    it('여러 인자가 있는 명령어를 올바르게 파싱해야 한다', async () => {
+      // Given: worktree add 명령어
+      class MockChildProcess extends EventEmitter {
+        stdout = new EventEmitter();
+        stderr = new EventEmitter();
+        stdin = { end: jest.fn() };
+        pid = 12345;
+        kill = jest.fn();
+      }
+
+      const mockChild = new MockChildProcess();
+      mockedSpawn.mockReturnValue(mockChild as any);
+
+      // 유효한 저장소로 만들기 위한 설정
+      mockExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' }); // isValidRepository
+      mockExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' }); // worktree list
+      mockExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' }); // worktree prune
+      mockExecAsync.mockResolvedValueOnce({ stdout: '', stderr: '' }); // branchExists
+      mockExecAsync.mockResolvedValueOnce({ stdout: 'main', stderr: '' }); // getMainBranchName
+
+      // When: worktree 생성
+      const worktreePromise = gitService.createWorktree(
+        '/tmp/main-repo',
+        'feature-branch',
+        '/tmp/worktree path',
+        'main'
+      );
+
+      // 비동기 실행을 위해 대기
+      process.nextTick(() => {
+        mockChild.stderr.emit('data', 'Preparing worktree...\n');
+        mockChild.emit('close', 0);
+      });
+
+      await worktreePromise;
+
+      // Then: spawn이 올바른 인자로 호출되었는지 확인 (마지막 호출)
+      const lastCall = mockedSpawn.mock.calls[mockedSpawn.mock.calls.length - 1];
+      expect(lastCall).toBeDefined();
+      expect(lastCall![0]).toBe('git');
+      expect(lastCall![1]).toEqual(['worktree', 'add', '-b', 'feature-branch', '/tmp/worktree path', 'main']);
+    });
+  });
 });

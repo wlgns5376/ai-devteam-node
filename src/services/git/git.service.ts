@@ -23,23 +23,64 @@ export class GitService implements GitServiceInterface {
   ) {}
 
   /**
+   * 명령어 문자열을 파싱하여 배열로 변환 (따옴표 처리 포함)
+   */
+  private parseCommand(command: string): string[] {
+    const parts: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = '';
+
+    for (let i = 0; i < command.length; i++) {
+      const char = command[i];
+
+      if ((char === '"' || char === "'") && !inQuotes) {
+        // 따옴표 시작
+        inQuotes = true;
+        quoteChar = char;
+      } else if (char === quoteChar && inQuotes) {
+        // 따옴표 종료
+        inQuotes = false;
+        quoteChar = '';
+      } else if (char === ' ' && !inQuotes) {
+        // 공백이고 따옴표 밖이면 구분자로 처리
+        if (current.length > 0) {
+          parts.push(current);
+          current = '';
+        }
+      } else {
+        // 일반 문자 추가
+        current += char;
+      }
+    }
+
+    // 마지막 파트 추가
+    if (current.length > 0) {
+      parts.push(current);
+    }
+
+    return parts;
+  }
+
+  /**
    * 프로세스 추적을 포함한 안전한 exec 실행
    */
   private async safeExec(command: string, options: { cwd?: string; timeout?: number } = {}): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
       const timeoutMs = options.timeout || this.dependencies.gitOperationTimeoutMs;
-      
-      this.dependencies.logger.debug('Executing git command', { 
+
+      this.dependencies.logger.debug('Executing git command', {
         command: command.substring(0, 100),
         cwd: options.cwd,
         timeout: timeoutMs
       });
 
       // spawn을 사용하여 프로세스 추적
-      const parts = command.split(' ').filter(part => part.length > 0);
+      // 따옴표를 고려하여 명령어를 파싱
+      const parts = this.parseCommand(command);
       const cmd = parts[0];
       const args = parts.slice(1);
-      
+
       if (!cmd) {
         reject(new Error('Invalid command: empty command string'));
         return;
