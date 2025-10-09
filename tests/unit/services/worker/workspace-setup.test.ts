@@ -283,6 +283,61 @@ describe('WorkspaceSetup', () => {
         }
       );
     });
+
+    it('초기 셋팅 시 worktreeCreated가 false이면 worktree 검증을 건너뛰어야 한다', async () => {
+      // Given: 초기 셋팅으로 worktreeCreated가 false인 워크스페이스
+      const initialWorkspaceInfo: WorkspaceInfo = {
+        ...workspaceInfo,
+        worktreeCreated: false
+      };
+
+      const fs = require('fs/promises');
+      jest.spyOn(fs, 'access').mockResolvedValue(undefined);
+      jest.spyOn(fs, 'stat').mockResolvedValue({
+        isDirectory: () => true
+      });
+
+      // When: 환경 검증
+      const isValid = await workspaceSetup.validateEnvironment(initialWorkspaceInfo);
+
+      // Then: worktree 검증 없이 유효함
+      expect(isValid).toBe(true);
+      expect(mockWorkspaceManager.isWorktreeValid).not.toHaveBeenCalled();
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Skipping worktree validation (worktree not created yet)',
+        {
+          taskId: initialWorkspaceInfo.taskId,
+          worktreeCreated: false
+        }
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Workspace environment validation passed',
+        { taskId: initialWorkspaceInfo.taskId }
+      );
+    });
+
+    it('worktreeCreated가 true이면 worktree 검증을 수행해야 한다', async () => {
+      // Given: worktreeCreated가 true인 워크스페이스
+      const fs = require('fs/promises');
+      jest.spyOn(fs, 'access').mockResolvedValue(undefined);
+      jest.spyOn(fs, 'stat').mockResolvedValue({
+        isDirectory: () => true
+      });
+
+      // isWorktreeValid가 true를 반환하도록 설정
+      mockWorkspaceManager.isWorktreeValid.mockResolvedValue(true);
+
+      // When: 환경 검증
+      const isValid = await workspaceSetup.validateEnvironment(workspaceInfo);
+
+      // Then: worktree 검증 수행
+      expect(isValid).toBe(true);
+      expect(mockWorkspaceManager.isWorktreeValid).toHaveBeenCalledWith(workspaceInfo);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Workspace environment validation passed',
+        { taskId: workspaceInfo.taskId }
+      );
+    });
   });
 
   describe('정리', () => {
