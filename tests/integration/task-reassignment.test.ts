@@ -242,18 +242,20 @@ describe('Task Reassignment Integration Tests', () => {
       // When: workspace 유효성 검증
       const isValid = await workspaceManager.isWorktreeValid(workspaceInfo);
 
-      // Then: .git 파일이 없어도 디렉토리가 있으면 유효한 것으로 판단 (재사용 가능)
-      expect(isValid).toBe(true);
+      // Then: .git 파일이 없으면 유효하지 않은 worktree로 판단
+      expect(isValid).toBe(false);
     });
 
     it('WorkerPoolManager의 canAssignIdleWorkerToTask가 올바르게 작동한다', async () => {
-      // Given: workspace가 있는 작업
+      // Given: 유효한 worktree가 있는 작업
       const taskId = 'test-task-4';
       const workspaceInfo = await workspaceManager.createWorkspace(
         taskId,
         'test-owner/test-repo'
       );
+      // 디렉토리와 .git 파일 생성 (유효한 worktree)
       await fs.mkdir(workspaceInfo.workspaceDir, { recursive: true });
+      await fs.writeFile(path.join(workspaceInfo.workspaceDir, '.git'), 'gitdir: /path/to/repo/.git/worktrees/test');
 
       // Given: idle 상태 Worker
       const worker = await workerPoolManager.getAvailableWorker();
@@ -266,21 +268,22 @@ describe('Task Reassignment Integration Tests', () => {
         { id: taskId, title: '테스트 작업 4' }
       );
 
-      // Then: workspace가 있으므로 할당 가능
+      // Then: 유효한 worktree가 있으므로 할당 가능
       expect(canAssign).toBe(true);
     });
 
     it('TaskAssignmentValidator의 우선순위 시스템이 올바르게 작동한다', async () => {
-      // Given: workspace가 있는 작업과 없는 작업
+      // Given: 유효한 worktree가 있는 작업과 없는 작업
       const taskWithWorkspace = 'task-with-workspace';
       const taskWithoutWorkspace = 'task-without-workspace';
 
-      // workspace 생성
+      // 유효한 worktree 생성 (디렉토리 + .git 파일)
       const workspaceInfo = await workspaceManager.createWorkspace(
         taskWithWorkspace,
         'test-owner/test-repo'
       );
       await fs.mkdir(workspaceInfo.workspaceDir, { recursive: true });
+      await fs.writeFile(path.join(workspaceInfo.workspaceDir, '.git'), 'gitdir: /path/to/repo/.git/worktrees/test');
 
       // When: 우선순위 확인
       const priorityWithWorkspace = await workerPoolManager['taskAssignmentValidator']
@@ -288,7 +291,7 @@ describe('Task Reassignment Integration Tests', () => {
       const priorityWithoutWorkspace = await workerPoolManager['taskAssignmentValidator']
         .getTaskReassignmentPriority(taskWithoutWorkspace);
 
-      // Then: workspace가 있는 작업이 더 높은 우선순위를 가짐
+      // Then: 유효한 worktree가 있는 작업이 더 높은 우선순위를 가짐
       expect(priorityWithWorkspace).toBe(10); // 높은 우선순위
       expect(priorityWithoutWorkspace).toBe(5); // 중간 우선순위
     });

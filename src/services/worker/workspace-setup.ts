@@ -98,7 +98,7 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
     try {
       // 기본 디렉토리 존재 확인
       await fs.access(workspaceInfo.workspaceDir);
-      
+
       // 디렉토리인지 확인
       const stat = await fs.stat(workspaceInfo.workspaceDir);
       if (!stat.isDirectory()) {
@@ -114,22 +114,32 @@ export class WorkspaceSetup implements WorkspaceSetupInterface {
         });
       }
 
-      // Git worktree 검증은 선택적으로 수행 - 실패해도 디렉토리가 있으면 재사용
-      if (this.dependencies.workspaceManager && typeof this.dependencies.workspaceManager.isWorktreeValid === 'function') {
-        try {
-          const isWorktreeValid = await this.dependencies.workspaceManager.isWorktreeValid(workspaceInfo);
-          if (!isWorktreeValid) {
-            this.dependencies.logger.info('Git worktree validation failed, but reusing existing directory', {
+      // Git worktree 검증 - worktree가 생성되었다고 표시된 경우에만 검증
+      // 초기 셋팅 시에는 worktreeCreated가 false이므로 worktree 검증을 건너뜀
+      if (workspaceInfo.worktreeCreated) {
+        if (this.dependencies.workspaceManager && typeof this.dependencies.workspaceManager.isWorktreeValid === 'function') {
+          try {
+            const isWorktreeValid = await this.dependencies.workspaceManager.isWorktreeValid(workspaceInfo);
+            if (!isWorktreeValid) {
+              this.dependencies.logger.warn('Worktree validation failed, workspace is invalid', {
+                taskId: workspaceInfo.taskId,
+                reason: 'Git worktree is not valid'
+              });
+              return false;
+            }
+          } catch (worktreeError) {
+            this.dependencies.logger.warn('Worktree validation error, workspace is invalid', {
               taskId: workspaceInfo.taskId,
-              reason: 'Directory exists and will be reused'
+              error: worktreeError
             });
+            return false;
           }
-        } catch (worktreeError) {
-          this.dependencies.logger.debug('Git worktree validation error, but continuing with existing directory', {
-            taskId: workspaceInfo.taskId,
-            error: worktreeError
-          });
         }
+      } else {
+        this.dependencies.logger.debug('Skipping worktree validation (worktree not created yet)', {
+          taskId: workspaceInfo.taskId,
+          worktreeCreated: workspaceInfo.worktreeCreated
+        });
       }
 
       this.dependencies.logger.debug('Workspace environment validation passed', {

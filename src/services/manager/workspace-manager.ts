@@ -436,20 +436,19 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
    */
   async isWorktreeValid(workspaceInfo: WorkspaceInfo): Promise<boolean> {
     try {
-      // 디렉토리 존재 확인 - 이것이 가장 중요한 검증
+      // 디렉토리 존재 확인
       const directoryExists = await this.checkDirectoryExists(workspaceInfo.workspaceDir);
       if (!directoryExists) {
         return false;
       }
 
-      // 디렉토리가 있으면 기본적으로 유효한 것으로 간주
-      // Git 워크트리 세부 검증은 선택적으로 수행
+      // .git 파일이 존재하고 유효한 worktree인지 검증
       const gitPath = path.join(workspaceInfo.workspaceDir, '.git');
       try {
         const gitContent = await fs.readFile(gitPath, 'utf-8');
         // Git worktree는 .git 파일에 "gitdir: ..." 형태로 저장됨
         const isWorktree = gitContent.trim().startsWith('gitdir:');
-        
+
         this.dependencies.logger.debug('Worktree validation result', {
           taskId: workspaceInfo.taskId,
           workspaceDir: workspaceInfo.workspaceDir,
@@ -458,22 +457,22 @@ export class WorkspaceManager implements WorkspaceManagerInterface {
           gitContent: gitContent.substring(0, 100) // 첫 100자만 로그
         });
 
-        // Git worktree가 아니어도 디렉토리가 있으면 재사용 가능
         if (!isWorktree) {
-          this.dependencies.logger.info('Directory exists but not a valid worktree, will be reused anyway', {
+          this.dependencies.logger.debug('Directory exists but not a valid worktree', {
             taskId: workspaceInfo.taskId,
             workspaceDir: workspaceInfo.workspaceDir
           });
         }
 
-        return true; // 디렉토리가 있으면 항상 유효
+        // 유효한 worktree일 때만 true 반환
+        return isWorktree;
       } catch {
-        // .git 파일이 없어도 디렉토리가 있으면 사용 가능
-        this.dependencies.logger.debug('.git file not found, but directory exists and will be reused', {
+        // .git 파일이 없으면 유효하지 않은 worktree
+        this.dependencies.logger.debug('.git file not found, directory is not a valid worktree', {
           taskId: workspaceInfo.taskId,
           workspaceDir: workspaceInfo.workspaceDir
         });
-        return true;
+        return false;
       }
     } catch (error) {
       this.dependencies.logger.error('Error validating workspace directory', {
