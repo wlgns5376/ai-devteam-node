@@ -207,30 +207,95 @@ export class ResultProcessor implements ResultProcessorInterface {
   }
 
   private isSuccessfulOutput(output: string): boolean {
-    // 성공 지표 확인
-    const successIndicators = [
-      '성공적으로 완료',
-      'PR:',
-      '생성된 PR',
-      'Pull Request',
-      '✓.*tests? passed',
-      '모든 테스트.*통과',
-      'Coverage:',
-      '병합.*성공적으로.*완료',
-      '작업을.*완료했습니다',
-      'merge.*successful',
-      'Everything up-to-date',
-      '모든 변경사항.*적용'
+    // 1. 명확한 실패 지표 확인 (우선순위 높음)
+    const criticalFailurePatterns = [
+      /TypeScript compilation failed/i,
+      /✗\s*\d+\s*tests?\s*failed/,
+      /npm ERR!/,
+      /Error:/,
+      /FAIL(?:ED)?:/i,
+      /fatal:/i,
+      /Exception:/i,
+      /throw new Error/i
     ];
 
-    const hasSuccessIndicator = successIndicators.some(pattern => 
-      new RegExp(pattern, 'i').test(output)
+    // 치명적 실패 패턴이 있으면 즉시 실패로 판단
+    const hasCriticalFailure = criticalFailurePatterns.some(pattern =>
+      pattern.test(output)
     );
 
-    // 실패 지표 확인 (에러가 없고 성공 지표가 있으면 성공)
-    const hasErrorIndicator = /ERROR|FAIL|✗.*failed/i.test(output);
+    if (hasCriticalFailure) {
+      return false;
+    }
 
-    return hasSuccessIndicator && !hasErrorIndicator;
+    // 2. 명확한 성공 지표 확인
+    const strongSuccessIndicators = [
+      /성공적으로\s*완료/i,
+      /successfully\s*completed/i,
+      /PR:\s*https:\/\/github\.com/i,
+      /생성된\s*PR:\s*https:\/\/github\.com/i,
+      /Pull\s*Request.*https:\/\/github\.com/i,
+      /✓\s*\d+\s*tests?\s*passed/,
+      /모든\s*테스트.*통과/i,
+      /all\s*tests?\s*passed/i,
+      /병합.*성공적으로.*완료/i,
+      /merge.*successful/i,
+      /Everything up-to-date/,
+      /작업을.*완료했습니다/i,
+      /task.*completed/i
+    ];
+
+    const hasStrongSuccessIndicator = strongSuccessIndicators.some(pattern =>
+      pattern.test(output)
+    );
+
+    // 3. 약한 성공 지표 확인 (보조적)
+    const weakSuccessIndicators = [
+      /Coverage:/i,
+      /모든\s*변경사항.*적용/i,
+      /✓/,
+      /커밋.*생성/i,
+      /commit.*created/i
+    ];
+
+    const hasWeakSuccessIndicator = weakSuccessIndicators.some(pattern =>
+      pattern.test(output)
+    );
+
+    // 4. 경미한 경고나 에러 메시지 확인 (성공에 영향 없음)
+    const minorWarningPatterns = [
+      /warning:/i,
+      /deprecated/i,
+      /WARN/i
+    ];
+
+    // 5. 최종 판단
+    // - 강한 성공 지표가 있으면 성공
+    // - 강한 성공 지표가 없어도 약한 성공 지표가 2개 이상 있으면 성공
+    if (hasStrongSuccessIndicator) {
+      return true;
+    }
+
+    // 약한 지표만 있는 경우 추가 검증
+    if (hasWeakSuccessIndicator) {
+      // 출력이 매우 짧으면 (50자 미만) 불확실하므로 실패로 간주
+      if (output.length < 50) {
+        return false;
+      }
+
+      // 경고만 있고 실제 성공 내용이 없으면 실패
+      const onlyWarnings = minorWarningPatterns.some(p => p.test(output)) &&
+                           !output.includes('완료') &&
+                           !output.includes('completed');
+      if (onlyWarnings) {
+        return false;
+      }
+
+      return true;
+    }
+
+    // 성공 지표가 없으면 실패
+    return false;
   }
 
   private extractResultDetails(output: string, success: boolean): Record<string, unknown> {
