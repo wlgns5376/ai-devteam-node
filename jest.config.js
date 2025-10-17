@@ -32,15 +32,12 @@ module.exports = {
       statements: 80
     }
   },
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
-  },
   verbose: true,
   clearMocks: true,
   restoreMocks: true,
   forceExit: true,
-  globals: {
-    'ts-jest': {
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: {
         target: 'ES2022',
         module: 'commonjs',
@@ -56,9 +53,13 @@ module.exports = {
         },
         types: ['node', 'jest']
       }
-    }
+    }]
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(@octokit)/)'
-  ]
+    'node_modules/(?!(@octokit|@anthropic-ai)/)'
+  ],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@anthropic-ai/claude-agent-sdk$': '<rootDir>/tests/__mocks__/claude-agent-sdk.ts'
+  }
 };

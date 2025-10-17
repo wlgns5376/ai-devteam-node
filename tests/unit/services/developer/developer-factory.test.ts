@@ -1,9 +1,10 @@
 import { DeveloperFactory } from '@/services/developer/developer-factory';
 import { MockDeveloper } from '@/services/developer/mock-developer';
 import { ClaudeDeveloper } from '@/services/developer/claude-developer';
+import { ClaudeDeveloperSDK } from '@/services/developer/claude-developer-sdk';
 import { Logger } from '@/services/logger';
-import { 
-  DeveloperConfig, 
+import {
+  DeveloperConfig,
   DeveloperType,
   DeveloperInterface
 } from '@/types/developer.types';
@@ -47,11 +48,12 @@ describe('DeveloperFactory', () => {
       expect(developer.type).toBe('mock');
     });
 
-    it('Claude Developer를 생성해야 한다', () => {
-      // Given: Claude 타입과 설정
+    it('Claude Developer를 생성해야 한다 (CLI 모드)', () => {
+      // Given: Claude 타입과 설정 (useSDK: false)
       const type: DeveloperType = 'claude';
       const claudeConfig = {
         ...config,
+        useSDK: false,
         claude: {
           apiKey: 'test-api-key',
           model: 'claude-3'
@@ -65,6 +67,29 @@ describe('DeveloperFactory', () => {
       expect(developer).toBeDefined();
       expect(developer).toBeInstanceOf(ClaudeDeveloper);
       expect(developer.type).toBe('claude');
+      expect(mockLogger.info).toHaveBeenCalledWith('Creating Claude Developer with CLI mode');
+    });
+
+    it('Claude Developer SDK를 생성해야 한다 (SDK 모드)', () => {
+      // Given: Claude 타입과 설정 (useSDK: true)
+      const type: DeveloperType = 'claude';
+      const claudeConfig = {
+        ...config,
+        useSDK: true,
+        claude: {
+          apiKey: 'test-api-key',
+          model: 'claude-sonnet-4-5-20250929'
+        }
+      };
+
+      // When: Developer 생성
+      const developer = DeveloperFactory.create(type, claudeConfig, { logger: mockLogger });
+
+      // Then: ClaudeDeveloperSDK 인스턴스 반환
+      expect(developer).toBeDefined();
+      expect(developer).toBeInstanceOf(ClaudeDeveloperSDK);
+      expect(developer.type).toBe('claude');
+      expect(mockLogger.info).toHaveBeenCalledWith('Creating Claude Developer with SDK mode');
     });
 
     it('Gemini Developer를 생성해야 한다 (현재는 Mock 반환)', () => {

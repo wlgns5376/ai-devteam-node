@@ -103,10 +103,16 @@ describe('GitHub Integration Tests', () => {
       const originalToken = process.env.GITHUB_TOKEN;
       const originalOwner = process.env.GITHUB_OWNER;
       const originalProjectNumber = process.env.GITHUB_PROJECT_NUMBER;
-      
+      const originalAllowedRepos = process.env.GITHUB_ALLOWED_REPOSITORIES;
+      const originalGithubRepos = process.env.GITHUB_REPOS;
+      const originalGithubRepo = process.env.GITHUB_REPO;
+
       process.env.GITHUB_TOKEN = 'env-test-token';
       process.env.GITHUB_OWNER = 'test-owner';
       process.env.GITHUB_PROJECT_NUMBER = '1';
+      delete process.env.GITHUB_ALLOWED_REPOSITORIES;
+      delete process.env.GITHUB_REPOS;
+      delete process.env.GITHUB_REPO;
 
       try {
         // When: 환경변수에서 v2 설정을 생성하면
@@ -126,9 +132,15 @@ describe('GitHub Integration Tests', () => {
         if (originalToken) process.env.GITHUB_TOKEN = originalToken;
         else delete process.env.GITHUB_TOKEN;
         if (originalOwner) process.env.GITHUB_OWNER = originalOwner;
-        else delete process.env.GITHUB_OWNER; 
+        else delete process.env.GITHUB_OWNER;
         if (originalProjectNumber) process.env.GITHUB_PROJECT_NUMBER = originalProjectNumber;
         else delete process.env.GITHUB_PROJECT_NUMBER;
+        if (originalAllowedRepos) process.env.GITHUB_ALLOWED_REPOSITORIES = originalAllowedRepos;
+        else delete process.env.GITHUB_ALLOWED_REPOSITORIES;
+        if (originalGithubRepos) process.env.GITHUB_REPOS = originalGithubRepos;
+        else delete process.env.GITHUB_REPOS;
+        if (originalGithubRepo) process.env.GITHUB_REPO = originalGithubRepo;
+        else delete process.env.GITHUB_REPO;
       }
     });
 
