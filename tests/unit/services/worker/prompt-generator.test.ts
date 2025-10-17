@@ -439,10 +439,43 @@ describe('PromptGenerator', () => {
       // When: 프롬프트 생성
       const prompt = await promptGenerator.generateNewTaskPrompt(task, workspaceInfo);
 
-      // Then: 공통 지침 포함  
+      // Then: 공통 지침 포함
       expect(prompt).toContain('CLAUDE.local.md 파일을 반드시 참고');
       expect(prompt).toContain('GitHub 워크플로');
-      expect(prompt).toContain('작업 요청');
+      expect(prompt).toContain('응답 형식');
+    });
+
+    it('응답 형식 지침이 포함되어야 한다', async () => {
+      // Given: 기본 작업
+      const task: WorkerTask = {
+        taskId: 'task-format',
+        action: WorkerAction.START_NEW_TASK,
+        repositoryId: 'owner/repo',
+        assignedAt: new Date(),
+        boardItem: {
+          id: 'task-format',
+          title: 'Test response format'
+        }
+      };
+
+      const workspaceInfo: WorkspaceInfo = {
+        taskId: 'task-format',
+        repositoryId: 'owner/repo',
+        workspaceDir: '/workspace/test',
+        branchName: 'task-format',
+        worktreeCreated: true,
+        claudeLocalPath: '/workspace/test/CLAUDE.local.md',
+        createdAt: new Date()
+      };
+
+      // When: 신규 작업 프롬프트 생성
+      const prompt = await promptGenerator.generateNewTaskPrompt(task, workspaceInfo);
+
+      // Then: 응답 형식 지침 포함
+      expect(prompt).toContain('## 응답 형식');
+      expect(prompt).toContain('---TASK_RESULT_START---');
+      expect(prompt).toContain('---TASK_RESULT_END---');
+      expect(prompt).toContain('성공적으로 완료되었습니다');
     });
 
     it('잘못된 입력에 대해 에러를 발생시켜야 한다', async () => {
